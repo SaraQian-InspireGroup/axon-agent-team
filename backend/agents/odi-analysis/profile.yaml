@@ -1,0 +1,26 @@
+id: odi-analysis
+name: "ODI Knowledge AI Chat Analysis Agent"
+description: "ChatTopicDailyAnalysis topic and session analytics (read-only, bilingual replies)"
+
+model_provider: azure_anthropic
+model: ${CLAUDE_AZURE_FOUNDRY_MODEL}
+prompt_file: system_prompt.md
+skills_dir: skills
+
+mcp_servers:
+  - postgres
+
+# MCP tools only. load_skill / read_skill_resource are auto-allowed when skills_dir is set
+# (see agent_factory.py). Do not list skill names (e.g. topic-daily-analysis) here.
+allowed_tools:
+  - postgres_list_tables
+  - postgres_describe_table
+  - postgres_get_schema
+  - postgres_query_data
+
+
+hooks:
+  sql_validator:
+    max_rows: 2000
+  result_truncator:
+    max_observation_bytes: 50000

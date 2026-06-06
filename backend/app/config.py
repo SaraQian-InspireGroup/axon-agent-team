@@ -1,0 +1,126 @@
+import ssl
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
+from dotenv import load_dotenv
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+_ENV_FILE = _BACKEND_ROOT / ".env"
+# Legacy fallback when .env still lives at repo root
+_LEGACY_ENV_FILE = _BACKEND_ROOT.parent / ".env"
+if not _ENV_FILE.exists() and _LEGACY_ENV_FILE.exists():
+    _ENV_FILE = _LEGACY_ENV_FILE
+
+load_dotenv(_ENV_FILE)
+
+
+def _strip_inline_comment(value: str) -> str:
+    """Remove trailing inline comments from .env values (e.g. 'gpt-4o-mini   # note')."""
+    if "#" not in value:
+        return value.strip()
+    return value.split("#", 1)[0].strip()
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_FILE),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # Primary chat model (Azure OpenAI)
+    azure_api_key: str = Field(validation_alias="AZURE_API_KEY")
+    azure_openai_base_url: str = Field(validation_alias="AZURE_OPENAI_BASE_URL")
+    azure_openai_api_version: str = Field(validation_alias="AZURE_OPENAI_API_VERSION")
+    azure_openai_deployment: str = Field(validation_alias="AZURE_OPENAI_DEPLOYMENT")
+
+    # Platform utility model (title, compaction)
+    utility_model_api_key: str | None = Field(default=None, validation_alias="UTILITY_MODEL_API_KEY")
+    utility_model_base_url: str | None = Field(default=None, validation_alias="UTILITY_MODEL_BASE_URL")
+    utility_model_api_version: str | None = Field(default=None, validation_alias="UTILITY_MODEL_API_VERSION")
+    utility_model_deployment: str | None = Field(default=None, validation_alias="UTILITY_MODEL_DEPLOYMENT")
+
+    # Claude (Phase 1c)
+    claude_azure_api_key: str | None = Field(default=None, validation_alias="CLAUDE_AZURE_API_KEY")
+    claude_azure_foundry_endpoint: str | None = Field(
+        default=None, validation_alias="CLAUDE_AZURE_FOUNDRY_ENDPOINT"
+    )
+    claude_azure_foundry_model: str | None = Field(
+        default=None, validation_alias="CLAUDE_AZURE_FOUNDRY_MODEL"
+    )
+
+    database_url: str = Field(validation_alias="DATABASE_URL")
+    redis_url: str = Field(validation_alias="REDIS_URL")
+
+    # Fernet key for encrypting MCP credentials at rest in the database
+    mcp_secrets_key: str | None = Field(default=None, validation_alias="MCP_SECRETS_KEY")
+    odi_knowledge_postgres_url: str | None = Field(
+        default=None, validation_alias="ODI_KNOWLEDGE_POSTGRES_URL"
+    )
+
+    app_name: str = "agent-platform"
+    debug: bool = False
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"])
+
+    @field_validator(
+        "azure_openai_deployment",
+        "utility_model_deployment",
+        "redis_url",
+        mode="before",
+    )
+    @classmethod
+    def strip_env_value(cls, value: object) -> object:
+        if isinstance(value, str):
+            return _strip_inline_comment(value).strip('"').strip("'")
+        return value
+
+    @property
+    def async_database_url(self) -> str:
+        url, _ = self._async_database_url_parts()
+        return url
+
+    @property
+    def async_database_connect_args(self) -> dict[str, Any]:
+        _, connect_args = self._async_database_url_parts()
+        return connect_args
+
+    def _async_database_url_parts(self) -> tuple[str, dict[str, Any]]:
+        parsed = urlparse(self.database_url)
+        scheme = parsed.scheme
+        if scheme in ("postgresql", "postgres"):
+            scheme = "postgresql+asyncpg"
+
+        connect_args: dict[str, Any] = {}
+        query: list[tuple[str, str]] = []
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+            if key == "channel_binding":
+                continue
+            if key == "sslmode":
+                if value in ("require", "verify-ca", "verify-full"):
+                    connect_args["ssl"] = ssl.create_default_context()
+                continue
+            query.append((key, value))
+
+        rebuilt = parsed._replace(scheme=scheme, query=urlencode(query))
+        return urlunparse(rebuilt), connect_args
+
+    def utility_api_key(self) -> str:
+        return self.utility_model_api_key or self.azure_api_key
+
+    def utility_base_url(self) -> str:
+        return self.utility_model_base_url or self.azure_openai_base_url
+
+    def utility_api_version(self) -> str:
+        return self.utility_model_api_version or self.azure_openai_api_version
+
+    def utility_deployment(self) -> str:
+        return self.utility_model_deployment or self.azure_openai_deployment
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
