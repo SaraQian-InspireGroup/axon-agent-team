@@ -2,6 +2,21 @@
 
 时间轴默认 `chat_created_at`。展示列按回复语言选用 `intent_theme` / `intent_theme_en`（SQL 可同时 SELECT 两列）。
 
+## 时间窗口内咨询人数（distinct users）
+
+```sql
+SELECT
+  COUNT(DISTINCT t.user_id)::int AS unique_users,
+  COUNT(*)::int AS sessions
+FROM "ChatTopicDailyAnalysis" t
+WHERE t.chat_created_at >= NOW() - INTERVAL '7 days'
+  AND t.confidence >= 0.85
+  AND NOT EXISTS (
+    SELECT 1 FROM "InternalUser" iu
+    WHERE lower(trim(iu.email)) = lower(trim(t.user_email))
+  );
+```
+
 ## 热点排行（按 intent_theme）
 
 ```sql

@@ -25,8 +25,11 @@ def _row_to_content(row: dict[str, Any]) -> Content | None:
     if message_type == "reasoning":
         return Content.from_text_reasoning(
             text=content,
+            id=metadata.get("content_id"),
             protected_data=metadata.get("protected_data"),
-            additional_properties={k: v for k, v in metadata.items() if k != "protected_data"},
+            additional_properties={
+                k: v for k, v in metadata.items() if k not in ("protected_data", "content_id")
+            },
         )
 
     if message_type == "text":
@@ -150,13 +153,20 @@ def maf_message_to_rows(
     platform_type = (message.additional_properties or {}).get("platform_message_type")
     for content in message.contents or []:
         if getattr(content, "type", None) == "text_reasoning" or platform_type == "reasoning":
+            meta = dict(getattr(content, "additional_properties", None) or {})
+            protected = getattr(content, "protected_data", None)
+            if protected:
+                meta["protected_data"] = protected
+            content_id = getattr(content, "id", None)
+            if content_id:
+                meta["content_id"] = content_id
             rows.append(
                 {
                     "chat_id": chat_id,
                     "role": "assistant",
                     "message_type": "reasoning",
-                    "content": getattr(content, "text", None) or str(content),
-                    "metadata": dict(getattr(content, "additional_properties", None) or {}),
+                    "content": getattr(content, "text", None) or "",
+                    "metadata": meta,
                     "sequence": seq,
                 }
             )

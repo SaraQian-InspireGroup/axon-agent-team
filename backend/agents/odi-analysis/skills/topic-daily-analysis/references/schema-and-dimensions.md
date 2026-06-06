@@ -100,8 +100,8 @@
 |------|---------|----------|
 | `"Chat"` | `chat_id` = `Chat.id` | visibility、title 更新 |
 | `"Message_v2"` | `chat_id` = `"chatId"` | 完整对话、工具调用、附件 |
-| `"User"` | `user_id` = `User.id` | 邮箱（与落库 email 校验） |
-| `"InternalUser"` | email | **分析时排除内部账号** |
+| `"User"` | `user_id` = `User.id` | 仅当需校验邮箱等扩展信息时 JOIN；**统计人数/会话量请直接用主表 `user_id` / `user_email`** |
+| `"InternalUser"` | email 匹配 `user_email` | **排除内部账号的唯一标准写法**（`NOT EXISTS` 子查询，见下方 SQL） |
 
 ---
 

@@ -96,8 +96,32 @@ Schema 与维度矩阵见 [references/schema-and-dimensions.md](references/schem
 
 1. **确定回复语言**（见 §语言与双语字段）
 2. **postgres MCP**：先用 **`list_tables` / `describe_table` / `get_schema`** 确认表结构，再 **`query_data`** 执行只读 SQL；复用 reference 片段，时间轴默认 `chat_created_at`
-3. **禁止 `run_skill_script`**：本 Skill 仅含 Markdown references，无可执行脚本
-4. **议题过于分散时**：对 Top theme + summary 做 **语义归并**（见下），勿重跑打标任务
+3. **`query_data` 必须带完整 `query` 参数**（非空 SELECT）。**禁止**在无 SQL 时调用（空 `{}` 会直接失败）
+4. **禁止 `run_skill_script`**：本 Skill 仅含 Markdown references，无可执行脚本
+5. **议题过于分散时**：对 Top theme + summary 做 **语义归并**（见下），勿重跑打标任务
+
+## 常见统计（勿猜表结构）
+
+**咨询人数 / 会话量**（如「最近一周有多少人对话」）——只在主表统计，**不要 JOIN `"User"`**：
+
+```sql
+SELECT
+  COUNT(DISTINCT t.user_id)::int AS unique_users,
+  COUNT(*)::int AS sessions
+FROM "ChatTopicDailyAnalysis" t
+WHERE t.chat_created_at >= NOW() - INTERVAL '7 days'
+  AND t.confidence >= 0.85
+  AND NOT EXISTS (
+    SELECT 1 FROM "InternalUser" iu
+    WHERE lower(trim(iu.email)) = lower(trim(t.user_email))
+  );
+```
+
+**易错写法（会导致 query_data 失败）**：
+
+- 空参数调用 `query_data`
+- JOIN `"User"` 并用 `userType` / `email ILIKE '%internal%'` 过滤——应使用上文的 `"InternalUser"` + `NOT EXISTS`
+- 未先 `describe_table` / `get_schema` 就猜测列名（如 `Chat.userId`）
 
 ## 语义归并（开放标签漂移）
 

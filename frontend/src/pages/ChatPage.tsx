@@ -44,7 +44,23 @@ export function ChatPage() {
   const [chatHistory, setChatHistory] = useState<ChatSummary[]>([])
   const [chatHistoryLoading, setChatHistoryLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const messagesScrollRef = useRef<HTMLDivElement>(null)
+  const pinToBottomRef = useRef(true)
+
+  const SCROLL_PIN_THRESHOLD_PX = 80
+
+  const updateScrollPin = useCallback(() => {
+    const el = messagesScrollRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    pinToBottomRef.current = distanceFromBottom <= SCROLL_PIN_THRESHOLD_PX
+  }, [])
+
+  const scrollToBottomIfPinned = useCallback(() => {
+    const el = messagesScrollRef.current
+    if (!el || !pinToBottomRef.current) return
+    el.scrollTop = el.scrollHeight
+  }, [])
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -59,6 +75,7 @@ export function ChatPage() {
   }
 
   const selected = agents.find((a) => a.id === selectedId) ?? null
+  const showChat = !agentsLoading && selected != null
 
   const refreshChatHistory = useCallback(async (agentId: string) => {
     setChatHistoryLoading(true)
@@ -145,14 +162,15 @@ export function ChatPage() {
   }, [])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingBlocks])
+    scrollToBottomIfPinned()
+  }, [messages, streamingBlocks, scrollToBottomIfPinned])
 
   const send = async () => {
     if (!chatId || !input.trim() || loading) return
     const text = input.trim()
     setInput('')
     setLoading(true)
+    pinToBottomRef.current = true
     setStreamingBlocks([])
     setError(null)
 
@@ -299,7 +317,8 @@ export function ChatPage() {
               未发现 Agent。请在 backend/agents/ 下添加目录和 profile.yaml，然后重启后端。
             </li>
           )}
-          {agents.map((agent) => {
+          {!agentsLoading &&
+            agents.map((agent) => {
             const active = agent.id === selectedId
             return (
               <li key={agent.id} className="mb-0.5">
@@ -346,7 +365,7 @@ export function ChatPage() {
       </aside>
 
       <section className="chat-main flex min-w-0 flex-1 flex-col">
-        {selected ? (
+        {showChat && selected ? (
           <div className="chat-main-layout">
             <div className="chat-main-inner">
             <div className="chat-header">
@@ -388,7 +407,11 @@ export function ChatPage() {
 
             <div className="chat-body-frame">
               <div className="chat-body-white">
-                <div className="chat-messages-scroll">
+                <div
+                  ref={messagesScrollRef}
+                  className="chat-messages-scroll"
+                  onScroll={updateScrollPin}
+                >
                   <div className="chat-content-column">
                     {messages.length === 0 && streamingBlocks.length === 0 && (
                       <div className="flex h-full min-h-[12rem] items-center justify-center text-[12px] text-muted">
@@ -396,7 +419,6 @@ export function ChatPage() {
                       </div>
                     )}
                     <ChatMessageList messages={messages} streamingBlocks={streamingBlocks} />
-                    <div ref={bottomRef} />
                   </div>
                 </div>
 
@@ -473,8 +495,14 @@ export function ChatPage() {
           </div>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-muted">
-            <p className="text-[13px]">选择一个 Agent 开始对话</p>
-            <p className="text-[11px] text-subtle">左侧列表来自 backend/agents/ 下的 profile</p>
+            {agentsLoading ? (
+              <p className="text-[13px]">Loading…</p>
+            ) : (
+              <>
+                <p className="text-[13px]">选择一个 Agent 开始对话</p>
+                <p className="text-[11px] text-subtle">左侧列表来自 backend/agents/ 下的 profile</p>
+              </>
+            )}
           </div>
         )}
       </section>
