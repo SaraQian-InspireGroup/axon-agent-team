@@ -12,19 +12,33 @@ def _postgres_remote_alias(remote: str) -> str:
     return legacy.get(remote, remote)
 
 
+def _mysql_remote_alias(remote: str) -> str:
+    """Map profile tool suffixes to mysql-mcp-server remote tool names."""
+    legacy = {
+        "query": "execute_query",
+        "query_data": "execute_query",
+        "run_query": "execute_query",
+    }
+    return legacy.get(remote, remote)
+
+
+def _remote_alias(server_name: str, remote: str) -> str:
+    if server_name == "postgres":
+        return _postgres_remote_alias(remote)
+    if server_name == "mysql":
+        return _mysql_remote_alias(remote)
+    return remote
+
+
 def _maf_remote_tool(entry: str, server_name: str) -> str | None:
     prefix = f"{server_name}_"
     if entry.startswith(prefix):
         remote = entry[len(prefix) :]
-        if server_name == "postgres":
-            return _postgres_remote_alias(remote)
-        return remote
+        return _remote_alias(server_name, remote)
     mcp_prefix = f"mcp__{server_name}__"
     if entry.startswith(mcp_prefix):
         remote = entry[len(mcp_prefix) :]
-        if server_name == "postgres":
-            return _postgres_remote_alias(remote)
-        return remote
+        return _remote_alias(server_name, remote)
     return None
 
 
@@ -68,14 +82,11 @@ def runtime_function_allowlist(profile_entries: list[str]) -> set[str] | None:
             if len(parts) == 3:
                 server, remote = parts[1], parts[2]
                 names.add(f"{server}_{remote}")
-                if server == "postgres":
-                    names.add(_postgres_remote_alias(remote))
-                else:
-                    names.add(remote)
+                names.add(_remote_alias(server, remote))
             continue
         if "_" in entry:
-            _, _, remote = entry.partition("_")
+            server, _, remote = entry.partition("_")
             if remote:
-                names.add(_postgres_remote_alias(remote) if entry.startswith("postgres_") else remote)
+                names.add(_remote_alias(server, remote))
 
     return names or None

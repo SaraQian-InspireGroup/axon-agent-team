@@ -8,7 +8,7 @@ from agent_framework import FunctionInvocationContext, FunctionMiddleware, Middl
 from pydantic import BaseModel
 
 from app.guardrails.sql_rules import validate_sql
-from app.middleware.postgres_tools import is_postgres_run_query
+from app.middleware.sql_tools import is_sql_run_query
 
 
 def _extract_query(arguments: Any) -> str | None:
@@ -32,14 +32,14 @@ def _apply_query(arguments: Any, query: str) -> Any:
 
 
 class SqlValidatorMiddleware(FunctionMiddleware):
-    """Deny or rewrite postgres run_query calls using guardrails.sql rules."""
+    """Deny or rewrite SQL run_query calls (postgres / mysql) using guardrails.sql rules."""
 
     def __init__(self, *, max_rows: int = 2000) -> None:
         self._max_rows = max_rows
 
     async def process(self, context: FunctionInvocationContext, call_next) -> None:
         tool_name = context.function.name
-        if not is_postgres_run_query(tool_name):
+        if not is_sql_run_query(tool_name):
             await call_next()
             return
 

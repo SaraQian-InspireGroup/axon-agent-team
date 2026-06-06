@@ -1,0 +1,24 @@
+id: sg-sp-analysis
+name: "SG Smart Proposal Analytics Agent"
+description: "Smart Proposal SG usage, product mix, pricing, and deal analytics (read-only MySQL)"
+
+model_provider: azure_anthropic
+model: ${CLAUDE_AZURE_FOUNDRY_MODEL}
+prompt_file: system_prompt.md
+skills_dir: skills
+
+mcp_servers:
+  - mysql
+
+# MCP tools only. load_skill / read_skill_resource are auto-allowed when skills_dir is set.
+allowed_tools:
+  - mysql_list_databases
+  - mysql_list_tables
+  - mysql_describe_table
+  - mysql_execute_query
+
+hooks:
+  sql_validator:
+    max_rows: 2000
+  result_truncator:
+    max_observation_bytes: 50000

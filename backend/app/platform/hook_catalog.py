@@ -34,12 +34,12 @@ def _build_result_truncator(params: dict[str, Any]) -> FunctionMiddleware:
 # Register platform hooks here. Agents enable by name in profile.yaml hooks: section.
 HOOK_CATALOG: dict[str, HookSpec] = {
     "sql_validator": HookSpec(
-        description="Pre-tool: read-only SQL validation and LIMIT injection for postgres run_query",
+        description="Pre-tool: read-only SQL validation and LIMIT injection for SQL run_query tools",
         defaults={"max_rows": 2000},
         factory=_build_sql_validator,
     ),
     "result_truncator": HookSpec(
-        description="Post-tool: truncate large postgres run_query results for the model",
+        description="Post-tool: truncate large SQL run_query results for the model",
         defaults={"max_observation_bytes": DEFAULT_MAX_OBSERVATION_BYTES},
         factory=_build_result_truncator,
     ),

@@ -54,6 +54,11 @@ def _resolve_env(value: str) -> str:
             "CLAUDE_AZURE_FOUNDRY_MODEL": settings.claude_azure_foundry_model,
             "AZURE_OPENAI_DEPLOYMENT": settings.azure_openai_deployment,
             "ODI_KNOWLEDGE_POSTGRES_URL": settings.odi_knowledge_postgres_url,
+            "SG_SP_MYSQL_HOST": settings.sg_sp_mysql_host,
+            "SG_SP_MYSQL_PORT": settings.sg_sp_mysql_port,
+            "SG_SP_MYSQL_USER": settings.sg_sp_mysql_user,
+            "SG_SP_MYSQL_PASSWORD": settings.sg_sp_mysql_password,
+            "SG_SP_MYSQL_DATABASE": settings.sg_sp_mysql_database,
         }
         if key in model_fields and model_fields[key]:
             return str(model_fields[key])

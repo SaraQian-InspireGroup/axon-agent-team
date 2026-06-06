@@ -1,4 +1,4 @@
-"""Read-only SQL validation for postgres MCP run_query tools."""
+"""Read-only SQL validation for SQL MCP run_query tools (postgres, mysql, …)."""
 
 from __future__ import annotations
 

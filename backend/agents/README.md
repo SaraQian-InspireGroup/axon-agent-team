@@ -65,6 +65,13 @@ allowed_tools:
   - postgres_get_schema
   - postgres_query_data
 
+# MySQL example (agents/sg-sp-analysis → mysql-mcp-server):
+# allowed_tools:
+#   - mysql_list_databases
+#   - mysql_list_tables
+#   - mysql_describe_table
+#   - mysql_execute_query
+
 hooks:
   sql_validator:
     max_rows: 2000

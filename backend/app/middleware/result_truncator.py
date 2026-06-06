@@ -8,7 +8,7 @@ from typing import Any
 
 from agent_framework import FunctionInvocationContext, FunctionMiddleware
 
-from app.middleware.postgres_tools import is_postgres_run_query
+from app.middleware.sql_tools import is_sql_run_query
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ def truncate_tool_response(tool_response: Any, *, max_bytes: int) -> Any:
 
 
 class ResultTruncatorMiddleware(FunctionMiddleware):
-    """Truncate large postgres run_query results after execution (PostToolUse)."""
+    """Truncate large SQL run_query results after execution (PostToolUse)."""
 
     def __init__(self, *, max_observation_bytes: int = DEFAULT_MAX_OBSERVATION_BYTES) -> None:
         self._max_bytes = max_observation_bytes
@@ -105,7 +105,7 @@ class ResultTruncatorMiddleware(FunctionMiddleware):
     async def process(self, context: FunctionInvocationContext, call_next) -> None:
         await call_next()
 
-        if not is_postgres_run_query(context.function.name):
+        if not is_sql_run_query(context.function.name):
             return
 
         try:
