@@ -1,11 +1,20 @@
 import { ProcessStepCard } from './ProcessStepCard'
 import { MessageBubble } from './MessageBubble'
-import { groupMessages, type ChatBlock } from '../lib/messageActivity'
+import { groupMessages, shouldShowPendingIndicator, type ChatBlock } from '../lib/messageActivity'
 import type { Message } from '../types'
 
 type Props = {
   messages: Message[]
   streamingBlocks?: ChatBlock[]
+  loading?: boolean
+}
+
+function PendingIndicator() {
+  return (
+    <div className="chat-pending-row" aria-live="polite" aria-label="Assistant is working">
+      <span className="chat-pending-dot" />
+    </div>
+  )
 }
 
 function renderBlock(block: ChatBlock, key: string) {
@@ -19,14 +28,16 @@ function renderBlock(block: ChatBlock, key: string) {
   )
 }
 
-export function ChatMessageList({ messages, streamingBlocks = [] }: Props) {
+export function ChatMessageList({ messages, streamingBlocks = [], loading = false }: Props) {
   const blocks = [...groupMessages(messages), ...streamingBlocks]
+  const showPending = shouldShowPendingIndicator(loading, streamingBlocks)
 
   return (
     <div className="chat-timeline">
       {blocks.map((block, index) =>
         renderBlock(block, block.kind === 'bubble' ? block.message.id : `${block.id}-${index}`),
       )}
+      {showPending && <PendingIndicator />}
     </div>
   )
 }

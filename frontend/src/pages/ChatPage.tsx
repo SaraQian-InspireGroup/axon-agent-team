@@ -418,7 +418,11 @@ export function ChatPage() {
                         发送消息开始对话
                       </div>
                     )}
-                    <ChatMessageList messages={messages} streamingBlocks={streamingBlocks} />
+                    <ChatMessageList
+                      messages={messages}
+                      streamingBlocks={streamingBlocks}
+                      loading={loading}
+                    />
                   </div>
                 </div>
 

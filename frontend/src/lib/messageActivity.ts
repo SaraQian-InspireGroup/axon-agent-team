@@ -297,6 +297,16 @@ export function finalizeStreamingReasoning(blocks: ChatBlock[]): ChatBlock[] {
   })
 }
 
+/** Show a breathing dot when the run is active but nothing is visibly streaming yet. */
+export function shouldShowPendingIndicator(loading: boolean, blocks: ChatBlock[]): boolean {
+  if (!loading) return false
+  if (blocks.length === 0) return true
+  const last = blocks[blocks.length - 1]
+  if (last.kind === 'bubble' && last.message.metadata?.streaming === true) return false
+  if (last.kind === 'process' && last.item.status === 'running') return false
+  return true
+}
+
 export function createStreamingActivityEntry(
   event: 'reasoning' | 'tool_call' | 'tool_result',
   data: Record<string, unknown>,
