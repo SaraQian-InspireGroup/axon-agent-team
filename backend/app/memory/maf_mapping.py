@@ -3,6 +3,7 @@ from typing import Any
 
 from agent_framework import Content, Message
 
+from app.memory.projectors.utils import ensure_dict
 from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
 
 
@@ -41,7 +42,7 @@ def _row_to_content(row: dict[str, Any]) -> Content | None:
         return Content.from_function_call(
             call_id=str(metadata.get("call_id") or row.get("id")),
             name=str(metadata.get("tool_name") or metadata.get("name") or "unknown"),
-            arguments=metadata.get("arguments") or {},
+            arguments=ensure_dict(metadata.get("arguments")),
         )
 
     return None
@@ -205,7 +206,7 @@ def maf_message_to_rows(
                     "metadata": {
                         "call_id": getattr(content, "call_id", None),
                         "tool_name": getattr(content, "name", None),
-                        "arguments": getattr(content, "arguments", {}),
+                        "arguments": ensure_dict(getattr(content, "arguments", {})),
                     },
                     "sequence": seq,
                 }

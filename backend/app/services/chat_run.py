@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -8,15 +9,18 @@ from agent_framework import MiddlewareTermination
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Chat, Message
+from app.db.models import AgentModel, Chat, Message
 from app.db.repositories.messages import MessageRepository
 from app.memory.maf_mapping import maf_message_to_rows
+from app.memory.memory_config import MemoryConfig, parse_memory_config
 from app.platform.agent_factory import AgentFactory
 from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
 from app.platform.session_store import SessionStore
 from app.runs.manager import get_run_manager
 
 logger = logging.getLogger(__name__)
+
+_TOOL_ROW_TYPES = frozenset({"tool_call", "tool_result", "mcp_call", "mcp_result"})
 
 
 class ChatRunService:
@@ -71,13 +75,33 @@ class ChatRunService:
             logger.exception("Failed to persist cancelled turn for chat %s", chat_id)
             await self._db.rollback()
 
+    async def _memory_config_for_chat(self, chat: Chat) -> MemoryConfig:
+        agent = await self._db.get(AgentModel, chat.agent_id)
+        return parse_memory_config(agent.config if agent else {})
+
     async def _finalize_success(
         self,
         chat_id: uuid.UUID,
         session: Any,
         response: Any,
+        *,
+        memory_config: MemoryConfig,
+        turn_start_sequence: int,
+        accumulator: "_StreamTurnAccumulator | None" = None,
     ) -> None:
-        await self._persist_agent_messages(chat_id, response)
+        use_accumulator_tools = accumulator is not None and accumulator.has_tool_rows()
+        await self._persist_agent_messages(
+            chat_id,
+            response,
+            skip_tool_rows=use_accumulator_tools,
+        )
+        if use_accumulator_tools:
+            await accumulator.persist_tool_rows(self._messages, chat_id)
+        await self._sessions.append_completed_turn(
+            chat_id,
+            memory_config,
+            turn_start_sequence=turn_start_sequence,
+        )
         await self._sessions.save_session(chat_id, session)
         await self._db.commit()
 
@@ -114,13 +138,25 @@ class ChatRunService:
 
     async def run_message(self, chat_id: uuid.UUID, content: str) -> str:
         chat = await self._get_chat(chat_id)
+        memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
-        bundle = await self._factory.build(chat.agent_id, chat_id=chat_id)
-        await self._commit_user_turn(chat, content)
+        user_row = await self._commit_user_turn(chat, content)
+        bundle = await self._factory.build(
+            chat.agent_id,
+            chat_id=chat_id,
+            turn_start_sequence=user_row.sequence,
+            session_store=self._sessions,
+        )
         try:
             async with bundle as agent:
                 result = await agent.run(content, session=session)
-            await self._finalize_success(chat_id, session, result)
+            await self._finalize_success(
+                chat_id,
+                session,
+                result,
+                memory_config=memory_config,
+                turn_start_sequence=user_row.sequence,
+            )
             return result.text or ""
         except Exception as exc:
             await self._finalize_failure(chat_id, exc)
@@ -128,6 +164,7 @@ class ChatRunService:
 
     async def stream_message(self, chat_id: uuid.UUID, content: str) -> AsyncIterator[dict[str, Any]]:
         chat = await self._get_chat(chat_id)
+        memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
         user_row = await self._commit_user_turn(chat, content)
 
@@ -164,6 +201,8 @@ class ChatRunService:
                 chat.agent_id,
                 chat_id=chat_id,
                 stop_event=run.stop_event,
+                turn_start_sequence=user_row.sequence,
+                session_store=self._sessions,
             )
             async with bundle as agent:
                 stream = agent.run(content, session=session, stream=True)
@@ -184,7 +223,14 @@ class ChatRunService:
 
                 final = await stream.get_final_response()
 
-            await self._finalize_success(chat_id, session, final)
+            await self._finalize_success(
+                chat_id,
+                session,
+                final,
+                memory_config=memory_config,
+                turn_start_sequence=user_row.sequence,
+                accumulator=accumulator,
+            )
             yield {"event": "done", "data": {"text": final.text or ""}}
         except MiddlewareTermination:
             if run.stop_event.is_set():
@@ -208,7 +254,13 @@ class ChatRunService:
         finally:
             await run_manager.complete(run.run_id)
 
-    async def _persist_agent_messages(self, chat_id: uuid.UUID, response: Any) -> None:
+    async def _persist_agent_messages(
+        self,
+        chat_id: uuid.UUID,
+        response: Any,
+        *,
+        skip_tool_rows: bool = False,
+    ) -> None:
         saved = 0
         call_names = _collect_call_names(getattr(response, "messages", None) or [])
         for message in getattr(response, "messages", None) or []:
@@ -219,6 +271,8 @@ class ChatRunService:
                 start_sequence=next_seq,
                 call_names=call_names,
             ):
+                if skip_tool_rows and row["message_type"] in _TOOL_ROW_TYPES:
+                    continue
                 await self._messages.insert(
                     chat_id=chat_id,
                     role=row["role"],
@@ -246,6 +300,44 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_json_safe(v) for v in value]
     return str(value)
+
+
+def _normalize_tool_arguments(raw: Any) -> dict[str, Any]:
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return _json_safe(raw)
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if not stripped:
+            return {}
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, dict):
+                return _json_safe(parsed)
+        except json.JSONDecodeError:
+            return {"raw": stripped}
+    return {"raw": str(raw)}
+
+
+def _tool_arguments_richness(arguments: dict[str, Any]) -> int:
+    if not arguments:
+        return 0
+    try:
+        return len(json.dumps(arguments, ensure_ascii=False, default=str))
+    except TypeError:
+        return len(str(arguments))
+
+
+def _merge_tool_arguments(
+    existing: dict[str, Any] | None,
+    incoming: dict[str, Any] | None,
+) -> dict[str, Any]:
+    left = existing or {}
+    right = incoming or {}
+    if _tool_arguments_richness(right) >= _tool_arguments_richness(left):
+        return right
+    return left
 
 
 def _collect_call_names(messages: list[Any]) -> dict[str, str]:
@@ -328,11 +420,23 @@ class _StreamTurnAccumulator:
         if content_type == "function_call":
             call_id = str(getattr(content, "call_id", "") or "")
             tool_name = str(getattr(content, "name", "") or "").strip()
-            if not call_id or not tool_name or call_id in self._emitted_calls:
+            if not call_id or not tool_name:
                 return
-            self._emitted_calls.add(call_id)
+            arguments = _normalize_tool_arguments(getattr(content, "arguments", {}))
             self._call_names[call_id] = tool_name
             self._flush_text()
+            if call_id in self._emitted_calls:
+                for row in reversed(self._rows):
+                    if row.get("message_type") != "tool_call":
+                        continue
+                    meta = row.get("metadata") or {}
+                    if str(meta.get("call_id") or "") != call_id:
+                        continue
+                    meta["arguments"] = _merge_tool_arguments(meta.get("arguments"), arguments)
+                    row["metadata"] = meta
+                    break
+                return
+            self._emitted_calls.add(call_id)
             self._rows.append(
                 {
                     "role": "assistant",
@@ -341,7 +445,7 @@ class _StreamTurnAccumulator:
                     "metadata": {
                         "call_id": call_id,
                         "tool_name": tool_name,
-                        "arguments": _json_safe(getattr(content, "arguments", {})),
+                        "arguments": arguments,
                     },
                 }
             )
@@ -383,6 +487,26 @@ class _StreamTurnAccumulator:
 
     def has_content(self) -> bool:
         return bool(self._rows or self._reasoning_buffer or self._text_buffer)
+
+    def has_tool_rows(self) -> bool:
+        return any(row.get("message_type") in _TOOL_ROW_TYPES for row in self._rows)
+
+    async def persist_tool_rows(self, repo: MessageRepository, chat_id: uuid.UUID) -> int:
+        """Persist tool call/result rows captured during streaming (with full arguments)."""
+        self.finalize()
+        saved = 0
+        for row in self._rows:
+            if row.get("message_type") not in _TOOL_ROW_TYPES:
+                continue
+            await repo.insert(
+                chat_id=chat_id,
+                role=row["role"],
+                message_type=row["message_type"],
+                content=row.get("content"),
+                metadata=row.get("metadata") or {},
+            )
+            saved += 1
+        return saved
 
     async def persist(self, repo: MessageRepository, chat_id: uuid.UUID) -> int:
         self.finalize()
@@ -439,6 +563,7 @@ class _StreamSseEmitter:
         self._emitted_calls: set[str] = set()
         self._emitted_results: set[str] = set()
         self._call_names: dict[str, str] = {}
+        self._call_arguments: dict[str, dict[str, Any]] = {}
         self._reasoning_open = False
 
     def _close_reasoning(self, chat_id: str) -> dict[str, Any] | None:
@@ -474,10 +599,13 @@ class _StreamSseEmitter:
             if content_type == "function_call":
                 call_id = str(getattr(content, "call_id", "") or "")
                 tool_name = str(getattr(content, "name", "") or "").strip()
-                if not call_id or not tool_name or call_id in self._emitted_calls:
+                if not call_id or not tool_name:
                     continue
-                self._emitted_calls.add(call_id)
+                arguments = _normalize_tool_arguments(getattr(content, "arguments", {}))
                 self._call_names[call_id] = tool_name
+                merged = _merge_tool_arguments(self._call_arguments.get(call_id), arguments)
+                self._call_arguments[call_id] = merged
+                self._emitted_calls.add(call_id)
                 events.append(
                     {
                         "event": "tool_call",
@@ -485,7 +613,7 @@ class _StreamSseEmitter:
                             "chat_id": chat_id,
                             "call_id": call_id,
                             "tool_name": tool_name,
-                            "arguments": _json_safe(getattr(content, "arguments", {})),
+                            "arguments": merged,
                         },
                     }
                 )

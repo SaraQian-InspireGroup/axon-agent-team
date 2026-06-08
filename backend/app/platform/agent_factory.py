@@ -6,12 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.models import AgentModel
+from app.memory.memory_config import parse_memory_config
 from app.memory.postgres_history import PostgresHistoryProvider
 from app.platform.agent_bundle import AgentBundle
 from app.platform.hook_registry import resolve_middleware
 from app.platform.mcp_registry import McpRegistry
 from app.platform.model_registry import ModelProvider, ModelProviderRegistry
 from app.platform.platform_instructions import append_platform_instructions
+from app.platform.session_store import SessionStore
 from app.platform.skill_registry import SkillRegistry
 from app.platform.tool_registry import ToolRegistry
 
@@ -37,6 +39,8 @@ class AgentFactory:
         *,
         chat_id: uuid.UUID | None = None,
         stop_event: asyncio.Event | None = None,
+        turn_start_sequence: int | None = None,
+        session_store: SessionStore | None = None,
     ) -> AgentBundle:
         row = await self.get_agent_row(agent_id)
         provider = ModelProvider(row.model_provider)
@@ -46,7 +50,14 @@ class AgentFactory:
         else:
             model_name = row.model_name or settings.claude_azure_foundry_model or ""
 
-        history = PostgresHistoryProvider(self._db)
+        memory_config = parse_memory_config(row.config)
+        store = session_store or SessionStore(self._db)
+        history = PostgresHistoryProvider(
+            self._db,
+            session_store=store,
+            memory_config=memory_config,
+            pending_turn_start_sequence=turn_start_sequence,
+        )
         context_providers: list = [history]
         skills_provider = await self._skills.resolve_provider_for_agent(agent_id)
         skill_tools: set[str] = set()

@@ -62,9 +62,16 @@ function resultLooksLikeError(result: unknown): boolean {
   return false
 }
 
+function isEmptyDetail(value: string): boolean {
+  const trimmed = value.trim()
+  return !trimmed || trimmed === '{}' || trimmed === 'null'
+}
+
 function combineDetail(input: string, output: string): string {
-  if (input && output) return `${input}${PROCESS_SEPARATOR}${output}`
-  return input || output
+  const hasInput = !isEmptyDetail(input)
+  const hasOutput = !isEmptyDetail(output)
+  if (hasInput && hasOutput) return `${input}${PROCESS_SEPARATOR}${output}`
+  return hasInput ? input : output
 }
 
 function entryIdForMessage(message: Message): string {
@@ -141,13 +148,25 @@ export function messageToActivityEntry(message: Message): ActivityEntry {
   }
 
   const result = meta.result ?? message.content
+  const request = meta.arguments != null ? formatDetail(meta.arguments) : ''
+  const response = formatDetail(result)
   return {
     id: entryId,
     kind,
     title: toolName,
-    detail: formatDetail(result),
+    detail: combineDetail(request, response),
     status: resultLooksLikeError(result) ? 'error' : 'done',
   }
+}
+
+function findProcessBlockIndex(blocks: ChatBlock[], entryId: string): number {
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const block = blocks[i]
+    if (block.kind === 'process' && block.id === entryId) {
+      return i
+    }
+  }
+  return -1
 }
 
 function mergeActivityPair(existing: ActivityEntry, incoming: ActivityEntry): ActivityEntry {
@@ -160,15 +179,24 @@ function mergeActivityPair(existing: ActivityEntry, incoming: ActivityEntry): Ac
     status: incoming.status === 'running' ? existing.status : incoming.status,
     detail:
       incoming.status === 'running'
-        ? incoming.detail || existing.detail
+        ? !isEmptyDetail(incoming.detail)
+          ? incoming.detail
+          : existing.detail
         : combineDetail(inputPart, incoming.detail),
   }
 }
 
 function mergeProcessBlock(blocks: ChatBlock[], entry: ActivityEntry): void {
-  const last = blocks[blocks.length - 1]
-  if (last?.kind === 'process' && last.id === entry.id) {
-    last.item = mergeActivityPair(last.item, entry)
+  const idx = findProcessBlockIndex(blocks, entry.id)
+  if (idx >= 0) {
+    const block = blocks[idx]
+    if (block.kind === 'process') {
+      blocks[idx] = {
+        kind: 'process',
+        id: entry.id,
+        item: mergeActivityPair(block.item, entry),
+      }
+    }
     return
   }
   blocks.push({ kind: 'process', id: entry.id, item: entry })
@@ -285,13 +313,16 @@ export function applyStreamingBlockActivity(
     })
   }
 
-  const last = next[next.length - 1]
-  if (last?.kind === 'process' && last.id === entry.id) {
+  const idx = findProcessBlockIndex(next, entry.id)
+  if (idx >= 0) {
     const updated = [...next]
-    updated[updated.length - 1] = {
-      kind: 'process',
-      id: entry.id,
-      item: mergeActivityPair(last.item, entry),
+    const current = updated[idx]
+    if (current.kind === 'process') {
+      updated[idx] = {
+        kind: 'process',
+        id: entry.id,
+        item: mergeActivityPair(current.item, entry),
+      }
     }
     return updated
   }

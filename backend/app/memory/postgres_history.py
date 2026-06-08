@@ -5,11 +5,20 @@ from agent_framework import HistoryProvider, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories.messages import MessageRepository
-from app.memory.maf_mapping import maf_message_to_rows, row_to_dict, to_maf_messages
+from app.memory.maf_mapping import maf_message_to_rows, to_maf_messages
+from app.memory.memory_config import MemoryConfig
+from app.platform.session_store import SessionStore
 
 
 class PostgresHistoryProvider(HistoryProvider):
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        session_store: SessionStore,
+        memory_config: MemoryConfig,
+        pending_turn_start_sequence: int | None = None,
+    ) -> None:
         super().__init__(
             "postgres-history",
             load_messages=True,
@@ -18,6 +27,9 @@ class PostgresHistoryProvider(HistoryProvider):
         )
         self._session = session
         self._repo = MessageRepository(session)
+        self._session_store = session_store
+        self._memory_config = memory_config
+        self._pending_turn_start_sequence = pending_turn_start_sequence
 
     async def get_messages(
         self, session_id: str | None, *, state: dict | None = None, **kwargs
@@ -25,8 +37,12 @@ class PostgresHistoryProvider(HistoryProvider):
         if not session_id:
             return []
         chat_id = uuid.UUID(session_id)
-        rows = await self._repo.list_by_chat(chat_id)
-        return to_maf_messages([row_to_dict(r) for r in rows])
+        rows = await self._session_store.get_working_set_rows(
+            chat_id,
+            self._memory_config,
+            exclude_from_sequence=self._pending_turn_start_sequence,
+        )
+        return to_maf_messages(rows)
 
     async def save_messages(
         self,

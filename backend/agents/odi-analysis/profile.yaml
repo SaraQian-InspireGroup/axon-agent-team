@@ -9,18 +9,21 @@ skills_dir: skills
 
 mcp_servers:
   - postgres
-
-# MCP tools only. load_skill / read_skill_resource are auto-allowed when skills_dir is set
-# (see agent_factory.py). Do not list skill names (e.g. topic-daily-analysis) here.
 allowed_tools:
   - postgres_list_tables
   - postgres_describe_table
   - postgres_get_schema
   - postgres_query_data
 
-
 hooks:
   sql_validator:
     max_rows: 2000
   result_truncator:
     max_observation_bytes: 50000
+
+memory:
+  working_set_turns: 15
+  cold_resume_max_turns: 10
+  slim:
+    enabled: true
+    default_preview_chars: 200  
