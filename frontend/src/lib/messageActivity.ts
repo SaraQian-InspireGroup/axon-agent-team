@@ -5,7 +5,7 @@ export type ActivityEntry = {
   kind: 'reasoning' | 'tool' | 'mcp' | 'skill'
   title: string
   detail: string
-  status: 'running' | 'done' | 'error'
+  status: 'running' | 'done' | 'error' | 'cancelled'
 }
 
 export type ChatBlock =
@@ -77,8 +77,12 @@ function entryIdForMessage(message: Message): string {
 
 export function isActivityMessage(message: Message): boolean {
   const type = message.message_type
+  if (type === 'cancelled' && message.metadata?.original_type === 'text') {
+    return false
+  }
   return (
     type === 'reasoning' ||
+    type === 'cancelled' ||
     type === 'tool_call' ||
     type === 'tool_result' ||
     type === 'mcp_call' ||
@@ -99,6 +103,17 @@ export function messageToActivityEntry(message: Message): ActivityEntry {
       title: REASONING_TITLE,
       detail: message.content ?? '',
       status: 'done',
+    }
+  }
+
+  if (type === 'cancelled') {
+    const original = meta.original_type === 'reasoning' ? REASONING_TITLE : 'Partial response'
+    return {
+      id: entryId,
+      kind: 'reasoning',
+      title: `[Cancelled] ${original}`,
+      detail: message.content ?? '',
+      status: 'cancelled',
     }
   }
 

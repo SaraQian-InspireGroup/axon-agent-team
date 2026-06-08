@@ -78,11 +78,31 @@ function ErrorIcon() {
 function StatusIcon({ status }: { status: ActivityEntry['status'] }) {
   if (status === 'running') return <SpinnerIcon />
   if (status === 'error') return <ErrorIcon />
+  if (status === 'cancelled') return <CancelIcon />
   return <CheckIcon />
 }
 
+function CancelIcon() {
+  return (
+    <svg
+      className="process-step-cancel-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  )
+}
+
 export function ProcessStepCard({ item }: Props) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(
+    () => item.status === 'cancelled' && Boolean(item.detail.trim()),
+  )
 
   return (
     <div className={`process-step process-step-${item.status}`}>

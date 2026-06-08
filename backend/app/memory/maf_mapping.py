@@ -3,6 +3,8 @@ from typing import Any
 
 from agent_framework import Content, Message
 
+from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
+
 
 def row_to_dict(row: Any) -> dict[str, Any]:
     return {
@@ -74,6 +76,23 @@ def to_maf_messages(rows: list[dict[str, Any]]) -> list[Message]:
             messages.append(Message(role="user", contents=[Content.from_text(row.get("content") or "")]))
             continue
 
+        if message_type == "run_cancelled":
+            flush_assistant()
+            text = row.get("content") or RUN_CANCELLED_USER_TEXT
+            messages.append(Message(role="user", contents=[Content.from_text(text)]))
+            continue
+
+        if message_type == "cancelled":
+            original = metadata.get("original_type", "text")
+            content = row.get("content") or ""
+            if original == "reasoning":
+                label = "[Cancelled partial reasoning]"
+            else:
+                label = "[Cancelled partial response]"
+            text = f"{label} {content}".strip() if content else label
+            assistant_contents.append(Content.from_text(text))
+            continue
+
         if message_type in ("tool_result", "mcp_result"):
             if call_id and call_id in seen_tool_results:
                 continue
@@ -124,7 +143,10 @@ def to_maf_messages(rows: list[dict[str, Any]]) -> list[Message]:
                 if call_id:
                     seen_tool_calls.add(call_id)
 
-            content = _row_to_content(row)
+            if message_type == "reasoning" and not metadata.get("protected_data"):
+                content = Content.from_text(row.get("content") or "")
+            else:
+                content = _row_to_content(row)
             if content is not None:
                 assistant_contents.append(content)
             continue

@@ -823,6 +823,26 @@ body {
   color: var(--color-subtle);
 }
 
+.process-step-cancelled .process-step-title {
+  color: var(--color-muted);
+}
+
+.process-step-cancel-icon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  color: var(--color-muted);
+}
+
+.chat-cancel-notice {
+  margin: 0.25rem 0;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  background: #f4f4f5;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
 .process-step-check {
   width: 1rem;
   height: 1rem;
@@ -1006,6 +1026,19 @@ body {
 .chat-send-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.chat-send-btn-stop {
+  background: var(--color-brand-500);
+}
+
+.chat-send-btn-stop:hover:not(:disabled) {
+  background: var(--color-brand-600);
+}
+
+.msg-assistant-cancelled {
+  opacity: 0.92;
+  border: 1px dashed var(--color-border);
 }
 
 /* Cards */

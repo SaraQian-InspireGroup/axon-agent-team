@@ -46,6 +46,10 @@ export function ChatPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const pinToBottomRef = useRef(true)
+  const runIdRef = useRef<string | null>(null)
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const streamGenRef = useRef(0)
+  const streamAbortRef = useRef<AbortController | null>(null)
 
   const SCROLL_PIN_THRESHOLD_PX = 80
 
@@ -165,6 +169,47 @@ export function ChatPage() {
     scrollToBottomIfPinned()
   }, [messages, streamingBlocks, scrollToBottomIfPinned])
 
+  const reloadMessagesAfterStream = useCallback(
+    async (id: string, options?: { keepStreamingIfEmpty?: boolean }) => {
+      const rows = await api.listMessages(id)
+      setMessages(rows)
+      setStreamingBlocks((prev) => {
+        if (!options?.keepStreamingIfEmpty || prev.length === 0) {
+          return []
+        }
+        const hasCancelledContent = rows.some(
+          (m) =>
+            m.message_type === 'cancelled' &&
+            typeof m.content === 'string' &&
+            m.content.trim().length > 0,
+        )
+        return hasCancelledContent ? [] : prev
+      })
+      if (selectedId) {
+        await refreshChatHistory(selectedId)
+      }
+    },
+    [refreshChatHistory, selectedId],
+  )
+
+  const stopStreaming = async () => {
+    const runId = runIdRef.current ?? activeRunId
+    if (!runId || !chatId) return
+
+    try {
+      await api.cancelRun(runId)
+    } catch {
+      /* idempotent */
+    }
+
+    setLoading(false)
+    setActiveRunId(null)
+    runIdRef.current = null
+    streamAbortRef.current?.abort()
+
+    await reloadMessagesAfterStream(chatId, { keepStreamingIfEmpty: true })
+  }
+
   const send = async () => {
     if (!chatId || !input.trim() || loading) return
     const text = input.trim()
@@ -187,56 +232,81 @@ export function ChatPage() {
     }
     setMessages((prev) => [...prev, optimistic])
 
+    streamAbortRef.current?.abort()
+    const generation = ++streamGenRef.current
+    const abortController = new AbortController()
+    streamAbortRef.current = abortController
+
     let segmentText = ''
+    runIdRef.current = null
+    setActiveRunId(null)
     try {
-      await streamChat(chatId, text, (ev) => {
-        if (ev.event === 'text' && typeof ev.data.text === 'string') {
-          const chunk = ev.data.text
+      await streamChat(
+        chatId,
+        text,
+        (ev) => {
+          if (generation !== streamGenRef.current) return
+
+          if (ev.event === 'run_started' && ev.data.run_id != null) {
+            const id = String(ev.data.run_id)
+            runIdRef.current = id
+            setActiveRunId(id)
+          }
+          if (ev.event === 'text' && typeof ev.data.text === 'string') {
+            const chunk = ev.data.text
+            if (
+              segmentText === '' ||
+              (chunk.length >= segmentText.length && chunk.startsWith(segmentText))
+            ) {
+              segmentText = chunk
+            } else if (chunk) {
+              segmentText += chunk
+            }
+            setStreamingBlocks((prev) => applyStreamingText(prev, segmentText))
+          }
+          if (ev.event === 'reasoning_done') {
+            setStreamingBlocks((prev) => finalizeStreamingReasoning(prev))
+          }
           if (
-            segmentText === '' ||
-            (chunk.length >= segmentText.length && chunk.startsWith(segmentText))
+            (ev.event === 'reasoning' ||
+              ev.event === 'tool_call' ||
+              ev.event === 'tool_result') &&
+            ev.data
           ) {
-            segmentText = chunk
-          } else if (chunk) {
-            segmentText += chunk
+            if (ev.event === 'tool_call' || ev.event === 'tool_result') {
+              segmentText = ''
+            }
+            const entry = createStreamingActivityEntry(
+              ev.event as 'reasoning' | 'tool_call' | 'tool_result',
+              ev.data,
+            )
+            if (entry) {
+              setStreamingBlocks((prev) => applyStreamingBlockActivity(prev, entry))
+            }
           }
-          setStreamingBlocks((prev) => applyStreamingText(prev, segmentText))
-        }
-        if (ev.event === 'reasoning_done') {
-          setStreamingBlocks((prev) => finalizeStreamingReasoning(prev))
-        }
-        if (
-          (ev.event === 'reasoning' ||
-            ev.event === 'tool_call' ||
-            ev.event === 'tool_result') &&
-          ev.data
-        ) {
-          if (ev.event === 'tool_call' || ev.event === 'tool_result') {
-            segmentText = ''
+          if (ev.event === 'error') {
+            throw new Error(String(ev.data.error ?? 'stream error'))
           }
-          const entry = createStreamingActivityEntry(
-            ev.event as 'reasoning' | 'tool_call' | 'tool_result',
-            ev.data,
-          )
-          if (entry) {
-            setStreamingBlocks((prev) => applyStreamingBlockActivity(prev, entry))
-          }
-        }
-        if (ev.event === 'error') {
-          throw new Error(String(ev.data.error ?? 'stream error'))
-        }
-      })
-      const rows = await api.listMessages(chatId)
-      setMessages(rows)
-      setStreamingBlocks([])
-      if (selectedId) {
-        await refreshChatHistory(selectedId)
-      }
+        },
+        abortController.signal,
+      )
+
+      if (generation !== streamGenRef.current) return
+      await reloadMessagesAfterStream(chatId)
     } catch (e) {
+      if (generation !== streamGenRef.current) return
+      if (e instanceof Error && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : 'Failed to send message')
       setStreamingBlocks([])
     } finally {
-      setLoading(false)
+      if (generation === streamGenRef.current) {
+        runIdRef.current = null
+        setActiveRunId(null)
+        setLoading(false)
+        if (streamAbortRef.current === abortController) {
+          streamAbortRef.current = null
+        }
+      }
     }
   }
 
@@ -441,7 +511,7 @@ export function ChatPage() {
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault()
-                            void send()
+                            if (!loading) void send()
                           }
                         }}
                         placeholder="question"
@@ -460,25 +530,38 @@ export function ChatPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => void send()}
-                          disabled={loading || !input.trim()}
-                          className="chat-send-btn"
-                          aria-label="Send"
+                          onClick={() => (loading ? void stopStreaming() : void send())}
+                          disabled={loading ? !activeRunId : !input.trim()}
+                          className={`chat-send-btn${loading ? ' chat-send-btn-stop' : ''}`}
+                          aria-label={loading ? 'Stop generating' : 'Send'}
+                          title={loading ? 'Stop' : 'Send'}
                         >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.25"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden
-                          >
-                            <path d="M12 19V5" />
-                            <path d="m5 12 7-7 7 7" />
-                          </svg>
+                          {loading ? (
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              aria-hidden
+                            >
+                              <rect x="5" y="5" width="14" height="14" rx="2" />
+                            </svg>
+                          ) : (
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.25"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden
+                            >
+                              <path d="M12 19V5" />
+                              <path d="m5 12 7-7 7 7" />
+                            </svg>
+                          )}
                         </button>
                       </div>
                     </div>

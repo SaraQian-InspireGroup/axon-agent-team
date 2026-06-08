@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from typing import Any
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.middleware.allowed_tools import AllowedToolsMiddleware
 from app.middleware.audit import AuditMiddleware
+from app.middleware.stop_requested import StopRequestedMiddleware
 from app.platform.allowed_tools import runtime_function_allowlist
 from app.platform.hook_catalog import HOOK_CATALOG, build_hook_middleware
 from app.platform.hook_config import normalize_hooks
@@ -24,9 +26,13 @@ def resolve_middleware(
     *,
     chat_id: uuid.UUID | None,
     extra_allowed_tools: set[str] | None = None,
-) -> list[FunctionMiddleware]:
+    stop_event: asyncio.Event | None = None,
+) -> list:
     cfg = config or {}
-    middleware: list[FunctionMiddleware] = []
+    middleware: list = []
+
+    if stop_event is not None:
+        middleware.append(StopRequestedMiddleware(stop_event))
 
     allowed_entries = list(cfg.get("allowed_tools") or [])
     allowlist = runtime_function_allowlist(allowed_entries)

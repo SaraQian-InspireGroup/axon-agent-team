@@ -1,15 +1,22 @@
+import asyncio
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+from agent_framework import MiddlewareTermination
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Chat
+from app.db.models import Chat, Message
 from app.db.repositories.messages import MessageRepository
 from app.memory.maf_mapping import maf_message_to_rows
 from app.platform.agent_factory import AgentFactory
+from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
 from app.platform.session_store import SessionStore
+from app.runs.manager import get_run_manager
+
+logger = logging.getLogger(__name__)
 
 
 class ChatRunService:
@@ -33,38 +40,173 @@ class ChatRunService:
         if snippet:
             chat.title = snippet
 
+    async def _commit_user_turn(self, chat: Chat, content: str) -> Message:
+        """Persist the user message immediately so it survives agent failures."""
+        row = await self._messages.insert(
+            chat_id=chat.id, role="user", message_type="text", content=content
+        )
+        await self._maybe_set_chat_title(chat, content)
+        await self._db.commit()
+        return row
+
+    async def _finalize_cancel(
+        self,
+        chat_id: uuid.UUID,
+        run_id: uuid.UUID,
+        accumulator: "_StreamTurnAccumulator",
+    ) -> None:
+        """Persist partial assistant output and a user-visible cancellation marker."""
+        try:
+            if accumulator.has_content():
+                await accumulator.persist_cancelled(self._messages, chat_id, run_id)
+            await self._messages.insert(
+                chat_id=chat_id,
+                role="user",
+                message_type="run_cancelled",
+                content=RUN_CANCELLED_USER_TEXT,
+                metadata={"run_id": str(run_id), "cancelled_by": "user"},
+            )
+            await self._db.commit()
+        except Exception:
+            logger.exception("Failed to persist cancelled turn for chat %s", chat_id)
+            await self._db.rollback()
+
+    async def _finalize_success(
+        self,
+        chat_id: uuid.UUID,
+        session: Any,
+        response: Any,
+    ) -> None:
+        await self._persist_agent_messages(chat_id, response)
+        await self._sessions.save_session(chat_id, session)
+        await self._db.commit()
+
+    async def _finalize_failure(
+        self,
+        chat_id: uuid.UUID,
+        exc: Exception,
+        *,
+        response: Any | None = None,
+        accumulator: "_StreamTurnAccumulator | None" = None,
+    ) -> None:
+        """Best-effort persist of partial assistant output plus an error row."""
+        try:
+            if response is not None:
+                await self._persist_agent_messages(chat_id, response)
+            elif accumulator is not None and accumulator.has_content():
+                await accumulator.persist(self._messages, chat_id)
+            await self._persist_run_error(chat_id, exc)
+            await self._db.commit()
+        except Exception:
+            logger.exception("Failed to persist partial turn for chat %s", chat_id)
+            await self._db.rollback()
+
+    async def _persist_run_error(self, chat_id: uuid.UUID, exc: Exception) -> None:
+        message = str(exc).strip() or type(exc).__name__
+        await self._messages.insert(
+            chat_id=chat_id,
+            role="assistant",
+            message_type="error",
+            content=message[:4000],
+            metadata={"error_type": type(exc).__name__},
+        )
+        await self._db.flush()
+
     async def run_message(self, chat_id: uuid.UUID, content: str) -> str:
         chat = await self._get_chat(chat_id)
         session = await self._sessions.get_or_create(chat_id)
         bundle = await self._factory.build(chat.agent_id, chat_id=chat_id)
-        await self._messages.insert(chat_id=chat_id, role="user", message_type="text", content=content)
-        await self._maybe_set_chat_title(chat, content)
-        async with bundle as agent:
-            result = await agent.run(content, session=session)
-        await self._persist_agent_messages(chat_id, result)
-        await self._sessions.save_session(chat_id, session)
-        await self._db.commit()
-        return result.text or ""
+        await self._commit_user_turn(chat, content)
+        try:
+            async with bundle as agent:
+                result = await agent.run(content, session=session)
+            await self._finalize_success(chat_id, session, result)
+            return result.text or ""
+        except Exception as exc:
+            await self._finalize_failure(chat_id, exc)
+            raise
 
     async def stream_message(self, chat_id: uuid.UUID, content: str) -> AsyncIterator[dict[str, Any]]:
         chat = await self._get_chat(chat_id)
         session = await self._sessions.get_or_create(chat_id)
-        bundle = await self._factory.build(chat.agent_id, chat_id=chat_id)
-        await self._messages.insert(chat_id=chat_id, role="user", message_type="text", content=content)
-        await self._maybe_set_chat_title(chat, content)
-        async with bundle as agent:
-            emitter = _StreamSseEmitter(chat_id)
-            stream = agent.run(content, session=session, stream=True)
-            async for update in stream:
-                for event in emitter.emit(update):
+        user_row = await self._commit_user_turn(chat, content)
+
+        run_manager = get_run_manager()
+        run = await run_manager.start_run(chat_id, user_row.id)
+
+        emitter = _StreamSseEmitter(chat_id)
+        accumulator = _StreamTurnAccumulator()
+
+        async def finalize_cancel_once() -> None:
+            await self._finalize_cancel(chat_id, run.run_id, accumulator)
+
+        await run_manager.register_finalize(run.run_id, finalize_cancel_once)
+        yield {
+            "event": "run_started",
+            "data": {
+                "run_id": str(run.run_id),
+                "chat_id": str(chat_id),
+                "user_message_id": str(user_row.id),
+            },
+        }
+
+        final: Any | None = None
+
+        async def _emit_cancelled() -> AsyncIterator[dict[str, Any]]:
+            await run_manager.finalize_cancelled(run.run_id)
+            yield {
+                "event": "run_cancelled",
+                "data": {"run_id": str(run.run_id), "chat_id": str(chat_id)},
+            }
+
+        try:
+            bundle = await self._factory.build(
+                chat.agent_id,
+                chat_id=chat_id,
+                stop_event=run.stop_event,
+            )
+            async with bundle as agent:
+                stream = agent.run(content, session=session, stream=True)
+                async for update in stream:
+                    if run.stop_event.is_set():
+                        break
+                    accumulator.observe(update)
+                    for event in emitter.emit(update):
+                        yield event
+
+                for event in emitter.flush():
                     yield event
-            for event in emitter.flush():
-                yield event
-            final = await stream.get_final_response()
-        await self._persist_agent_messages(chat_id, final)
-        await self._sessions.save_session(chat_id, session)
-        await self._db.commit()
-        yield {"event": "done", "data": {"text": final.text or ""}}
+
+                if run.stop_event.is_set():
+                    async for event in _emit_cancelled():
+                        yield event
+                    return
+
+                final = await stream.get_final_response()
+
+            await self._finalize_success(chat_id, session, final)
+            yield {"event": "done", "data": {"text": final.text or ""}}
+        except MiddlewareTermination:
+            if run.stop_event.is_set():
+                async for event in _emit_cancelled():
+                    yield event
+                return
+            raise
+        except asyncio.CancelledError:
+            if run.stop_event.is_set():
+                async for event in _emit_cancelled():
+                    yield event
+                return
+            raise
+        except Exception as exc:
+            if run.stop_event.is_set():
+                async for event in _emit_cancelled():
+                    yield event
+                return
+            await self._finalize_failure(chat_id, exc, response=final, accumulator=accumulator)
+            raise
+        finally:
+            await run_manager.complete(run.run_id)
 
     async def _persist_agent_messages(self, chat_id: uuid.UUID, response: Any) -> None:
         saved = 0
@@ -117,6 +259,176 @@ def _collect_call_names(messages: list[Any]) -> dict[str, str]:
             if call_id is not None and tool_name:
                 names[str(call_id)] = str(tool_name)
     return names
+
+
+class _StreamTurnAccumulator:
+    """Tracks streamed assistant output for persistence when a run fails mid-turn."""
+
+    def __init__(self) -> None:
+        self._rows: list[dict[str, Any]] = []
+        self._reasoning_buffer = ""
+        self._text_buffer = ""
+        self._emitted_calls: set[str] = set()
+        self._emitted_results: set[str] = set()
+        self._call_names: dict[str, str] = {}
+
+    def observe(self, update: Any) -> None:
+        for content in getattr(update, "contents", None) or []:
+            self._observe_content(content)
+
+    def _flush_reasoning(self) -> None:
+        if not self._reasoning_buffer:
+            return
+        self._rows.append(
+            {
+                "role": "assistant",
+                "message_type": "reasoning",
+                "content": self._reasoning_buffer,
+                "metadata": {},
+            }
+        )
+        self._reasoning_buffer = ""
+
+    def _flush_text(self) -> None:
+        if not self._text_buffer:
+            return
+        self._rows.append(
+            {
+                "role": "assistant",
+                "message_type": "text",
+                "content": self._text_buffer,
+                "metadata": {},
+            }
+        )
+        self._text_buffer = ""
+
+    def _append_text(self, chunk: str) -> None:
+        if not self._text_buffer:
+            self._text_buffer = chunk
+            return
+        if chunk.startswith(self._text_buffer):
+            self._text_buffer = chunk
+            return
+        if self._text_buffer.startswith(chunk):
+            return
+        self._text_buffer += chunk
+
+    def _observe_content(self, content: Any) -> None:
+        content_type = getattr(content, "type", None)
+
+        if content_type == "text_reasoning":
+            text = getattr(content, "text", None)
+            if text:
+                self._reasoning_buffer += text
+            return
+
+        if content_type in ("function_call", "function_result", "text"):
+            self._flush_reasoning()
+
+        if content_type == "function_call":
+            call_id = str(getattr(content, "call_id", "") or "")
+            tool_name = str(getattr(content, "name", "") or "").strip()
+            if not call_id or not tool_name or call_id in self._emitted_calls:
+                return
+            self._emitted_calls.add(call_id)
+            self._call_names[call_id] = tool_name
+            self._flush_text()
+            self._rows.append(
+                {
+                    "role": "assistant",
+                    "message_type": "tool_call",
+                    "content": None,
+                    "metadata": {
+                        "call_id": call_id,
+                        "tool_name": tool_name,
+                        "arguments": _json_safe(getattr(content, "arguments", {})),
+                    },
+                }
+            )
+            return
+
+        if content_type == "function_result":
+            call_id = str(getattr(content, "call_id", "") or "")
+            if not call_id or call_id in self._emitted_results:
+                return
+            self._emitted_results.add(call_id)
+            result = _json_safe(getattr(content, "result", None))
+            content_value = result if isinstance(result, str) else None
+            self._rows.append(
+                {
+                    "role": "tool",
+                    "message_type": "tool_result",
+                    "content": content_value,
+                    "metadata": {
+                        "call_id": call_id,
+                        "tool_name": self._call_names.get(call_id, ""),
+                        "result": result,
+                    },
+                }
+            )
+            return
+
+        if content_type == "text":
+            text = getattr(content, "text", None)
+            if text:
+                self._append_text(text)
+            return
+
+        if isinstance(content, str) and content:
+            self._append_text(content)
+
+    def finalize(self) -> None:
+        self._flush_reasoning()
+        self._flush_text()
+
+    def has_content(self) -> bool:
+        return bool(self._rows or self._reasoning_buffer or self._text_buffer)
+
+    async def persist(self, repo: MessageRepository, chat_id: uuid.UUID) -> int:
+        self.finalize()
+        saved = 0
+        for row in self._rows:
+            await repo.insert(chat_id=chat_id, **row)
+            saved += 1
+        return saved
+
+    async def persist_cancelled(
+        self,
+        repo: MessageRepository,
+        chat_id: uuid.UUID,
+        run_id: uuid.UUID,
+    ) -> int:
+        """Write partial turn output; incomplete assistant text/reasoning marked cancelled."""
+        self.finalize()
+        run_meta = {"run_id": str(run_id)}
+        saved = 0
+        for row in self._rows:
+            message_type = row["message_type"]
+            meta = {**(row.get("metadata") or {}), **run_meta}
+            if message_type in ("tool_call", "tool_result"):
+                await repo.insert(
+                    chat_id=chat_id,
+                    role=row["role"],
+                    message_type=message_type,
+                    content=row.get("content"),
+                    metadata=meta,
+                )
+                saved += 1
+                continue
+            if message_type in ("reasoning", "text"):
+                await repo.insert(
+                    chat_id=chat_id,
+                    role="assistant",
+                    message_type="cancelled",
+                    content=row.get("content"),
+                    metadata={
+                        **meta,
+                        "partial": True,
+                        "original_type": message_type,
+                    },
+                )
+                saved += 1
+        return saved
 
 
 class _StreamSseEmitter:

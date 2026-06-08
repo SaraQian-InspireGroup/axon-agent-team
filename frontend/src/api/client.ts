@@ -28,17 +28,24 @@ export const api = {
       body: JSON.stringify({ agent_id: agentId }),
     }),
   listMessages: (chatId: string) => request<Message[]>(`/chats/${chatId}/messages`),
+
+  cancelRun: (runId: string) =>
+    request<{ run_id: string; chat_id: string; status: string }>(`/runs/${runId}/cancel`, {
+      method: 'POST',
+    }),
 }
 
 export async function streamChat(
   chatId: string,
   content: string,
   onEvent: (ev: StreamEvent) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`${API}/chats/${chatId}/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
+    signal,
   })
   if (!res.ok || !res.body) {
     throw new Error(await res.text())
