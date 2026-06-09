@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AgentModel, Chat, Message
 from app.db.repositories.messages import MessageRepository
+from app.memory.long_term import try_handle_memory_command
 from app.memory.maf_mapping import maf_message_to_rows
 from app.memory.memory_config import MemoryConfig, parse_memory_config
 from app.platform.agent_factory import AgentFactory
@@ -137,9 +138,29 @@ class ChatRunService:
         memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
         user_row = await self._commit_user_turn(chat, content)
+        memory_result = await try_handle_memory_command(
+            self._db,
+            user_id=chat.user_id,
+            agent_id=chat.agent_id,
+            content=content,
+        )
+        if memory_result and memory_result.handled:
+            if memory_result.is_pure_command:
+                await self._messages.insert(
+                    chat_id=chat_id,
+                    role="assistant",
+                    message_type="text",
+                    content=memory_result.confirmation,
+                    metadata={"source": "memory_command"},
+                )
+            await self._db.commit()
+            if memory_result.is_pure_command:
+                return memory_result.confirmation
+
         bundle = await self._factory.build(
             chat.agent_id,
             chat_id=chat_id,
+            user_id=chat.user_id,
             turn_start_sequence=user_row.sequence,
             session_store=self._sessions,
         )
@@ -163,6 +184,29 @@ class ChatRunService:
         memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
         user_row = await self._commit_user_turn(chat, content)
+        memory_result = await try_handle_memory_command(
+            self._db,
+            user_id=chat.user_id,
+            agent_id=chat.agent_id,
+            content=content,
+        )
+        if memory_result and memory_result.handled:
+            if memory_result.is_pure_command:
+                await self._messages.insert(
+                    chat_id=chat_id,
+                    role="assistant",
+                    message_type="text",
+                    content=memory_result.confirmation,
+                    metadata={"source": "memory_command"},
+                )
+            await self._db.commit()
+            yield {
+                "event": "memory_updated",
+                "data": memory_result.to_dict(),
+            }
+            if memory_result.is_pure_command:
+                yield {"event": "done", "data": {"text": memory_result.confirmation}}
+                return
 
         run_manager = get_run_manager()
         run = await run_manager.start_run(chat_id, user_row.id)
@@ -196,6 +240,7 @@ class ChatRunService:
             bundle = await self._factory.build(
                 chat.agent_id,
                 chat_id=chat_id,
+                user_id=chat.user_id,
                 stop_event=run.stop_event,
                 turn_start_sequence=user_row.sequence,
                 session_store=self._sessions,

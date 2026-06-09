@@ -59,3 +59,38 @@ class MessageOut(BaseModel):
     parent_id: str | None
     sequence: int
     created_at: str | None
+
+
+class MemoryBulletOut(BaseModel):
+    prefix: str
+    text: str
+    line: str
+    kind: str
+
+
+class MemoryOut(BaseModel):
+    scope: str
+    agent_id: uuid.UUID | None = None
+    content: str
+    revision: int
+    bullets: list[MemoryBulletOut] = Field(default_factory=list)
+    updated_at: str | None = None
+
+
+class MemoryReplaceIn(BaseModel):
+    content: str = ""
+
+
+class MemoryAppendIn(BaseModel):
+    scope: str
+    agent_id: uuid.UUID | None = None
+    lines: list[str]
+    is_constraint: bool = False
+    source: str = "ui"
+
+
+class MemoryRemoveIn(BaseModel):
+    scope: str
+    agent_id: uuid.UUID | None = None
+    match: str
+    also_search_user: bool = False

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db.models import AgentModel
 from app.memory.compaction import build_platform_compaction
+from app.memory.long_term.context_provider import LongTermMemoryProvider
 from app.memory.memory_config import parse_memory_config
 from app.memory.postgres_history import PostgresHistoryProvider
 from app.platform.agent_bundle import AgentBundle
@@ -39,6 +40,7 @@ class AgentFactory:
         agent_id: uuid.UUID,
         *,
         chat_id: uuid.UUID | None = None,
+        user_id: uuid.UUID | None = None,
         stop_event: asyncio.Event | None = None,
         turn_start_sequence: int | None = None,
         session_store: SessionStore | None = None,
@@ -61,6 +63,16 @@ class AgentFactory:
         )
         _, compaction_provider = build_platform_compaction(memory_config)
         context_providers: list = [history]
+        if memory_config.long_term.enabled and user_id is not None:
+            context_providers.append(
+                LongTermMemoryProvider(
+                    self._db,
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    agent_slug=row.slug or row.name,
+                    memory_config=memory_config,
+                )
+            )
         if compaction_provider is not None:
             context_providers.append(compaction_provider)
         skills_provider = await self._skills.resolve_provider_for_agent(agent_id)

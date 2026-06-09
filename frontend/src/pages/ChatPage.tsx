@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, streamChat } from '../api/client'
 import { AgentIcon } from '../components/AgentIcon'
 import { ChatHistoryPanel } from '../components/ChatHistoryPanel'
+import { MemoryPanel } from '../components/MemoryPanel'
 import { ChatHistoryIcon } from '../components/ChatHistoryIcon'
 import { ChatMessageList } from '../components/ChatMessageList'
 import { LoadingSpinner } from '../components/LoadingSpinner'
@@ -47,6 +48,8 @@ export function ChatPage() {
   const [chatHistoryLoading, setChatHistoryLoading] = useState(false)
   const [chatSessionLoading, setChatSessionLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [memoryOpen, setMemoryOpen] = useState(false)
+  const [memoryRefreshKey, setMemoryRefreshKey] = useState(0)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const pinToBottomRef = useRef(true)
   const runIdRef = useRef<string | null>(null)
@@ -271,6 +274,9 @@ export function ChatPage() {
         (ev) => {
           if (generation !== streamGenRef.current) return
 
+          if (ev.event === 'memory_updated') {
+            setMemoryRefreshKey((k) => k + 1)
+          }
           if (ev.event === 'run_started' && ev.data.run_id != null) {
             const id = String(ev.data.run_id)
             runIdRef.current = id
@@ -499,6 +505,22 @@ export function ChatPage() {
                 </button>
                 <button
                   type="button"
+                  className={`chat-header-btn ${memoryOpen ? 'chat-header-btn-active' : ''}`}
+                  aria-label="Memory"
+                  title="Memory"
+                  aria-expanded={memoryOpen}
+                  onClick={() => {
+                    setMemoryOpen((open) => {
+                      const next = !open
+                      if (next) setHistoryOpen(false)
+                      return next
+                    })
+                  }}
+                >
+                  <img src="/alzheimer.png" alt="" className="chat-header-memory-icon" width={18} height={18} />
+                </button>
+                <button
+                  type="button"
                   className={`chat-header-btn ${historyOpen ? 'chat-header-btn-active' : ''}`}
                   aria-label="Chat history"
                   title="Chat history"
@@ -506,8 +528,9 @@ export function ChatPage() {
                   onClick={() => {
                     setHistoryOpen((open) => {
                       const next = !open
-                      if (next && selectedId) {
-                        void refreshChatHistory(selectedId)
+                      if (next) {
+                        setMemoryOpen(false)
+                        if (selectedId) void refreshChatHistory(selectedId)
                       }
                       return next
                     })
@@ -628,6 +651,13 @@ export function ChatPage() {
             </div>
             </div>
 
+            <MemoryPanel
+              open={memoryOpen}
+              agents={agents}
+              activeAgentId={selected.id}
+              refreshKey={memoryRefreshKey}
+              onClose={() => setMemoryOpen(false)}
+            />
             <ChatHistoryPanel
               open={historyOpen}
               chats={chatHistory}

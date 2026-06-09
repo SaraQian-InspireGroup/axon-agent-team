@@ -28,10 +28,17 @@ class MemorySlimConfig:
 
 
 @dataclass(frozen=True)
+class LongTermMemoryConfig:
+    enabled: bool = True
+    inject_max_tokens: int = 1500
+
+
+@dataclass(frozen=True)
 class MemoryConfig:
     working_set_turns: int = DEFAULT_WORKING_SET_TURNS
     cold_resume_max_turns: int = DEFAULT_COLD_RESUME_MAX_TURNS
     slim: MemorySlimConfig = field(default_factory=MemorySlimConfig)
+    long_term: LongTermMemoryConfig = field(default_factory=LongTermMemoryConfig)
 
     def config_hash(self) -> str:
         payload = {
@@ -41,6 +48,10 @@ class MemoryConfig:
                 "enabled": self.slim.enabled,
                 "default_preview_chars": self.slim.default_preview_chars,
                 "tools": self.slim.tool_request_chars,
+            },
+            "long_term": {
+                "enabled": self.long_term.enabled,
+                "inject_max_tokens": self.long_term.inject_max_tokens,
             },
         }
         raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
@@ -70,8 +81,14 @@ def parse_memory_config(agent_config: dict[str, Any] | None) -> MemoryConfig:
 
     working_set_turns = int(memory.get("working_set_turns") or DEFAULT_WORKING_SET_TURNS)
     cold_resume_max_turns = int(memory.get("cold_resume_max_turns") or DEFAULT_COLD_RESUME_MAX_TURNS)
+    long_term_raw = memory.get("long_term") or {}
+    long_term = LongTermMemoryConfig(
+        enabled=bool(long_term_raw.get("enabled", True)),
+        inject_max_tokens=max(200, int(long_term_raw.get("inject_max_tokens") or 1500)),
+    )
     return MemoryConfig(
         working_set_turns=max(1, working_set_turns),
         cold_resume_max_turns=max(1, cold_resume_max_turns),
         slim=slim,
+        long_term=long_term,
     )

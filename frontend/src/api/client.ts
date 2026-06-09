@@ -1,4 +1,12 @@
-import type { Agent, Chat, ChatSummary, Message, StreamEvent, User } from '../types'
+import type {
+  Agent,
+  Chat,
+  ChatSummary,
+  MemoryDocument,
+  Message,
+  StreamEvent,
+  User,
+} from '../types'
 
 const API = '/api/v1'
 
@@ -32,6 +40,40 @@ export const api = {
   cancelRun: (runId: string) =>
     request<{ run_id: string; chat_id: string; status: string }>(`/runs/${runId}/cancel`, {
       method: 'POST',
+    }),
+
+  getUserMemory: () => request<MemoryDocument>('/memories/user'),
+  getAgentMemory: (agentId: string) => request<MemoryDocument>(`/memories/agents/${agentId}`),
+  replaceUserMemory: (content: string) =>
+    request<MemoryDocument>('/memories/user', {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    }),
+  replaceAgentMemory: (agentId: string, content: string) =>
+    request<MemoryDocument>(`/memories/agents/${agentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    }),
+  appendMemory: (body: {
+    scope: string
+    agent_id?: string
+    lines: string[]
+    is_constraint?: boolean
+    source?: string
+  }) =>
+    request<MemoryDocument>('/memories/append', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  removeMemory: (body: {
+    scope: string
+    agent_id?: string
+    match: string
+    also_search_user?: boolean
+  }) =>
+    request<MemoryDocument>('/memories/remove', {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
 }
 
