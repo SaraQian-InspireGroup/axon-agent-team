@@ -13,6 +13,7 @@ import {
   applyStreamingBlockActivity,
   applyStreamingText,
   createStreamingActivityEntry,
+  finalizeStreamingBlocks,
   finalizeStreamingReasoning,
   type ChatBlock,
 } from '../lib/messageActivity'
@@ -174,6 +175,9 @@ export function ChatPage() {
       const rows = await api.listMessages(id)
       setMessages(rows)
       setStreamingBlocks((prev) => {
+        if (rows.length === 0 && prev.length > 0) {
+          return prev
+        }
         if (!options?.keepStreamingIfEmpty || prev.length === 0) {
           return []
         }
@@ -238,8 +242,26 @@ export function ChatPage() {
     streamAbortRef.current = abortController
 
     let segmentText = ''
+    let streamFinished = false
+    let reloadedAfterStream = false
     runIdRef.current = null
     setActiveRunId(null)
+
+    const finishStreamingUi = () => {
+      if (generation !== streamGenRef.current || streamFinished) return
+      streamFinished = true
+      setLoading(false)
+      setActiveRunId(null)
+      runIdRef.current = null
+      setStreamingBlocks((prev) => finalizeStreamingBlocks(prev))
+    }
+
+    const triggerReload = () => {
+      if (generation !== streamGenRef.current || reloadedAfterStream) return
+      reloadedAfterStream = true
+      void reloadMessagesAfterStream(chatId)
+    }
+
     try {
       await streamChat(
         chatId,
@@ -284,6 +306,9 @@ export function ChatPage() {
               setStreamingBlocks((prev) => applyStreamingBlockActivity(prev, entry))
             }
           }
+          if (ev.event === 'done' || ev.event === 'run_cancelled') {
+            finishStreamingUi()
+          }
           if (ev.event === 'error') {
             throw new Error(String(ev.data.error ?? 'stream error'))
           }
@@ -292,17 +317,17 @@ export function ChatPage() {
       )
 
       if (generation !== streamGenRef.current) return
-      await reloadMessagesAfterStream(chatId)
+      finishStreamingUi()
+      triggerReload()
     } catch (e) {
       if (generation !== streamGenRef.current) return
       if (e instanceof Error && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : 'Failed to send message')
       setStreamingBlocks([])
+      finishStreamingUi()
     } finally {
       if (generation === streamGenRef.current) {
-        runIdRef.current = null
-        setActiveRunId(null)
-        setLoading(false)
+        finishStreamingUi()
         if (streamAbortRef.current === abortController) {
           streamAbortRef.current = null
         }

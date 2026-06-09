@@ -65,6 +65,7 @@ class ModelProviderRegistry:
         context_providers: list | None = None,
         middleware: list | None = None,
         tools: list | None = None,
+        compaction_strategy: object | None = None,
         require_per_service_call_history_persistence: bool = False,
     ) -> Agent:
         if model_provider == ModelProvider.AZURE_OPENAI:
@@ -89,6 +90,7 @@ class ModelProviderRegistry:
             middleware=middleware,
             tools=tools,
             default_options=default_options,
+            compaction_strategy=compaction_strategy,
             require_per_service_call_history_persistence=require_per_service_call_history_persistence,
         )
 

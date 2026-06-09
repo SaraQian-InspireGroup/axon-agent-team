@@ -89,14 +89,10 @@ class ChatRunService:
         turn_start_sequence: int,
         accumulator: "_StreamTurnAccumulator | None" = None,
     ) -> None:
-        use_accumulator_tools = accumulator is not None and accumulator.has_tool_rows()
-        await self._persist_agent_messages(
-            chat_id,
-            response,
-            skip_tool_rows=use_accumulator_tools,
-        )
-        if use_accumulator_tools:
-            await accumulator.persist_tool_rows(self._messages, chat_id)
+        if accumulator is not None and accumulator.has_content():
+            await accumulator.persist(self._messages, chat_id)
+        else:
+            await self._persist_agent_messages(chat_id, response, skip_tool_rows=False)
         await self._sessions.append_completed_turn(
             chat_id,
             memory_config,

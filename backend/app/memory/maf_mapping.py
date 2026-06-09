@@ -6,6 +6,20 @@ from agent_framework import Content, Message
 from app.memory.projectors.utils import ensure_dict
 from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
 
+PLATFORM_MESSAGE_TYPE_KEY = "platform_message_type"
+PLATFORM_METADATA_KEY = "platform_metadata"
+
+
+def _platform_props(row: dict[str, Any]) -> dict[str, Any]:
+    message_type = row.get("message_type") or ""
+    metadata = row.get("metadata") or {}
+    if not message_type and not metadata:
+        return {}
+    return {
+        PLATFORM_MESSAGE_TYPE_KEY: message_type,
+        PLATFORM_METADATA_KEY: metadata,
+    }
+
 
 def row_to_dict(row: Any) -> dict[str, Any]:
     return {
@@ -60,11 +74,24 @@ def to_maf_messages(rows: list[dict[str, Any]]) -> list[Message]:
     seen_tool_calls: set[str] = set()
     seen_tool_results: set[str] = set()
 
+    pending_assistant_meta: dict[str, Any] = {}
+
     def flush_assistant() -> None:
-        nonlocal assistant_contents
+        nonlocal assistant_contents, pending_assistant_meta
         if assistant_contents:
-            messages.append(Message(role="assistant", contents=list(assistant_contents)))
+            props = (
+                {
+                    PLATFORM_MESSAGE_TYPE_KEY: pending_assistant_meta.get("message_type"),
+                    PLATFORM_METADATA_KEY: pending_assistant_meta.get("metadata") or {},
+                }
+                if pending_assistant_meta.get("message_type")
+                else {}
+            )
+            messages.append(
+                Message(role="assistant", contents=list(assistant_contents), additional_properties=props)
+            )
             assistant_contents = []
+            pending_assistant_meta = {}
 
     for row in rows:
         message_type = row["message_type"]
@@ -74,7 +101,13 @@ def to_maf_messages(rows: list[dict[str, Any]]) -> list[Message]:
 
         if message_type == "text" and role == "user":
             flush_assistant()
-            messages.append(Message(role="user", contents=[Content.from_text(row.get("content") or "")]))
+            messages.append(
+                Message(
+                    role="user",
+                    contents=[Content.from_text(row.get("content") or "")],
+                    additional_properties=_platform_props(row),
+                )
+            )
             continue
 
         if message_type == "run_cancelled":
@@ -101,21 +134,22 @@ def to_maf_messages(rows: list[dict[str, Any]]) -> list[Message]:
                 seen_tool_results.add(call_id)
 
             flush_assistant()
-            result = metadata.get("result", row.get("content"))
+            if metadata.get("memory_slimmed"):
+                result = row.get("content") or ""
+            else:
+                result = metadata.get("result", row.get("content"))
             if not isinstance(result, str):
                 result = json.dumps(result, ensure_ascii=False)
             messages.append(
-                Message.from_dict(
-                    {
-                        "role": "tool",
-                        "contents": [
-                            {
-                                "type": "function_result",
-                                "call_id": call_id or row.get("id"),
-                                "result": result,
-                            }
-                        ],
-                    }
+                Message(
+                    role="tool",
+                    contents=[
+                        Content.from_function_result(
+                            call_id=str(call_id or row.get("id")),
+                            result=result,
+                        )
+                    ],
+                    additional_properties=_platform_props(row),
                 )
             )
             continue
@@ -126,6 +160,7 @@ def to_maf_messages(rows: list[dict[str, Any]]) -> list[Message]:
                 Message(
                     role="tool",
                     contents=[Content.from_text(row.get("content") or json.dumps(metadata, ensure_ascii=False))],
+                    additional_properties=_platform_props(row),
                 )
             )
             continue
@@ -149,11 +184,115 @@ def to_maf_messages(rows: list[dict[str, Any]]) -> list[Message]:
             else:
                 content = _row_to_content(row)
             if content is not None:
+                if message_type in ("tool_call", "mcp_call") and not pending_assistant_meta:
+                    pending_assistant_meta = {"message_type": message_type, "metadata": metadata}
                 assistant_contents.append(content)
             continue
 
     flush_assistant()
     return messages
+
+
+def maf_messages_to_projection_rows(messages: list[Message]) -> list[dict[str, Any]]:
+    """Expand MAF messages into platform row dicts for HistoryProjection."""
+    rows: list[dict[str, Any]] = []
+    seq = 0
+    call_names: dict[str, str] = {}
+
+    for message in messages:
+        props = message.additional_properties or {}
+        platform_type = props.get(PLATFORM_MESSAGE_TYPE_KEY)
+        platform_metadata = dict(props.get(PLATFORM_METADATA_KEY) or {})
+
+        for content in message.contents or []:
+            seq += 1
+            content_type = getattr(content, "type", None)
+
+            if message.role == "user":
+                rows.append(
+                    {
+                        "role": "user",
+                        "message_type": platform_type or "text",
+                        "content": getattr(content, "text", None) or "",
+                        "metadata": platform_metadata,
+                        "sequence": seq,
+                    }
+                )
+                continue
+
+            if message.role == "assistant":
+                if content_type == "text_reasoning":
+                    rows.append(
+                        {
+                            "role": "assistant",
+                            "message_type": "reasoning",
+                            "content": getattr(content, "text", None) or "",
+                            "metadata": platform_metadata,
+                            "sequence": seq,
+                        }
+                    )
+                elif content_type == "function_call":
+                    call_id = str(getattr(content, "call_id", "") or "")
+                    tool_name = str(getattr(content, "name", "") or "unknown")
+                    if call_id:
+                        call_names[call_id] = tool_name
+                    rows.append(
+                        {
+                            "role": "assistant",
+                            "message_type": platform_type or "tool_call",
+                            "content": None,
+                            "metadata": {
+                                **platform_metadata,
+                                "call_id": call_id or None,
+                                "tool_name": tool_name,
+                                "arguments": ensure_dict(getattr(content, "arguments", {})),
+                            },
+                            "sequence": seq,
+                        }
+                    )
+                else:
+                    rows.append(
+                        {
+                            "role": "assistant",
+                            "message_type": platform_type or "text",
+                            "content": getattr(content, "text", None) or str(content),
+                            "metadata": platform_metadata,
+                            "sequence": seq,
+                        }
+                    )
+                continue
+
+            if message.role == "tool":
+                if content_type == "function_result":
+                    call_id = str(getattr(content, "call_id", "") or "")
+                    tool_name = platform_metadata.get("tool_name") or call_names.get(call_id)
+                    result = getattr(content, "result", None)
+                    rows.append(
+                        {
+                            "role": "tool",
+                            "message_type": platform_type or "tool_result",
+                            "content": result if isinstance(result, str) else json.dumps(result, ensure_ascii=False),
+                            "metadata": {
+                                **platform_metadata,
+                                "call_id": call_id or None,
+                                "tool_name": tool_name,
+                                "result": result,
+                            },
+                            "sequence": seq,
+                        }
+                    )
+                else:
+                    rows.append(
+                        {
+                            "role": "tool",
+                            "message_type": platform_type or "skill_load",
+                            "content": getattr(content, "text", None) or "",
+                            "metadata": platform_metadata,
+                            "sequence": seq,
+                        }
+                    )
+
+    return rows
 
 
 def _row_to_maf_message(row: dict[str, Any]) -> Message | None:

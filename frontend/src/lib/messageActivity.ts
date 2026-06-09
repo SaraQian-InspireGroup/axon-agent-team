@@ -343,12 +343,28 @@ export function finalizeStreamingReasoning(blocks: ChatBlock[]): ChatBlock[] {
   })
 }
 
+/** Mark all in-flight streaming UI as complete when the server signals run end. */
+export function finalizeStreamingBlocks(blocks: ChatBlock[]): ChatBlock[] {
+  let next = finalizeStreamingReasoning(blocks)
+  next = closeOpenStreamingText(next)
+  return next.map((block) => {
+    if (block.kind === 'process' && block.item.status === 'running') {
+      return { ...block, item: { ...block.item, status: 'done' as const } }
+    }
+    return block
+  })
+}
+
 /** Show a breathing dot when the run is active but nothing is visibly streaming yet. */
 export function shouldShowPendingIndicator(loading: boolean, blocks: ChatBlock[]): boolean {
   if (!loading) return false
   if (blocks.length === 0) return true
   const last = blocks[blocks.length - 1]
-  if (last.kind === 'bubble' && last.message.metadata?.streaming === true) return false
+  if (last.kind === 'bubble') {
+    const text = last.message.content?.trim() ?? ''
+    if (text.length > 0) return false
+    if (last.message.metadata?.streaming === true) return false
+  }
   if (last.kind === 'process' && last.item.status === 'running') return false
   return true
 }

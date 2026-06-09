@@ -1108,8 +1108,8 @@ body {
 }
 
 .msg-assistant {
-  background: rgba(243, 244, 242, 0.6);
-  border: 1px solid rgba(243, 244, 242, 0.85);
+  background: transparent;
+  border: none;
   color: var(--color-ink);
 }
 

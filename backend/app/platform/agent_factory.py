@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.models import AgentModel
+from app.memory.compaction import build_platform_compaction
 from app.memory.memory_config import parse_memory_config
 from app.memory.postgres_history import PostgresHistoryProvider
 from app.platform.agent_bundle import AgentBundle
@@ -58,7 +59,10 @@ class AgentFactory:
             memory_config=memory_config,
             pending_turn_start_sequence=turn_start_sequence,
         )
+        _, compaction_provider = build_platform_compaction(memory_config)
         context_providers: list = [history]
+        if compaction_provider is not None:
+            context_providers.append(compaction_provider)
         skills_provider = await self._skills.resolve_provider_for_agent(agent_id)
         skill_tools: set[str] = set()
         if skills_provider is not None:

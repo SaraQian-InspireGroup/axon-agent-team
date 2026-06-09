@@ -1,4 +1,4 @@
-"""Memory projector protocol for Redis working-set slimming."""
+"""Memory projector protocol for platform history slimming."""
 
 from __future__ import annotations
 

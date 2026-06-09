@@ -1,4 +1,4 @@
-"""Project DB message rows into Redis working-set rows (slim tool results)."""
+"""Apply tool/skill slim projectors to platform message rows (used by MAF compaction)."""
 
 from __future__ import annotations
 

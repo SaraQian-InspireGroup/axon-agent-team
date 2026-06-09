@@ -12,7 +12,6 @@ from app.db.redis_client import get_redis, is_redis_available
 from app.db.repositories.messages import MessageRepository
 from app.memory.maf_mapping import row_to_dict
 from app.memory.memory_config import MemoryConfig
-from app.memory.slimmer import HistoryProjection
 from app.memory.turn_window import take_last_turns
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,6 @@ class SessionStore:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._messages = MessageRepository(db)
-        self._projection = HistoryProjection()
 
     def _redis_key(self, chat_id: uuid.UUID) -> str:
         return f"session:{chat_id}"
@@ -63,7 +61,7 @@ class SessionStore:
         *,
         exclude_from_sequence: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Return slimmed working-set rows for model injection (prior turns only)."""
+        """Return working-set rows for model injection (prior turns only, full fidelity)."""
         payload = await self._load_payload(chat_id)
         working_set = _extract_working_set(payload)
 
@@ -105,8 +103,7 @@ class SessionStore:
             existing_rows = list((working_set or {}).get("rows") or existing_rows)
 
         existing_sequences = {int(r.get("sequence") or 0) for r in existing_rows}
-        projected_turn = self._projection.project_rows(turn_rows, memory_config)
-        for row in projected_turn:
+        for row in turn_rows:
             seq = int(row.get("sequence") or 0)
             if seq in existing_sequences:
                 continue
@@ -135,8 +132,7 @@ class SessionStore:
         all_rows = await self._load_db_rows(chat_id)
         max_turns = memory_config.cold_resume_max_turns if cold else memory_config.working_set_turns
         windowed = take_last_turns(all_rows, max_turns)
-        projected = self._projection.project_rows(windowed, memory_config)
-        last_sequence = max((int(r.get("sequence") or 0) for r in projected), default=0)
+        last_sequence = max((int(r.get("sequence") or 0) for r in windowed), default=0)
 
         payload = await self._load_payload(chat_id) or {}
         if "session" not in payload:
@@ -150,10 +146,10 @@ class SessionStore:
             "version": WORKING_SET_VERSION,
             "config_hash": memory_config.config_hash(),
             "last_sequence": last_sequence,
-            "rows": projected,
+            "rows": windowed,
         }
         await self._save_payload(chat_id, payload)
-        return projected
+        return windowed
 
     async def _load_db_rows(self, chat_id: uuid.UUID) -> list[dict[str, Any]]:
         rows = await self._messages.list_by_chat(chat_id)

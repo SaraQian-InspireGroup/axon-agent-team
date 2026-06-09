@@ -69,3 +69,39 @@ async def test_accumulator_persist_calls_repo():
     assert len(inserted) == 1
     assert inserted[0]["message_type"] == "text"
     assert inserted[0]["content"] == "partial"
+
+
+@pytest.mark.asyncio
+async def test_accumulator_persist_keeps_reasoning_tools_before_text():
+    acc = _StreamTurnAccumulator()
+    acc.observe(_update(_content("text_reasoning", text="plan")))
+    acc.observe(
+        _update(
+            _content(
+                "function_call",
+                call_id="c1",
+                name="load_skill",
+                arguments={"skill_name": "topic-daily-analysis"},
+            )
+        )
+    )
+    acc.observe(_update(_content("function_result", call_id="c1", result="ok")))
+    acc.observe(_update(_content("text", text="Final answer")))
+
+    inserted: list[dict] = []
+    seq = 0
+
+    class FakeRepo:
+        async def insert(self, **kwargs: object) -> None:
+            nonlocal seq
+            seq += 1
+            inserted.append({**kwargs, "sequence": seq})
+
+    await acc.persist(FakeRepo(), uuid.uuid4())
+    assert [row["message_type"] for row in inserted] == [
+        "reasoning",
+        "tool_call",
+        "tool_result",
+        "text",
+    ]
+    assert [row["sequence"] for row in inserted] == [1, 2, 3, 4]
