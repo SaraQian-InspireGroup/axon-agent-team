@@ -8,7 +8,10 @@ prompt_file: system_prompt.md
 skills_dir: skills
 
 mcp_servers:
-  - postgres
+  postgres:
+    env:
+      DATABASE_URL: ${ODI_KNOWLEDGE_POSTGRES_URL}
+      DB_READ_ONLY: "true"
 allowed_tools:
   - postgres_list_tables
   - postgres_describe_table

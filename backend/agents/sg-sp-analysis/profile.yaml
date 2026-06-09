@@ -8,7 +8,13 @@ prompt_file: system_prompt.md
 skills_dir: skills
 
 mcp_servers:
-  - mysql
+  mysql:
+    env:
+      MYSQL_HOST: ${SG_SP_MYSQL_HOST}
+      MYSQL_PORT: ${SG_SP_MYSQL_PORT}
+      MYSQL_USER: ${SG_SP_MYSQL_USER}
+      MYSQL_PASSWORD: ${SG_SP_MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${SG_SP_MYSQL_DATABASE}
 allowed_tools:
   - mysql_list_databases
   - mysql_list_tables

@@ -1,4 +1,5 @@
-# MCP servers for this agent only. Reference by key name in profile.yaml (mcp_servers: [mysql]).
+# MCP servers for this agent only. Reference by key in profile.yaml (mcp_servers.mysql).
+# Per-agent env (MYSQL_*, credentials) belongs in profile.yaml, not here.
 #
 # Package: mysql-mcp-server (read-only SELECT/SHOW/DESCRIBE/EXPLAIN)
 # Tools: list_databases, list_tables, describe_table, execute_query
@@ -8,9 +9,3 @@ servers:
     args:
       - -y
       - mysql-mcp-server@latest
-    env:
-      MYSQL_HOST: ${SG_SP_MYSQL_HOST}
-      MYSQL_PORT: ${SG_SP_MYSQL_PORT}
-      MYSQL_USER: ${SG_SP_MYSQL_USER}
-      MYSQL_PASSWORD: ${SG_SP_MYSQL_PASSWORD}
-      MYSQL_DATABASE: ${SG_SP_MYSQL_DATABASE}

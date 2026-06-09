@@ -1,4 +1,5 @@
-# MCP servers for this agent only. Reference by key name in profile.yaml (mcp_servers: [postgres]).
+# MCP servers for this agent only. Reference by key in profile.yaml (mcp_servers.postgres).
+# Per-agent env (DATABASE_URL, credentials) belongs in profile.yaml, not here.
 #
 # Use mcp-postgres (not deprecated @modelcontextprotocol/server-postgres) for schema tools:
 # list_tables, describe_table, get_schema, query_data.
@@ -8,6 +9,3 @@ servers:
     args:
       - -y
       - mcp-postgres@latest
-    env:
-      DATABASE_URL: ${ODI_KNOWLEDGE_POSTGRES_URL}
-      DB_READ_ONLY: "true"

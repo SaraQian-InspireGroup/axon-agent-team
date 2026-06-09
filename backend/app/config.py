@@ -58,16 +58,6 @@ class Settings(BaseSettings):
 
     # Fernet key for encrypting MCP credentials at rest in the database
     mcp_secrets_key: str | None = Field(default=None, validation_alias="MCP_SECRETS_KEY")
-    odi_knowledge_postgres_url: str | None = Field(
-        default=None, validation_alias="ODI_KNOWLEDGE_POSTGRES_URL"
-    )
-
-    # Smart Proposal SG analytics DB (mysql-mcp-server in agents/sg-sp-analysis)
-    sg_sp_mysql_host: str | None = Field(default=None, validation_alias="SG_SP_MYSQL_HOST")
-    sg_sp_mysql_port: str | None = Field(default=None, validation_alias="SG_SP_MYSQL_PORT")
-    sg_sp_mysql_user: str | None = Field(default=None, validation_alias="SG_SP_MYSQL_USER")
-    sg_sp_mysql_password: str | None = Field(default=None, validation_alias="SG_SP_MYSQL_PASSWORD")
-    sg_sp_mysql_database: str | None = Field(default=None, validation_alias="SG_SP_MYSQL_DATABASE")
 
     app_name: str = "agent-platform"
     debug: bool = False

@@ -23,7 +23,7 @@ agents/
 | `name` | yes | 显示名 |
 | `model_provider` | yes | `azure_openai` / `azure_anthropic` |
 | `model` | yes | Deployment；支持 `${ENV_VAR}` |
-| `mcp_servers` | no | 本 agent `mcp_servers.yaml` 中的 key |
+| `mcp_servers` | no | 引用 `mcp_servers.yaml` 中的 key；可在 profile 内联 `env`（见下） |
 | `allowed_tools` | no | MAF 工具名，如 `postgres_query_data`（对应 mcp-postgres 的 `query_data`） |
 | `hooks` | no | 平台 hook 及参数（见下） |
 
@@ -56,8 +56,15 @@ name: "ODI Knowledge AI Chat Analysis Agent"
 model_provider: azure_anthropic
 model: ${CLAUDE_AZURE_FOUNDRY_MODEL}
 
+# 推荐：在 profile 配置各 agent 的 MCP 环境变量（与 model 一样支持 ${ENV_VAR}）
 mcp_servers:
-  - postgres
+  postgres:
+    env:
+      DATABASE_URL: ${ODI_KNOWLEDGE_POSTGRES_URL}
+      DB_READ_ONLY: "true"
+
+# 仍支持列表形式（env 留在 mcp_servers.yaml 或通过 mcp_env 覆盖）：
+# mcp_servers: [postgres]
 
 allowed_tools:
   - postgres_list_tables
@@ -79,8 +86,13 @@ hooks:
     max_observation_bytes: 50000
 ```
 
+### mcp_servers.yaml vs profile
+
+- `mcp_servers.yaml`：进程定义（`command` / `args`），可复用
+- `profile.yaml`：本 agent 的 `env`、凭证占位符（`${MY_AGENT_DB_URL}`），不同 agent 可用不同变量名连不同库
+
 ## Adding an agent
 
 1. `backend/agents/<slug>/` + `profile.yaml` + `system_prompt.md`
-2. 按需添加 `mcp_servers.yaml`、`skills/`
+2. 按需添加 `mcp_servers.yaml`、`skills/`；在 profile 的 `mcp_servers.<key>.env` 写连接信息
 3. 重启后端

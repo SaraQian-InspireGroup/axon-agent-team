@@ -1,3 +1,4 @@
+import copy
 import os
 import re
 from dataclasses import dataclass, field
@@ -5,8 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import AliasChoices
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.platform.model_registry import ModelProvider
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -38,7 +40,36 @@ class AgentProfile:
     instructions: str
     skill_paths: list[Path]
     mcp_servers: list[str]
+    mcp_server_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
     extra_config: dict[str, Any] = field(default_factory=dict)
+
+
+def _env_aliases_for_field(field_info: Any) -> list[str]:
+    alias = field_info.validation_alias
+    if alias is None:
+        return []
+    if isinstance(alias, str):
+        return [alias]
+    if isinstance(alias, AliasChoices):
+        return [str(choice) for choice in alias.choices]
+    return [str(alias)]
+
+
+def _settings_value_for_env_key(key: str) -> str | None:
+    settings = get_settings()
+    for field_name, field_info in Settings.model_fields.items():
+        for alias in _env_aliases_for_field(field_info):
+            if alias != key:
+                continue
+            value = getattr(settings, field_name, None)
+            if value is not None and str(value).strip():
+                return str(value)
+    attr = key.lower()
+    if hasattr(settings, attr):
+        value = getattr(settings, attr, None)
+        if value is not None and str(value).strip():
+            return str(value)
+    return None
 
 
 def _resolve_env(value: str) -> str:
@@ -47,21 +78,9 @@ def _resolve_env(value: str) -> str:
         env_val = os.environ.get(key)
         if env_val:
             return env_val
-        settings = get_settings()
-        if hasattr(settings, key.lower()):
-            return str(getattr(settings, key.lower()) or "")
-        model_fields = {
-            "CLAUDE_AZURE_FOUNDRY_MODEL": settings.claude_azure_foundry_model,
-            "AZURE_OPENAI_DEPLOYMENT": settings.azure_openai_deployment,
-            "ODI_KNOWLEDGE_POSTGRES_URL": settings.odi_knowledge_postgres_url,
-            "SG_SP_MYSQL_HOST": settings.sg_sp_mysql_host,
-            "SG_SP_MYSQL_PORT": settings.sg_sp_mysql_port,
-            "SG_SP_MYSQL_USER": settings.sg_sp_mysql_user,
-            "SG_SP_MYSQL_PASSWORD": settings.sg_sp_mysql_password,
-            "SG_SP_MYSQL_DATABASE": settings.sg_sp_mysql_database,
-        }
-        if key in model_fields and model_fields[key]:
-            return str(model_fields[key])
+        settings_val = _settings_value_for_env_key(key)
+        if settings_val:
+            return settings_val
         return match.group(0)
 
     if not isinstance(value, str):
@@ -79,13 +98,50 @@ def _resolve_env_deep(obj: Any) -> Any:
     return obj
 
 
-def load_agent_mcp_servers(agent_dir: Path) -> dict[str, dict[str, Any]]:
-    """Load MCP server definitions from agents/<slug>/mcp_servers.yaml."""
+def _deep_merge_mcp(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = copy.deepcopy(base)
+    for key, value in override.items():
+        if (
+            key in merged
+            and isinstance(merged[key], dict)
+            and isinstance(value, dict)
+        ):
+            merged[key] = _deep_merge_mcp(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
+def _parse_profile_mcp_servers(raw: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
+    """Parse profile mcp_servers as a list of keys or a per-server override map."""
+    raw_mcp = raw.get("mcp_servers")
+    if isinstance(raw_mcp, dict):
+        return list(raw_mcp.keys()), _resolve_env_deep(raw_mcp)
+    if isinstance(raw_mcp, list):
+        names = [str(name) for name in raw_mcp]
+        raw_env = raw.get("mcp_env") or {}
+        overrides = _resolve_env_deep(raw_env) if isinstance(raw_env, dict) else {}
+        return names, overrides
+    return [], {}
+
+
+def load_agent_mcp_servers(
+    agent_dir: Path,
+    overrides: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Load MCP servers from mcp_servers.yaml and merge profile-level overrides."""
     path = agent_dir / _AGENT_MCP_FILENAME
-    if not path.exists():
-        return {}
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    servers = raw.get("servers") or {}
+    servers: dict[str, Any] = {}
+    if path.exists():
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        servers = dict(raw.get("servers") or {})
+
+    for name, override in (overrides or {}).items():
+        if name in servers:
+            servers[name] = _deep_merge_mcp(servers[name], override)
+        else:
+            servers[name] = copy.deepcopy(override)
+
     return {name: _resolve_env_deep(cfg) for name, cfg in servers.items()}
 
 
@@ -138,6 +194,8 @@ def load_agent_profile(agent_dir: Path) -> AgentProfile:
     skills_dir = raw.get("skills_dir") or "skills"
     skill_paths = _discover_skill_paths(agent_dir, skills_dir)
 
+    mcp_servers, mcp_server_overrides = _parse_profile_mcp_servers(raw)
+
     reserved = {
         "id",
         "name",
@@ -148,6 +206,7 @@ def load_agent_profile(agent_dir: Path) -> AgentProfile:
         "prompt_file",
         "skills_dir",
         "mcp_servers",
+        "mcp_env",
         "invocation_modes",
         "delegates",
     }
@@ -161,7 +220,8 @@ def load_agent_profile(agent_dir: Path) -> AgentProfile:
         model_name=model_name,
         instructions=instructions,
         skill_paths=skill_paths,
-        mcp_servers=list(raw.get("mcp_servers") or []),
+        mcp_servers=mcp_servers,
+        mcp_server_overrides=mcp_server_overrides,
         extra_config=extra_config,
     )
 

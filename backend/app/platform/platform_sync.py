@@ -48,10 +48,13 @@ async def ensure_platform_user(session: AsyncSession) -> None:
 
 
 async def _sync_agent_mcp_servers(
-    session: AsyncSession, slug: str, agent_dir: Path
+    session: AsyncSession,
+    slug: str,
+    agent_dir: Path,
+    mcp_overrides: dict[str, dict] | None = None,
 ) -> dict[str, uuid.UUID]:
     """Sync agents/<slug>/mcp_servers.yaml. Returns local name -> mcp_server id."""
-    configs = load_agent_mcp_servers(agent_dir)
+    configs = load_agent_mcp_servers(agent_dir, mcp_overrides)
     local_to_id: dict[str, uuid.UUID] = {}
 
     for local_name, cfg in configs.items():
@@ -119,7 +122,12 @@ async def sync_agents_from_profiles(session: AsyncSession) -> None:
     for profile in profiles:
         agent_dir = AGENTS_ROOT / profile.slug
         agent_id = agent_id_for_slug(profile.slug)
-        mcp_ids = await _sync_agent_mcp_servers(session, profile.slug, agent_dir)
+        mcp_ids = await _sync_agent_mcp_servers(
+            session,
+            profile.slug,
+            agent_dir,
+            profile.mcp_server_overrides,
+        )
 
         row = await session.get(AgentModel, agent_id)
         if row is None:
