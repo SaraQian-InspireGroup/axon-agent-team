@@ -374,14 +374,23 @@ export function ChatPage() {
           sidebarCollapsed ? 'agent-sidebar-collapsed' : ''
         }`}
       >
-        {!sidebarCollapsed && (
-          <div className="sidebar-brand-wrap">
-            <h1 className="sidebar-brand">
-              <span className="sidebar-brand-agent">Agent</span>{' '}
-              <span className="sidebar-brand-platform">Platform</span>
-            </h1>
-          </div>
-        )}
+        <div
+          className={`sidebar-brand-wrap${sidebarCollapsed ? ' sidebar-brand-wrap-collapsed' : ''}`}
+        >
+          <h1
+            className="sidebar-brand"
+            aria-label="Agent Platform"
+            title={sidebarCollapsed ? 'Agent Platform' : undefined}
+          >
+            <img src="/cow.png" alt="" className="sidebar-brand-icon" />
+            {!sidebarCollapsed && (
+              <>
+                <span className="sidebar-brand-agent">Agent</span>{' '}
+                <span className="sidebar-brand-platform">Platform</span>
+              </>
+            )}
+          </h1>
+        </div>
 
         {!sidebarCollapsed && (
           <div className="px-4 pb-1 pt-3">
