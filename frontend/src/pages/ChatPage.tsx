@@ -4,6 +4,7 @@ import { AgentIcon } from '../components/AgentIcon'
 import { ChatHistoryPanel } from '../components/ChatHistoryPanel'
 import { ChatHistoryIcon } from '../components/ChatHistoryIcon'
 import { ChatMessageList } from '../components/ChatMessageList'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 import { NewChatIcon } from '../components/NewChatIcon'
 import { SidebarToggleIcon } from '../components/SidebarToggleIcon'
 import { UserIcon } from '../components/UserIcon'
@@ -44,6 +45,7 @@ export function ChatPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [chatHistory, setChatHistory] = useState<ChatSummary[]>([])
   const [chatHistoryLoading, setChatHistoryLoading] = useState(false)
+  const [chatSessionLoading, setChatSessionLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const pinToBottomRef = useRef(true)
@@ -336,19 +338,22 @@ export function ChatPage() {
   }
 
   const startNewChat = async () => {
-    if (!selectedId || loading) return
+    if (!selectedId || loading || chatSessionLoading) return
     setHistoryOpen(false)
     setError(null)
+    setChatSessionLoading(true)
+    setMessages([])
+    setStreamingBlocks([])
+    setInput('')
     try {
       const chat = await api.createChat(selectedId)
       setStoredChatId(selectedId, chat.id)
       setChatId(chat.id)
-      setMessages([])
-      setStreamingBlocks([])
-      setInput('')
       await refreshChatHistory(selectedId)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to start new chat')
+    } finally {
+      setChatSessionLoading(false)
     }
   }
 
@@ -395,21 +400,24 @@ export function ChatPage() {
           {agentsError && !sidebarCollapsed && (
             <li className="space-y-2 px-2 py-3">
               <p className="text-[11px] leading-relaxed text-brand-700">
-                无法加载 Agent 列表：{agentsError}
+                Failed to load agents: {agentsError}
               </p>
-              <p className="text-[10px] text-muted">请确认后端已启动（http://127.0.0.1:8000）</p>
+              <p className="text-[10px] text-muted">
+                Make sure the backend is running (http://127.0.0.1:8000)
+              </p>
               <button
                 type="button"
                 className="btn btn-secondary text-[10px]"
                 onClick={() => void loadAgents({ autoSelect: true })}
               >
-                重试
+                Retry
               </button>
             </li>
           )}
           {!agentsLoading && !agentsError && agents.length === 0 && !sidebarCollapsed && (
             <li className="px-2 py-3 text-[11px] leading-relaxed text-muted">
-              未发现 Agent。请在 backend/agents/ 下添加目录和 profile.yaml，然后重启后端。
+              No agents found. Add a directory and profile.yaml under backend/agents/, then restart
+              the backend.
             </li>
           )}
           {!agentsLoading &&
@@ -452,7 +460,7 @@ export function ChatPage() {
             className="agent-sidebar-toggle-btn"
             onClick={toggleSidebar}
             aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={sidebarCollapsed ? '展开' : '折叠'}
+            title={sidebarCollapsed ? 'Expand' : 'Collapse'}
           >
             <SidebarToggleIcon collapsed={sidebarCollapsed} />
           </button>
@@ -471,10 +479,11 @@ export function ChatPage() {
               <div className="chat-header-actions">
                 <button
                   type="button"
-                  className="chat-header-btn"
+                  className={`chat-header-btn${chatSessionLoading ? ' chat-header-btn-busy' : ''}`}
                   aria-label="New chat"
                   title="New chat"
-                  disabled={loading}
+                  aria-busy={chatSessionLoading}
+                  disabled={loading || chatSessionLoading}
                   onClick={() => void startNewChat()}
                 >
                   <NewChatIcon />
@@ -508,16 +517,28 @@ export function ChatPage() {
                   onScroll={updateScrollPin}
                 >
                   <div className="chat-content-column">
-                    {messages.length === 0 && streamingBlocks.length === 0 && (
-                      <div className="flex h-full min-h-[12rem] items-center justify-center text-[12px] text-muted">
-                        发送消息开始对话
+                    {chatSessionLoading ? (
+                      <div
+                        className="chat-session-loading"
+                        aria-live="polite"
+                        aria-label="Loading"
+                      >
+                        <LoadingSpinner size="lg" />
                       </div>
+                    ) : (
+                      <>
+                        {messages.length === 0 && streamingBlocks.length === 0 && (
+                          <div className="chat-messages-empty">
+                            Send a message to start a conversation
+                          </div>
+                        )}
+                        <ChatMessageList
+                          messages={messages}
+                          streamingBlocks={streamingBlocks}
+                          loading={loading}
+                        />
+                      </>
                     )}
-                    <ChatMessageList
-                      messages={messages}
-                      streamingBlocks={streamingBlocks}
-                      loading={loading}
-                    />
                   </div>
                 </div>
 
@@ -536,18 +557,18 @@ export function ChatPage() {
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault()
-                            if (!loading) void send()
+                            if (!loading && !chatSessionLoading) void send()
                           }
                         }}
                         placeholder="question"
                         className="chat-composer-textarea"
-                        disabled={loading}
+                        disabled={loading || chatSessionLoading}
                       />
                       <div className="chat-composer-footer">
                         <button
                           type="button"
                           className="chat-composer-add"
-                          disabled={loading}
+                          disabled={loading || chatSessionLoading}
                           aria-label="Add attachment"
                           title="Coming soon"
                         >
@@ -556,7 +577,9 @@ export function ChatPage() {
                         <button
                           type="button"
                           onClick={() => (loading ? void stopStreaming() : void send())}
-                          disabled={loading ? !activeRunId : !input.trim()}
+                          disabled={
+                            chatSessionLoading || (loading ? !activeRunId : !input.trim())
+                          }
                           className={`chat-send-btn${loading ? ' chat-send-btn-stop' : ''}`}
                           aria-label={loading ? 'Stop generating' : 'Send'}
                           title={loading ? 'Stop' : 'Send'}
@@ -606,13 +629,15 @@ export function ChatPage() {
             />
           </div>
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-muted">
+          <div className="chat-main-placeholder">
             {agentsLoading ? (
-              <p className="text-[13px]">Loading…</p>
+              <LoadingSpinner size="lg" />
             ) : (
               <>
-                <p className="text-[13px]">选择一个 Agent 开始对话</p>
-                <p className="text-[11px] text-subtle">左侧列表来自 backend/agents/ 下的 profile</p>
+                <p className="chat-main-placeholder-title">Select an agent to start chatting</p>
+                <p className="chat-main-placeholder-subtitle">
+                  Agents are loaded from backend/agents/ profiles
+                </p>
               </>
             )}
           </div>

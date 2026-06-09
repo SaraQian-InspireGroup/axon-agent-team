@@ -2,7 +2,7 @@ type Props = {
   className?: string
 }
 
-export function ChatHistoryIcon({ className = 'h-[18px] w-[18px]' }: Props) {
+export function ChatHistoryIcon({ className = 'h-[20px] w-[20px]' }: Props) {
   return (
     <svg
       className={className}
