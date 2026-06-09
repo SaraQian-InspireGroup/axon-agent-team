@@ -105,6 +105,13 @@ JOIN JSON_TABLE(
 ) AS jt ON TRUE
 WHERE cs.is_template = 0
   AND cs.proposal_type IN ('incorp_sg_sme', 'SME', 'sg_sme')
+  AND LOWER(cs.user_mail) NOT IN (
+    'huiman.cao@incorp.asia', 'wei.wang@incorp.asia', 'ping.qian@incorp.asia',
+    'zhenxuan.wang@incorp.asia', 'ge.zeng@incorp.asia', 'ken.yu@ascentium.com',
+    'wangsha.tse@ascentium.com', 'maggie.luo@ascentium.com',
+    'william.cheung@ascentium.com', 'william.cheung@incorp.asia',
+    'dl-fabric@incorp.asia'
+  )
   AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
 LIMIT 2000;
 ```
@@ -134,7 +141,41 @@ LIMIT 2000;
 
 - `chat_sessions.is_template = 0`
 - `proposal_type IN ('incorp_sg_sme', 'SME', 'sg_sme')` 除非用户指定其他类型
-- **内部账号**：排除测试邮箱（按环境约定，常见 `@ascentium.com` 测试域或 `users.email` 白名单外的 `internal` 标记——**先 `describe_table` 确认是否有标记列**；无列时用 `user_mail NOT LIKE '%test%'` 等保守规则并在报告口径中说明）
+- **内部用户（默认必排）**：除非用户明确要求包含内部账号，**所有**活跃、漏斗、SKU、定价、deal 等分析 SQL 都必须排除下列邮箱（`users.email` 或 `chat_sessions.user_mail`，用 `LOWER()` 做大小写不敏感匹配）：
+
+  | 邮箱 |
+  |------|
+  | huiman.cao@incorp.asia |
+  | wei.wang@incorp.asia |
+  | ping.qian@incorp.asia |
+  | zhenxuan.wang@incorp.asia |
+  | ge.zeng@incorp.asia |
+  | ken.yu@ascentium.com |
+  | wangsha.tse@ascentium.com |
+  | maggie.luo@ascentium.com |
+  | william.cheung@ascentium.com |
+  | william.cheung@incorp.asia |
+  | dl-fabric@incorp.asia |
+
+  典型写法（JOIN `users u` 后）：
+
+  ```sql
+  AND LOWER(COALESCE(u.email, cs.user_mail)) NOT IN (
+    'huiman.cao@incorp.asia',
+    'wei.wang@incorp.asia',
+    'ping.qian@incorp.asia',
+    'zhenxuan.wang@incorp.asia',
+    'ge.zeng@incorp.asia',
+    'ken.yu@ascentium.com',
+    'wangsha.tse@ascentium.com',
+    'maggie.luo@ascentium.com',
+    'william.cheung@ascentium.com',
+    'william.cheung@incorp.asia',
+    'dl-fabric@incorp.asia'
+  )
+  ```
+
+  无 `users` JOIN 时，对 `cs.user_mail` 单独应用同一 `NOT IN`。报告「分析口径」中默认写一句「已排除内部用户」；若用户要求含内部数据，须在口径中显式说明。
 - 目录对照：`service_and_fee_sg_incorp.is_active = 1`
 - 所有分析 SQL 带 `LIMIT`（平台上限 2000 行）
 
@@ -156,7 +197,7 @@ LIMIT 2000;
 - 各块用业务语言 + 关键数字；cross-sell 与定价建议标明推断依据
 
 ### 分析口径（可选，1–3 句白话）
-- 例：「统计过去 30 天非模板的 SG SME 报价会话」「已排除内部测试账号」「按最新报价内容统计服务出现次数」
+- 例：「统计过去 30 天非模板的 SG SME 报价会话」「已排除内部用户」「按最新报价内容统计服务出现次数」
 
 ### 建议的下一步
 - 产品、培训、定价复盘、销售跟进等可执行动作
