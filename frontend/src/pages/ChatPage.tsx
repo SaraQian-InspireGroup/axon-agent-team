@@ -492,52 +492,58 @@ export function ChatPage() {
                 <h1 className="chat-header-title">{selected.name}</h1>
               </div>
               <div className="chat-header-actions">
-                <button
-                  type="button"
-                  className={`chat-header-btn${chatSessionLoading ? ' chat-header-btn-busy' : ''}`}
-                  aria-label="New chat"
-                  title="New chat"
-                  aria-busy={chatSessionLoading}
-                  disabled={loading || chatSessionLoading}
-                  onClick={() => void startNewChat()}
-                >
-                  <NewChatIcon />
-                </button>
-                <button
-                  type="button"
-                  className={`chat-header-btn ${memoryOpen ? 'chat-header-btn-active' : ''}`}
-                  aria-label="Memory"
-                  title="Memory"
-                  aria-expanded={memoryOpen}
-                  onClick={() => {
-                    setMemoryOpen((open) => {
-                      const next = !open
-                      if (next) setHistoryOpen(false)
-                      return next
-                    })
-                  }}
-                >
-                  <img src="/alzheimer.png" alt="" className="chat-header-memory-icon" width={18} height={18} />
-                </button>
-                <button
-                  type="button"
-                  className={`chat-header-btn ${historyOpen ? 'chat-header-btn-active' : ''}`}
-                  aria-label="Chat history"
-                  title="Chat history"
-                  aria-expanded={historyOpen}
-                  onClick={() => {
-                    setHistoryOpen((open) => {
-                      const next = !open
-                      if (next) {
-                        setMemoryOpen(false)
-                        if (selectedId) void refreshChatHistory(selectedId)
-                      }
-                      return next
-                    })
-                  }}
-                >
-                  <ChatHistoryIcon />
-                </button>
+                <div className="chat-header-action-wrap">
+                  <button
+                    type="button"
+                    className={`chat-header-btn${chatSessionLoading ? ' chat-header-btn-busy' : ''}`}
+                    aria-label="New Chat"
+                    aria-busy={chatSessionLoading}
+                    disabled={loading || chatSessionLoading}
+                    onClick={() => void startNewChat()}
+                  >
+                    <NewChatIcon className="chat-header-action-icon" />
+                  </button>
+                  <span className="chat-header-tooltip">New Chat</span>
+                </div>
+                <div className="chat-header-action-wrap">
+                  <button
+                    type="button"
+                    className={`chat-header-btn ${memoryOpen ? 'chat-header-btn-active' : ''}`}
+                    aria-label="Memory"
+                    aria-expanded={memoryOpen}
+                    onClick={() => {
+                      setMemoryOpen((open) => {
+                        const next = !open
+                        if (next) setHistoryOpen(false)
+                        return next
+                      })
+                    }}
+                  >
+                    <img src="/alzheimer.png" alt="" className="chat-header-action-icon chat-header-memory-icon" />
+                  </button>
+                  <span className="chat-header-tooltip">Memory</span>
+                </div>
+                <div className="chat-header-action-wrap">
+                  <button
+                    type="button"
+                    className={`chat-header-btn ${historyOpen ? 'chat-header-btn-active' : ''}`}
+                    aria-label="Chat History"
+                    aria-expanded={historyOpen}
+                    onClick={() => {
+                      setHistoryOpen((open) => {
+                        const next = !open
+                        if (next) {
+                          setMemoryOpen(false)
+                          if (selectedId) void refreshChatHistory(selectedId)
+                        }
+                        return next
+                      })
+                    }}
+                  >
+                    <ChatHistoryIcon className="chat-header-action-icon" />
+                  </button>
+                  <span className="chat-header-tooltip">Chat History</span>
+                </div>
               </div>
             </div>
 
