@@ -336,8 +336,7 @@ export function MemoryPanel({ open, agents, activeAgentId, refreshKey = 0, onClo
                       <MemoryScopeBlock
                         key={agent.id}
                         scopeKey={key}
-                        title={agent.name}
-                        subtitle={formatAgentSlugLabel(agent)}
+                        title={formatAgentSlugLabel(agent)}
                         doc={agentDocs[agent.id] ?? null}
                         expanded={!!expanded[key]}
                         isActive={agent.id === activeAgentId}
