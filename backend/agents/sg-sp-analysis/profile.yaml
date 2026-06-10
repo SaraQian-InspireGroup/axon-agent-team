@@ -16,6 +16,7 @@ mcp_servers:
       MYSQL_PASSWORD: ${SG_SP_MYSQL_PASSWORD}
       MYSQL_DATABASE: ${SG_SP_MYSQL_DATABASE}
 allowed_tools:
+  - suggest_visualization
   - mysql_list_databases
   - mysql_list_tables
   - mysql_describe_table
@@ -26,6 +27,9 @@ hooks:
     max_rows: 2000
   result_truncator:
     max_observation_bytes: 50000
+  sql_viz:
+    auto: true
+    min_rows: 3
 
 memory:
   working_set_turns: 15

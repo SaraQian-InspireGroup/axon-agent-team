@@ -1136,6 +1136,17 @@ body {
   margin-right: auto;
 }
 
+/* Assistant text + viz blocks share the same max width for visual alignment */
+:root {
+  --chat-assistant-max-width: 78%;
+}
+
+.chat-assistant-block {
+  width: 100%;
+  min-width: 0;
+  max-width: var(--chat-assistant-max-width);
+}
+
 /* Chat timeline */
 .chat-timeline {
   display: flex;
@@ -1552,4 +1563,236 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-subtle);
+}
+
+/* Viz widget: light gray frame + white content (reference table control) */
+.viz-widget-frame {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #ececea;
+  padding: 0.5rem 0.625rem 0.625rem;
+}
+
+.viz-bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding: 0 0.125rem;
+}
+
+.viz-widget-body {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.viz-widget-body-expanded {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.viz-bubble-title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.viz-widget-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.viz-widget-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.viz-widget-btn:hover {
+  color: var(--color-ink);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.viz-bubble-badge {
+  font-size: 9px;
+  padding: 0.125rem 0.375rem;
+  border-radius: 2px;
+  background: var(--color-brand-50);
+  color: var(--color-brand-700);
+  border: 1px solid var(--color-brand-100);
+}
+
+.viz-chart {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 280px;
+  padding: 0.25rem 0;
+  box-sizing: border-box;
+}
+
+.viz-table-wrap {
+  overflow: auto;
+  max-height: 320px;
+}
+
+.viz-table-wrap-expanded {
+  max-height: min(68vh, 560px);
+}
+
+.viz-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.viz-table th,
+.viz-table td {
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.viz-table th {
+  background: #f6f6f4;
+  font-weight: 600;
+  color: var(--color-ink);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.viz-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.viz-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.375rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.viz-list-expanded {
+  max-height: min(68vh, 560px);
+  overflow: auto;
+}
+
+.viz-list-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  font-size: 11px;
+  padding: 0.5rem 0.625rem;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: #fff;
+}
+
+.viz-list-item:last-child {
+  border-bottom: none;
+}
+
+.viz-list-title {
+  font-weight: 600;
+  color: var(--color-brand-700);
+}
+
+.viz-list-sub,
+.viz-list-meta {
+  color: var(--color-muted);
+}
+
+.viz-empty {
+  font-size: 11px;
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.chat-viz-row {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  max-width: var(--chat-assistant-max-width);
+}
+
+.viz-maximize-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.viz-maximize-backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: rgba(15, 23, 20, 0.45);
+  cursor: pointer;
+}
+
+.viz-maximize-panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 96vw);
+  max-height: 92vh;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #ececea;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  padding: 0.75rem 1rem 1rem;
+}
+
+.viz-maximize-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.viz-maximize-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.viz-chart-maximized {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: min(68vh, 560px);
 }

@@ -17,7 +17,9 @@ from app.platform.model_registry import ModelProvider, ModelProviderRegistry
 from app.platform.platform_instructions import append_platform_instructions
 from app.platform.session_store import SessionStore
 from app.platform.skill_registry import SkillRegistry
+from app.platform.hook_config import normalize_hooks
 from app.platform.tool_registry import ToolRegistry
+from app.tools import BUILTIN_TOOLS
 
 
 class AgentFactory:
@@ -91,7 +93,12 @@ class AgentFactory:
 
         function_tools = await self._tools.resolve_for_agent(agent_id)
         mcp_tools = await self._mcp.resolve_for_agent(agent_id, agent_config=row.config)
-        combined_tools = [*list(function_tools or []), *mcp_tools]
+        viz_tools: list = []
+        if any(name == "sql_viz" for name, _ in normalize_hooks(row.config.get("hooks"))):
+            viz_tool = BUILTIN_TOOLS.get("suggest_visualization")
+            if viz_tool is not None:
+                viz_tools.append(viz_tool)
+        combined_tools = [*viz_tools, *list(function_tools or []), *mcp_tools]
 
         agent = self._registry.create_agent(
             name=row.name,

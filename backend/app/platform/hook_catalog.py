@@ -12,6 +12,7 @@ from app.middleware.result_truncator import (
     ResultTruncatorMiddleware,
 )
 from app.middleware.sql_validator import SqlValidatorMiddleware
+from app.middleware.sql_viz import SqlVizMiddleware
 
 HookFactory = Callable[[dict[str, Any]], FunctionMiddleware]
 
@@ -42,6 +43,17 @@ HOOK_CATALOG: dict[str, HookSpec] = {
         description="Post-tool: truncate large SQL run_query results for the model",
         defaults={"max_observation_bytes": DEFAULT_MAX_OBSERVATION_BYTES},
         factory=_build_result_truncator,
+    ),
+    "sql_viz": HookSpec(
+        description=(
+            "Post-tool (register last in hooks): cache SQL rows and auto-queue charts. "
+            "Requires suggest_visualization in allowed_tools."
+        ),
+        defaults={"auto": True, "min_rows": 3},
+        factory=lambda params: SqlVizMiddleware(
+            auto=bool(params.get("auto", True)),
+            min_rows=int(params.get("min_rows", 3)),
+        ),
     ),
 }
 

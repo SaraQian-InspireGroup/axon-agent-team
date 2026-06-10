@@ -1,5 +1,6 @@
 import { ProcessStepCard } from './ProcessStepCard'
 import { MessageBubble } from './MessageBubble'
+import { VizBubble } from './VizBubble'
 import { groupMessages, shouldShowPendingIndicator, type ChatBlock } from '../lib/messageActivity'
 import type { Message } from '../types'
 
@@ -21,6 +22,13 @@ function renderBlock(block: ChatBlock, key: string) {
   if (block.kind === 'bubble') {
     return <MessageBubble key={key} message={block.message} />
   }
+  if (block.kind === 'viz') {
+    return (
+      <div key={key} className="chat-viz-row">
+        <VizBubble spec={block.spec} />
+      </div>
+    )
+  }
   return (
     <div key={key} className="chat-process-row">
       <ProcessStepCard item={block.item} />
@@ -35,7 +43,10 @@ export function ChatMessageList({ messages, streamingBlocks = [], loading = fals
   return (
     <div className="chat-timeline">
       {blocks.map((block, index) =>
-        renderBlock(block, block.kind === 'bubble' ? block.message.id : `${block.id}-${index}`),
+        renderBlock(
+          block,
+          block.kind === 'bubble' ? block.message.id : `${block.kind}-${block.id}-${index}`,
+        ),
       )}
       {showPending && <PendingIndicator />}
     </div>

@@ -14,11 +14,13 @@ import { getStoredChatId, setStoredChatId } from '../lib/chatStorage'
 import {
   applyStreamingBlockActivity,
   applyStreamingText,
+  applyStreamingViz,
   createStreamingActivityEntry,
   finalizeStreamingBlocks,
   finalizeStreamingReasoning,
   type ChatBlock,
 } from '../lib/messageActivity'
+import type { VizSpec } from '../types/viz'
 import type { Agent, ChatSummary, Message } from '../types'
 
 const SIDEBAR_COLLAPSED_KEY = 'agent-platform:sidebar-collapsed'
@@ -296,6 +298,10 @@ export function ChatPage() {
           }
           if (ev.event === 'reasoning_done') {
             setStreamingBlocks((prev) => finalizeStreamingReasoning(prev))
+          }
+          if (ev.event === 'viz' && ev.data.spec && typeof ev.data.spec === 'object') {
+            const spec = ev.data.spec as VizSpec
+            setStreamingBlocks((prev) => applyStreamingViz(prev, spec))
           }
           if (
             (ev.event === 'reasoning' ||

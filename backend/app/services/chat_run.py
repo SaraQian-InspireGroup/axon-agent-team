@@ -18,6 +18,8 @@ from app.platform.agent_factory import AgentFactory
 from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
 from app.platform.session_store import SessionStore
 from app.runs.manager import get_run_manager
+from app.viz.context import get_run_viz_state, init_run_viz_state, reset_run_viz_state
+from app.viz.spec import VizSpec
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +215,7 @@ class ChatRunService:
 
         emitter = _StreamSseEmitter(chat_id)
         accumulator = _StreamTurnAccumulator()
+        init_run_viz_state()
 
         async def finalize_cancel_once() -> None:
             await self._finalize_cancel(chat_id, run.run_id, accumulator)
@@ -253,8 +256,14 @@ class ChatRunService:
                     accumulator.observe(update)
                     for event in emitter.emit(update):
                         yield event
+                    # Emit charts as soon as SQL/suggest_visualization completes so order
+                    # follows the agent stream (text ↔ tools ↔ viz interleave naturally).
+                    for event in _emit_pending_viz_events(chat_id, accumulator):
+                        yield event
 
                 for event in emitter.flush():
+                    yield event
+                for event in _emit_pending_viz_events(chat_id, accumulator):
                     yield event
 
                 if run.stop_event.is_set():
@@ -293,6 +302,7 @@ class ChatRunService:
             await self._finalize_failure(chat_id, exc, response=final, accumulator=accumulator)
             raise
         finally:
+            reset_run_viz_state()
             await run_manager.complete(run.run_id)
 
     async def _persist_agent_messages(
@@ -394,6 +404,33 @@ def _collect_call_names(messages: list[Any]) -> dict[str, str]:
     return names
 
 
+def _viz_spec_payload(spec: VizSpec) -> dict[str, Any]:
+    return spec.model_dump(mode="json", exclude_none=True)
+
+
+def _emit_pending_viz_events(
+    chat_id: uuid.UUID,
+    accumulator: "_StreamTurnAccumulator",
+) -> list[dict[str, Any]]:
+    state = get_run_viz_state()
+    if state is None:
+        return []
+
+    events: list[dict[str, Any]] = []
+    for spec in state.drain_pending():
+        accumulator.record_viz(spec)
+        events.append(
+            {
+                "event": "viz",
+                "data": {
+                    "chat_id": str(chat_id),
+                    "spec": _viz_spec_payload(spec),
+                },
+            }
+        )
+    return events
+
+
 class _StreamTurnAccumulator:
     """Tracks streamed assistant output for persistence when a run fails mid-turn."""
 
@@ -404,6 +441,7 @@ class _StreamTurnAccumulator:
         self._emitted_calls: set[str] = set()
         self._emitted_results: set[str] = set()
         self._call_names: dict[str, str] = {}
+        self._viz_seq = 0
 
     def observe(self, update: Any) -> None:
         for content in getattr(update, "contents", None) or []:
@@ -522,6 +560,19 @@ class _StreamTurnAccumulator:
         if isinstance(content, str) and content:
             self._append_text(content)
 
+    def record_viz(self, spec: VizSpec) -> None:
+        self._flush_reasoning()
+        self._flush_text()
+        self._viz_seq += 1
+        self._rows.append(
+            {
+                "role": "assistant",
+                "message_type": "viz",
+                "content": spec.title,
+                "metadata": {"spec": _viz_spec_payload(spec)},
+            }
+        )
+
     def finalize(self) -> None:
         self._flush_reasoning()
         self._flush_text()
@@ -570,7 +621,7 @@ class _StreamTurnAccumulator:
         for row in self._rows:
             message_type = row["message_type"]
             meta = {**(row.get("metadata") or {}), **run_meta}
-            if message_type in ("tool_call", "tool_result"):
+            if message_type in ("tool_call", "tool_result", "viz"):
                 await repo.insert(
                     chat_id=chat_id,
                     role=row["role"],

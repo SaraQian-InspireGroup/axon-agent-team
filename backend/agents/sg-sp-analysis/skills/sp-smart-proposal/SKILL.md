@@ -118,6 +118,14 @@ LIMIT 2000;
 
 阶段/是否已生成：优先 `session_state_version.is_proposal_generated` 与 `state_data` 内 `stage`。
 
+## 可视化（平台自动 + suggest_visualization）
+
+每次 SQL 返回后平台**自动**附图，顺序跟随你的 ReAct 流（过渡语 → 查数 → 图 → 解读可交错）。按需组织叙事，勿暴露 tool 名或 JSON。
+
+- 多步：说明 → `execute_query` →（平台出图）→ 解读 → 下一查询 → 总结
+- 换视图：`suggest_visualization` + `intent`
+- 矩阵三列 + `matrix`；热力图橙色系；多系列用平台配色
+
 ## 执行顺序
 
 1. **确定回复语言**（与 system prompt 一致）

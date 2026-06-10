@@ -13,6 +13,7 @@ mcp_servers:
       DATABASE_URL: ${ODI_KNOWLEDGE_POSTGRES_URL}
       DB_READ_ONLY: "true"
 allowed_tools:
+  - suggest_visualization
   - postgres_list_tables
   - postgres_describe_table
   - postgres_get_schema
@@ -23,6 +24,9 @@ hooks:
     max_rows: 2000
   result_truncator:
     max_observation_bytes: 50000
+  sql_viz:
+    auto: true
+    min_rows: 3
 
 memory:
   working_set_turns: 15

@@ -1,4 +1,5 @@
 import type { Message } from '../types'
+import type { VizSpec } from '../types/viz'
 
 export type ActivityEntry = {
   id: string
@@ -11,6 +12,15 @@ export type ActivityEntry = {
 export type ChatBlock =
   | { kind: 'bubble'; message: Message }
   | { kind: 'process'; id: string; item: ActivityEntry }
+  | { kind: 'viz'; id: string; spec: VizSpec }
+
+function parseVizSpec(metadata: Record<string, unknown> | undefined): VizSpec | null {
+  const raw = metadata?.spec
+  if (!raw || typeof raw !== 'object') return null
+  const spec = raw as VizSpec
+  if (!spec.kind || !spec.title) return null
+  return spec
+}
 
 const PROCESS_SEPARATOR = '\n\n---\n\n'
 const REASONING_TITLE = 'Reasoning'
@@ -244,6 +254,13 @@ export function groupMessages(messages: Message[]): ChatBlock[] {
       mergeProcessBlock(blocks, messageToActivityEntry(message))
       continue
     }
+    if (message.message_type === 'viz') {
+      const spec = parseVizSpec(message.metadata)
+      if (spec) {
+        blocks.push({ kind: 'viz', id: message.id, spec })
+        continue
+      }
+    }
     blocks.push({ kind: 'bubble', message })
   }
 
@@ -409,5 +426,17 @@ export function createStreamingActivityEntry(
   }
 
   return null
+}
+
+export function applyStreamingViz(blocks: ChatBlock[], spec: VizSpec): ChatBlock[] {
+  const next = closeOpenStreamingText(blocks)
+  return [
+    ...next,
+    {
+      kind: 'viz',
+      id: `stream-viz-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      spec,
+    },
+  ]
 }
 

@@ -20,6 +20,11 @@ def test_hooks_map_empty_uses_defaults():
     assert hooks[0][1]["max_rows"] == 2000
 
 
+def test_sql_viz_hook_defaults():
+    hooks = normalize_hooks({"sql_viz": {}})
+    assert hooks[0] == ("sql_viz", {"auto": True, "min_rows": 3})
+
+
 def test_hooks_list():
     hooks = normalize_hooks(["sql_validator", "result_truncator"])
     assert [h[0] for h in hooks] == ["sql_validator", "result_truncator"]
