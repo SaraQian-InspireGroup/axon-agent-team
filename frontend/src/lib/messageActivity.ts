@@ -1,4 +1,5 @@
 import type { Message } from '../types'
+import type { ArtifactSpec } from '../types/artifact'
 import type { VizSpec } from '../types/viz'
 
 export type ActivityEntry = {
@@ -13,6 +14,15 @@ export type ChatBlock =
   | { kind: 'bubble'; message: Message }
   | { kind: 'process'; id: string; item: ActivityEntry }
   | { kind: 'viz'; id: string; spec: VizSpec }
+  | { kind: 'artifact'; id: string; spec: ArtifactSpec }
+
+function parseArtifactSpec(metadata: Record<string, unknown> | undefined): ArtifactSpec | null {
+  const raw = metadata?.spec
+  if (!raw || typeof raw !== 'object') return null
+  const spec = raw as ArtifactSpec
+  if (!spec.kind || !spec.title || !spec.content) return null
+  return spec
+}
 
 function parseVizSpec(metadata: Record<string, unknown> | undefined): VizSpec | null {
   const raw = metadata?.spec
@@ -261,6 +271,13 @@ export function groupMessages(messages: Message[]): ChatBlock[] {
         continue
       }
     }
+    if (message.message_type === 'artifact') {
+      const spec = parseArtifactSpec(message.metadata)
+      if (spec) {
+        blocks.push({ kind: 'artifact', id: message.id, spec })
+        continue
+      }
+    }
     blocks.push({ kind: 'bubble', message })
   }
 
@@ -435,6 +452,18 @@ export function applyStreamingViz(blocks: ChatBlock[], spec: VizSpec): ChatBlock
     {
       kind: 'viz',
       id: `stream-viz-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      spec,
+    },
+  ]
+}
+
+export function applyStreamingArtifact(blocks: ChatBlock[], spec: ArtifactSpec): ChatBlock[] {
+  const next = closeOpenStreamingText(blocks)
+  return [
+    ...next,
+    {
+      kind: 'artifact',
+      id: `stream-artifact-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       spec,
     },
   ]

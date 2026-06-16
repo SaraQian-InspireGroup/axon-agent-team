@@ -1,0 +1,29 @@
+# 知识索引 — 仅用于「选型 → 知识条目」解析（required doc、credential 等）
+# 静态模版块由 templates/*/template.yaml 的 static placeholder 直接指向文件
+
+entries:
+  passport-bvi:
+    kind: required_doc
+    title: Certified passport copy
+    path: peripheral/required-docs/BVI/passport.md
+    region: BVI
+
+  utility-bill-bvi:
+    kind: required_doc
+    title: Proof of address (utility bill or bank statement)
+    path: peripheral/required-docs/BVI/utility-bill.md
+    region: BVI
+
+triggers:
+  # required docs：由已选 SKU 的 service_group 决定（非 template 写死 incorporation 章节）
+  - match:
+      category_id: harneys-bvi
+      service_group: incorporation
+    add: [passport-bvi, utility-bill-bvi]
+
+  - match:
+      category_id: harneys-bvi
+      service_group: transfer_in
+    add: [passport-bvi, utility-bill-bvi]
+
+  # optional 章节 additional_info 的 service 触发见 templates/harneys-bvi/template.yaml optional_sections.trigger

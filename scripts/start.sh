@@ -9,7 +9,7 @@ echo "==> Starting backend..."
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
 echo "==> Verifying agents API..."
-for _ in $(seq 1 10); do
+for _ in $(seq 1 30); do
   if curl -sf "http://${HOST}:${PORT}/api/v1/agents" >/dev/null 2>&1; then
     break
   fi

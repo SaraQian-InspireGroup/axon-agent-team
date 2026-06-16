@@ -1,4 +1,4 @@
-"""Capture SQL results and optionally auto-generate visualizations."""
+"""Capture SQL results; optionally auto-queue charts when auto is enabled."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 class SqlVizMiddleware(FunctionMiddleware):
-    """Post-tool: cache full SQL rows and queue auto visualizations (innermost SQL hook)."""
+    """Post-tool: cache full SQL rows; auto-queue charts only when auto=True."""
 
-    def __init__(self, *, auto: bool = True, min_rows: int = 3) -> None:
+    def __init__(self, *, auto: bool = False, min_rows: int = 3) -> None:
         self._auto = auto
         self._min_rows = min_rows
         self._call_ids: dict[int, str] = {}

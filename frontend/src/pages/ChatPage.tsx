@@ -12,6 +12,7 @@ import { UserIcon } from '../components/UserIcon'
 import { formatAgentSlugLabel } from '../lib/agentLabel'
 import { getStoredChatId, setStoredChatId } from '../lib/chatStorage'
 import {
+  applyStreamingArtifact,
   applyStreamingBlockActivity,
   applyStreamingText,
   applyStreamingViz,
@@ -20,6 +21,7 @@ import {
   finalizeStreamingReasoning,
   type ChatBlock,
 } from '../lib/messageActivity'
+import type { ArtifactSpec } from '../types/artifact'
 import type { VizSpec } from '../types/viz'
 import type { Agent, ChatSummary, Message } from '../types'
 
@@ -302,6 +304,10 @@ export function ChatPage() {
           if (ev.event === 'viz' && ev.data.spec && typeof ev.data.spec === 'object') {
             const spec = ev.data.spec as VizSpec
             setStreamingBlocks((prev) => applyStreamingViz(prev, spec))
+          }
+          if (ev.event === 'artifact' && ev.data.spec && typeof ev.data.spec === 'object') {
+            const spec = ev.data.spec as ArtifactSpec
+            setStreamingBlocks((prev) => applyStreamingArtifact(prev, spec))
           }
           if (
             (ev.event === 'reasoning' ||

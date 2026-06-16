@@ -2,7 +2,7 @@ import json
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ from app.db.models import AgentModel, Chat
 from app.platform.current_user import get_current_user_id
 from app.db.session import get_db
 from app.services.chat_run import ChatRunService, list_chat_messages
+from app.proposal.storage import artifact_download_filename, resolve_artifact_path
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
@@ -65,6 +66,27 @@ async def get_messages(chat_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -
         raise HTTPException(status_code=404, detail="Chat not found")
     rows = await list_chat_messages(db, chat_id)
     return [MessageOut(**row) for row in rows]
+
+
+@router.get("/{chat_id}/artifacts/{artifact_id}")
+async def download_artifact(
+    chat_id: uuid.UUID,
+    artifact_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    chat = await db.get(Chat, chat_id)
+    if chat is None:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    path = resolve_artifact_path(chat_id, artifact_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    filename = artifact_download_filename(chat_id, artifact_id)
+    return FileResponse(
+        path,
+        media_type="text/markdown; charset=utf-8",
+        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/{chat_id}/messages")

@@ -14,11 +14,38 @@ _INTENT_LITERAL = Literal["auto", "trend", "matrix", "ranking", "detail", "none"
 
 
 @tool(
+    name="list_sql_results",
+    description=(
+        "List SQL query results cached in this run (oldest first). "
+        "After multiple queries, use source_call_id from here when calling "
+        "suggest_visualization."
+    ),
+)
+def list_sql_results() -> dict:
+    state = get_run_viz_state()
+    if state is None or not state.sql_results:
+        return {"results": [], "message": "No SQL results cached yet."}
+
+    results = [
+        {
+            "source_call_id": entry.call_id,
+            "tool_name": entry.tool_name,
+            "row_count": len(entry.rows),
+            "columns": entry.columns[:20],
+        }
+        for entry in state.sql_results.values()
+    ]
+    return {"results": results, "latest_call_id": state.latest_call_id}
+
+
+@tool(
     name="suggest_visualization",
     description=(
-        "Render a chart or table from the most recent SQL query result. "
-        "Pass intent only (auto/trend/matrix/ranking/detail/none); "
-        "the platform selects chart type and builds the visualization spec."
+        "Render a chart or table from a cached SQL query result. "
+        "Call after summarizing or when a visual helps the answer. "
+        "Pass intent (auto/trend/matrix/ranking/detail/none); "
+        "optionally pass source_call_id from list_sql_results when several "
+        "queries ran in this turn."
     ),
 )
 def suggest_visualization(

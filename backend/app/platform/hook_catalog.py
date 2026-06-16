@@ -46,12 +46,14 @@ HOOK_CATALOG: dict[str, HookSpec] = {
     ),
     "sql_viz": HookSpec(
         description=(
-            "Post-tool (register last in hooks): cache SQL rows and auto-queue charts. "
-            "Requires suggest_visualization in allowed_tools."
+            "Post-tool (register last in hooks): cache SQL rows for visualization tools. "
+            "Charts render only when the model calls suggest_visualization "
+            "(set auto: true to also auto-queue after each query). "
+            "Requires list_sql_results and suggest_visualization in allowed_tools."
         ),
-        defaults={"auto": True, "min_rows": 3},
+        defaults={"auto": False, "min_rows": 3},
         factory=lambda params: SqlVizMiddleware(
-            auto=bool(params.get("auto", True)),
+            auto=bool(params.get("auto", False)),
             min_rows=int(params.get("min_rows", 3)),
         ),
     ),

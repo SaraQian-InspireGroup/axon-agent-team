@@ -96,3 +96,33 @@ def test_same_call_deduped():
     assert state.queue_viz(result, source_call_id="call-1")
     assert not state.queue_viz(result, source_call_id="call-1")
     assert len(state.pending_specs) == 1
+
+
+def test_list_sql_results_returns_cached_entries():
+    from app.tools.viz import list_sql_results
+    from app.viz.context import get_run_viz_state, init_run_viz_state, reset_run_viz_state
+
+    init_run_viz_state()
+    try:
+        state = get_run_viz_state()
+        assert state is not None
+        state.store_sql(
+            call_id="call-1",
+            tool_name="postgres_query_data",
+            rows=[{"a": 1}],
+            columns=["a"],
+        )
+        state.store_sql(
+            call_id="call-2",
+            tool_name="postgres_query_data",
+            rows=[{"b": 2}, {"b": 3}],
+            columns=["b"],
+        )
+
+        out = list_sql_results()
+        assert len(out["results"]) == 2
+        assert out["results"][0]["source_call_id"] == "call-1"
+        assert out["results"][1]["row_count"] == 2
+        assert out["latest_call_id"] == "call-2"
+    finally:
+        reset_run_viz_state()

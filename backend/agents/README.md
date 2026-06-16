@@ -11,6 +11,7 @@ agents/
     system_prompt.md
     mcp_servers.yaml      # optional
     skills/<name>/SKILL.md
+    knowledge/            # optional — runtime data (see proposal-composer)
 ```
 
 `profile.yaml` 的 `id` 必须与目录名一致。

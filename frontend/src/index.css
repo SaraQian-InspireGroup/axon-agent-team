@@ -1796,3 +1796,32 @@ body {
   min-width: 0;
   height: min(68vh, 560px);
 }
+
+/* Proposal artifact widget — same frame language as viz, markdown preview + download */
+.chat-artifact-row {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.artifact-widget-frame {
+  margin-top: 0.125rem;
+}
+
+.artifact-markdown-wrap {
+  overflow: auto;
+  padding: 0.75rem 0.875rem;
+}
+
+.artifact-markdown-wrap-expanded {
+  max-height: min(68vh, 640px);
+}
+
+.artifact-markdown-body {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.artifact-maximize-panel {
+  max-width: min(920px, 96vw);
+}

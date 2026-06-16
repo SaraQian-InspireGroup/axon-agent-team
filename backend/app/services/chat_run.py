@@ -17,6 +17,9 @@ from app.memory.memory_config import MemoryConfig, parse_memory_config
 from app.platform.agent_factory import AgentFactory
 from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
 from app.platform.session_store import SessionStore
+from app.proposal.context import get_run_proposal_state, init_run_proposal_state, reset_run_proposal_state
+from app.proposal.store import load_proposal_state_from_payload, persist_proposal_state_if_dirty
+from app.proposal.artifact_spec import ArtifactSpec
 from app.runs.manager import get_run_manager
 from app.viz.context import get_run_viz_state, init_run_viz_state, reset_run_viz_state
 from app.viz.spec import VizSpec
@@ -24,6 +27,9 @@ from app.viz.spec import VizSpec
 logger = logging.getLogger(__name__)
 
 _TOOL_ROW_TYPES = frozenset({"tool_call", "tool_result", "mcp_call", "mcp_result"})
+
+
+_PROPOSAL_AGENT_SLUG = "proposal-composer"
 
 
 class ChatRunService:
@@ -82,6 +88,15 @@ class ChatRunService:
         agent = await self._db.get(AgentModel, chat.agent_id)
         return parse_memory_config(agent.config if agent else {})
 
+    async def _prepare_proposal_context(self, chat: Chat) -> None:
+        agent = await self._db.get(AgentModel, chat.agent_id)
+        if not agent or agent.slug != _PROPOSAL_AGENT_SLUG:
+            reset_run_proposal_state()
+            return
+        payload = await self._sessions.get_payload(chat.id)
+        initial = load_proposal_state_from_payload(payload)
+        init_run_proposal_state(chat_id=chat.id, initial_state=initial)
+
     async def _finalize_success(
         self,
         chat_id: uuid.UUID,
@@ -96,6 +111,7 @@ class ChatRunService:
             await accumulator.persist(self._messages, chat_id)
         else:
             await self._persist_agent_messages(chat_id, response, skip_tool_rows=False)
+        await persist_proposal_state_if_dirty(self._sessions, chat_id)
         await self._sessions.append_completed_turn(
             chat_id,
             memory_config,
@@ -135,10 +151,24 @@ class ChatRunService:
         )
         await self._db.flush()
 
+    async def _persist_pending_artifacts(self, chat_id: uuid.UUID) -> None:
+        ctx = get_run_proposal_state()
+        if ctx is None:
+            return
+        for spec in ctx.drain_pending_artifacts():
+            await self._messages.insert(
+                chat_id=chat_id,
+                role="assistant",
+                message_type="artifact",
+                content=spec.title,
+                metadata={"spec": _artifact_spec_payload(spec)},
+            )
+
     async def run_message(self, chat_id: uuid.UUID, content: str) -> str:
         chat = await self._get_chat(chat_id)
         memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
+        await self._prepare_proposal_context(chat)
         user_row = await self._commit_user_turn(chat, content)
         memory_result = await try_handle_memory_command(
             self._db,
@@ -169,6 +199,7 @@ class ChatRunService:
         try:
             async with bundle as agent:
                 result = await agent.run(content, session=session)
+            await self._persist_pending_artifacts(chat_id)
             await self._finalize_success(
                 chat_id,
                 session,
@@ -180,11 +211,14 @@ class ChatRunService:
         except Exception as exc:
             await self._finalize_failure(chat_id, exc)
             raise
+        finally:
+            reset_run_proposal_state()
 
     async def stream_message(self, chat_id: uuid.UUID, content: str) -> AsyncIterator[dict[str, Any]]:
         chat = await self._get_chat(chat_id)
         memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
+        await self._prepare_proposal_context(chat)
         user_row = await self._commit_user_turn(chat, content)
         memory_result = await try_handle_memory_command(
             self._db,
@@ -260,10 +294,14 @@ class ChatRunService:
                     # follows the agent stream (text ↔ tools ↔ viz interleave naturally).
                     for event in _emit_pending_viz_events(chat_id, accumulator):
                         yield event
+                    for event in _emit_pending_artifact_events(chat_id, accumulator):
+                        yield event
 
                 for event in emitter.flush():
                     yield event
                 for event in _emit_pending_viz_events(chat_id, accumulator):
+                    yield event
+                for event in _emit_pending_artifact_events(chat_id, accumulator):
                     yield event
 
                 if run.stop_event.is_set():
@@ -303,6 +341,7 @@ class ChatRunService:
             raise
         finally:
             reset_run_viz_state()
+            reset_run_proposal_state()
             await run_manager.complete(run.run_id)
 
     async def _persist_agent_messages(
@@ -406,6 +445,33 @@ def _collect_call_names(messages: list[Any]) -> dict[str, str]:
 
 def _viz_spec_payload(spec: VizSpec) -> dict[str, Any]:
     return spec.model_dump(mode="json", exclude_none=True)
+
+
+def _artifact_spec_payload(spec: ArtifactSpec) -> dict[str, Any]:
+    return spec.model_dump(mode="json", exclude_none=True)
+
+
+def _emit_pending_artifact_events(
+    chat_id: uuid.UUID,
+    accumulator: "_StreamTurnAccumulator",
+) -> list[dict[str, Any]]:
+    ctx = get_run_proposal_state()
+    if ctx is None:
+        return []
+
+    events: list[dict[str, Any]] = []
+    for spec in ctx.drain_pending_artifacts():
+        accumulator.record_artifact(spec)
+        events.append(
+            {
+                "event": "artifact",
+                "data": {
+                    "chat_id": str(chat_id),
+                    "spec": _artifact_spec_payload(spec),
+                },
+            }
+        )
+    return events
 
 
 def _emit_pending_viz_events(
@@ -573,6 +639,18 @@ class _StreamTurnAccumulator:
             }
         )
 
+    def record_artifact(self, spec: ArtifactSpec) -> None:
+        self._flush_reasoning()
+        self._flush_text()
+        self._rows.append(
+            {
+                "role": "assistant",
+                "message_type": "artifact",
+                "content": spec.title,
+                "metadata": {"spec": _artifact_spec_payload(spec)},
+            }
+        )
+
     def finalize(self) -> None:
         self._flush_reasoning()
         self._flush_text()
@@ -621,7 +699,7 @@ class _StreamTurnAccumulator:
         for row in self._rows:
             message_type = row["message_type"]
             meta = {**(row.get("metadata") or {}), **run_meta}
-            if message_type in ("tool_call", "tool_result", "viz"):
+            if message_type in ("tool_call", "tool_result", "viz", "artifact"):
                 await repo.insert(
                     chat_id=chat_id,
                     role=row["role"],

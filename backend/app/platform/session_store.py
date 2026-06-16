@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 SESSION_TTL_SECONDS = 60 * 60 * 24
 WORKING_SET_VERSION = 1
+# Extensions that must survive redis/DB merge (redis may lag behind DB on cold start).
+_PERSISTED_EXTENSION_KEYS = ("proposal_state",)
 
 
 class SessionStore:
@@ -44,6 +46,16 @@ class SessionStore:
     async def save_session(self, chat_id: uuid.UUID, session: AgentSession) -> None:
         payload = await self._load_payload(chat_id) or {}
         payload["session"] = session.to_dict()
+        await self._save_payload(chat_id, payload)
+
+    async def get_payload(self, chat_id: uuid.UUID) -> dict[str, Any]:
+        payload = await self._load_payload(chat_id)
+        return payload if payload is not None else {}
+
+    async def merge_extension(self, chat_id: uuid.UUID, key: str, value: Any) -> None:
+        """Merge a top-level key into the chat session payload (e.g. proposal_state)."""
+        payload = await self._load_payload(chat_id) or {}
+        payload[key] = value
         await self._save_payload(chat_id, payload)
 
     async def get_or_create(self, chat_id: uuid.UUID) -> AgentSession:
@@ -155,17 +167,25 @@ class SessionStore:
         rows = await self._messages.list_by_chat(chat_id)
         return [row_to_dict(r) for r in rows]
 
-    async def _load_payload(self, chat_id: uuid.UUID) -> dict[str, Any] | None:
-        cached = await self._get_from_redis(chat_id)
-        if cached is not None:
-            return cached
-
+    async def _load_payload_from_db(self, chat_id: uuid.UUID) -> dict[str, Any] | None:
         result = await self._db.execute(select(Chat).where(Chat.id == chat_id))
         chat = result.scalar_one_or_none()
-        if chat and chat.session_state:
-            if isinstance(chat.session_state, dict):
-                return chat.session_state
+        if chat and chat.session_state and isinstance(chat.session_state, dict):
+            return chat.session_state
         return None
+
+    async def _load_payload(self, chat_id: uuid.UUID) -> dict[str, Any] | None:
+        db_payload = await self._load_payload_from_db(chat_id)
+        cached = await self._get_from_redis(chat_id)
+        if cached is None:
+            return db_payload
+        if db_payload is None:
+            return cached
+        merged = dict(cached)
+        for key in _PERSISTED_EXTENSION_KEYS:
+            if key not in merged and key in db_payload:
+                merged[key] = db_payload[key]
+        return merged
 
     async def _save_payload(self, chat_id: uuid.UUID, payload: dict[str, Any]) -> None:
         await self._set_redis(chat_id, payload)

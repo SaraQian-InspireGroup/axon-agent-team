@@ -1,6 +1,7 @@
 import { ProcessStepCard } from './ProcessStepCard'
 import { MessageBubble } from './MessageBubble'
 import { VizBubble } from './VizBubble'
+import { ArtifactBubble } from './ArtifactBubble'
 import { groupMessages, shouldShowPendingIndicator, type ChatBlock } from '../lib/messageActivity'
 import type { Message } from '../types'
 
@@ -26,6 +27,13 @@ function renderBlock(block: ChatBlock, key: string) {
     return (
       <div key={key} className="chat-viz-row">
         <VizBubble spec={block.spec} />
+      </div>
+    )
+  }
+  if (block.kind === 'artifact') {
+    return (
+      <div key={key} className="chat-artifact-row">
+        <ArtifactBubble spec={block.spec} />
       </div>
     )
   }

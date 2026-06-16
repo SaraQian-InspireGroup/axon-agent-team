@@ -1,0 +1,62 @@
+template_id: au-advisory
+category_id: au-services
+display_name: Australia Tax and Advisory
+body: proposal.md
+
+placeholders:
+  client.company_name:
+    type: state
+    path: client.company_name
+    required: true
+
+  client.contact_name:
+    type: state
+    path: client.contact_name
+    required: false
+
+  static.introduction:
+    type: static
+    file: blocks/introduction-au-advisory.md
+    required: true
+
+  solution_and_price:
+    type: solution_and_price
+    title: Solution and professional fees
+    required: true
+    # AU 展示层：按 department_team 分组；附带 scope_of_work 文本（有则显示）
+    fee_layout:
+      group_by: department_team
+      show_line_amount: true
+    include_scope_of_work: true
+
+  knowledge.credentials:
+    type: knowledge
+    resolver: session_pick
+    kind: credential
+    required: false
+
+  session.appendix:
+    type: session
+    path: appendix
+    required: false
+
+  static.terms:
+    type: static
+    file: blocks/terms-au-advisory.md
+    required: true
+
+optional_sections:
+  - id: credentials
+    title: Credentials
+    placeholder: knowledge.credentials
+    trigger:
+      any_of:
+        - enabled_sections: [credentials]
+
+  - id: appendix
+    title: Appendix
+    placeholder: session.appendix
+    trigger:
+      any_of:
+        - enabled_sections: [appendix]
+    page_break: true

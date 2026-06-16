@@ -1,0 +1,36 @@
+id: proposal-composer
+name: "Proposal Composer"
+description: "Cross-region proposal drafting with MDM catalog, templates, and deterministic pricing."
+
+model_provider: azure_anthropic
+model: ${CLAUDE_AZURE_FOUNDRY_MODEL}
+prompt_file: system_prompt.md
+skills_dir: skills
+
+mcp_servers:
+  postgres:
+    env:
+      DATABASE_URL: ${DATABASE_URL}
+      DB_READ_ONLY: "true"
+
+allowed_tools:
+  - list_categories
+  - read_knowledge
+  - get_proposal_state
+  - patch_proposal_state
+  - render_preview
+  - generate_document
+  - postgres_list_tables
+  - postgres_describe_table
+  - postgres_get_schema
+  - postgres_query_data
+
+hooks:
+  sql_validator:
+    max_rows: 500
+  result_truncator:
+    max_observation_bytes: 50000
+
+memory:
+  working_set_turns: 20
+  cold_resume_max_turns: 12

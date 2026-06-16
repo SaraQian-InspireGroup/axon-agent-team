@@ -15,6 +15,7 @@ from app.db.models import (
     AgentTool,
     McpServer,
     Skill,
+    Tool,
     User,
 )
 from app.platform.mcp_config import pack_for_storage
@@ -24,6 +25,7 @@ from app.platform.profile_loader import (
     load_agent_mcp_servers,
     mcp_storage_name,
 )
+from app.tools import BUILTIN_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +113,33 @@ async def _cleanup_orphan_file_mcp_servers(session: AsyncSession, active_slugs: 
         logger.info("Removed orphan MCP server: %s", row.name)
 
 
+async def _ensure_builtin_tool(session: AsyncSession, name: str) -> uuid.UUID | None:
+    if name not in BUILTIN_TOOLS:
+        return None
+    row = (await session.execute(select(Tool).where(Tool.name == name))).scalar_one_or_none()
+    if row is None:
+        row = Tool(
+            name=name,
+            description=f"Builtin tool: {name}",
+            tool_type="builtin",
+            definition={"kind": "builtin", "name": name},
+        )
+        session.add(row)
+        await session.flush()
+    return row.id
+
+
+async def _link_allowed_builtin_tools(
+    session: AsyncSession,
+    agent_id: uuid.UUID,
+    allowed_tools: list[str] | None,
+) -> None:
+    for name in allowed_tools or []:
+        tool_id = await _ensure_builtin_tool(session, name)
+        if tool_id is not None:
+            session.add(AgentTool(agent_id=agent_id, tool_id=tool_id))
+
+
 async def sync_agents_from_profiles(session: AsyncSession) -> None:
     profiles = discover_agent_profiles()
     if not profiles:
@@ -191,6 +220,12 @@ async def sync_agents_from_profiles(session: AsyncSession) -> None:
                 skill_row.description = f"Skill from {rel_str}"
             await session.flush()
             session.add(AgentSkill(agent_id=agent_id, skill_id=skill_row.id))
+
+        await _link_allowed_builtin_tools(
+            session,
+            agent_id,
+            list(profile.extra_config.get("allowed_tools") or []),
+        )
 
         logger.info("Synced agent profile: %s", profile.slug)
 

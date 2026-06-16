@@ -118,12 +118,12 @@ LIMIT 2000;
 
 阶段/是否已生成：优先 `session_state_version.is_proposal_generated` 与 `state_data` 内 `stage`。
 
-## 可视化（平台自动 + suggest_visualization）
+## 可视化（按需 suggest_visualization）
 
-每次 SQL 返回后平台**自动**附图，顺序跟随你的 ReAct 流（过渡语 → 查数 → 图 → 解读可交错）。按需组织叙事，勿暴露 tool 名或 JSON。
+SQL 成功后平台**只缓存**，不自动出图。总结或解读时若图表能显著帮助理解，再调用 `suggest_visualization`（`intent`：`auto` / `trend` / `matrix` / `ranking` / `detail` / `none`）。顺序跟随 ReAct 流（说明 → 查数 → 解读 → 按需出图），勿暴露 tool 名或 JSON。
 
-- 多步：说明 → `execute_query` →（平台出图）→ 解读 → 下一查询 → 总结
-- 换视图：`suggest_visualization` + `intent`
+- 多步：说明 → `execute_query` → 文字解读 →（需要时）`suggest_visualization` → 下一查询 → 总结
+- 同轮多查询：先 `list_sql_results`，用 `source_call_id` 指定要可视化的那次结果
 - 矩阵三列 + `matrix`；热力图橙色系；多系列用平台配色
 
 ## 执行顺序

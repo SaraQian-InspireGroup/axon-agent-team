@@ -36,7 +36,8 @@ pid=$!
 echo "$pid" >"$PID_FILE"
 
 ready=0
-for _ in $(seq 1 40); do
+max_wait="${BACKEND_STARTUP_WAIT:-120}"
+for i in $(seq 1 "$max_wait"); do
   if ! kill -0 "$pid" 2>/dev/null; then
     echo "Backend failed to start. Last log lines:"
     tail -20 "$LOG_FILE" 2>/dev/null || true
@@ -47,11 +48,16 @@ for _ in $(seq 1 40); do
     ready=1
     break
   fi
+  if (( i % 20 == 0 )); then
+    echo "  Still waiting for backend health (${i}/${max_wait})..."
+  fi
   sleep 0.5
 done
 
 if [[ "$ready" -ne 1 ]]; then
-  echo "Backend did not become healthy in time. Last log lines:"
+  echo "Backend did not become healthy in time (${max_wait} x 0.5s)."
+  echo "If DATABASE_URL points to a remote Postgres, sync on startup can be slow."
+  echo "Set BACKEND_STARTUP_WAIT=240 for more headroom. Last log lines:"
   tail -20 "$LOG_FILE" 2>/dev/null || true
   kill "$pid" 2>/dev/null || true
   rm -f "$PID_FILE"

@@ -15,6 +15,7 @@ htmlcov/
 
 backend/.venv/
 backend/.run/
+backend/data/proposal-artifacts/
 frontend/.run/
 
 frontend/node_modules/

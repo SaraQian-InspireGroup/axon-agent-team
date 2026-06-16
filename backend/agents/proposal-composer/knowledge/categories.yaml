@@ -1,0 +1,15 @@
+# Category 路由注册表 — get_category_manifest / list_categories 读此文件
+# 产品 SKU / package 在 PostgreSQL mdm_services / mdm_packages
+
+categories:
+  - category_id: harneys-bvi
+    region: BVI
+    bu: Harneys
+    display_name: "Harneys BVI Corporate Services"
+    default_template_id: harneys-bvi
+
+  - category_id: au-services
+    region: AU
+    bu: "Tax and Advisory"
+    display_name: "Australia Tax and Advisory Services"
+    default_template_id: au-advisory

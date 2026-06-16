@@ -33,7 +33,7 @@ class SkillRegistry:
                 paths.append(path)
         if not paths:
             return None
-        return SkillsProvider.from_paths(*paths)
+        return SkillsProvider.from_paths(paths)
 
     def _resolve_skill_path(self, row: Skill) -> Path | None:
         if row.source_type != "file" or not row.source_path:

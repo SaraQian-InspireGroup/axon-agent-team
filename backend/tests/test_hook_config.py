@@ -22,7 +22,7 @@ def test_hooks_map_empty_uses_defaults():
 
 def test_sql_viz_hook_defaults():
     hooks = normalize_hooks({"sql_viz": {}})
-    assert hooks[0] == ("sql_viz", {"auto": True, "min_rows": 3})
+    assert hooks[0] == ("sql_viz", {"auto": False, "min_rows": 3})
 
 
 def test_hooks_list():

@@ -1,0 +1,7 @@
+# MCP servers for proposal-composer — read-only MDM catalog in PostgreSQL.
+servers:
+  postgres:
+    command: npx
+    args:
+      - -y
+      - mcp-postgres@latest

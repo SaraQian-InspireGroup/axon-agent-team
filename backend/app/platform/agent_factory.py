@@ -95,10 +95,28 @@ class AgentFactory:
         mcp_tools = await self._mcp.resolve_for_agent(agent_id, agent_config=row.config)
         viz_tools: list = []
         if any(name == "sql_viz" for name, _ in normalize_hooks(row.config.get("hooks"))):
-            viz_tool = BUILTIN_TOOLS.get("suggest_visualization")
-            if viz_tool is not None:
-                viz_tools.append(viz_tool)
-        combined_tools = [*viz_tools, *list(function_tools or []), *mcp_tools]
+            for viz_name in ("list_sql_results", "suggest_visualization"):
+                viz_tool = BUILTIN_TOOLS.get(viz_name)
+                if viz_tool is not None:
+                    viz_tools.append(viz_tool)
+
+        proposal_tool_names = (
+            "list_categories",
+            "read_knowledge",
+            "get_proposal_state",
+            "patch_proposal_state",
+            "render_preview",
+            "generate_document",
+        )
+        allowed = list((row.config or {}).get("allowed_tools") or [])
+        proposal_tools: list = []
+        for name in proposal_tool_names:
+            if name in allowed:
+                tool = BUILTIN_TOOLS.get(name)
+                if tool is not None:
+                    proposal_tools.append(tool)
+
+        combined_tools = [*viz_tools, *proposal_tools, *list(function_tools or []), *mcp_tools]
 
         agent = self._registry.create_agent(
             name=row.name,

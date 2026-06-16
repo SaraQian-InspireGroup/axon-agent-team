@@ -91,7 +91,7 @@ class Settings(BaseSettings):
         if scheme in ("postgresql", "postgres"):
             scheme = "postgresql+asyncpg"
 
-        connect_args: dict[str, Any] = {}
+        connect_args: dict[str, Any] = {"timeout": 15, "command_timeout": 45}
         query: list[tuple[str, str]] = []
         for key, value in parse_qsl(parsed.query, keep_blank_values=True):
             if key == "channel_binding":

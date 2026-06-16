@@ -82,19 +82,19 @@ Schema 与维度矩阵见 [references/schema-and-dimensions.md](references/schem
 
 区域与服务交叉、枚举详情见 [references/regions-and-services.md](references/regions-and-services.md)。
 
-## 可视化（平台自动 + suggest_visualization）
+## 可视化（按需 suggest_visualization）
 
-平台在**每次 SQL 成功返回后**自动生成图表；展示顺序**跟随你的 ReAct 流程**（你先说的过渡语 → 查数 → 图 → 再说的解读），**不是**固定「先全部图再全部字」。你可按需：
+SQL 成功后平台**只缓存结果**，**不会**自动出图。在总结或解读阶段，当图表能显著帮助理解时再调用 `suggest_visualization`（只传 `intent`：`auto` / `trend` / `matrix` / `ranking` / `detail` / `none`）。展示顺序**跟随你的 ReAct 流程**（过渡语 → 查数 → 解读 → 按需出图），勿固定「先全部图再全部字」。
 
-- 查数前用一两句说明打算查什么（如「同时看服务和区域分布」）
-- 每次 `query_data` 后平台附图；接着用文字解读该图，或继续下一次查询
-- 需要换视图时调用 `suggest_visualization`，只传 `intent`（`trend` / `matrix` / `ranking` / `detail` / `none`）
+- 查数前用一两句说明打算查什么；查完后先用文字给出要点
+- **值得可视化时**再 `suggest_visualization`；纯枚举、单行汇总、用户只要数字时可不出图
+- 同轮多次 SQL：先 `list_sql_results` 取 `source_call_id`，再传给 `suggest_visualization`
 
 | 场景 | 做法 |
 |------|------|
-| 多步分析 | 过渡语 → SQL →（平台出图）→ 解读 → 下一 SQL → … → 总结 |
-| 交叉矩阵 | SQL 三列（行、列、计数）；热力图橙色系深浅表强度 |
-| 多系列对比 | 折线/柱/组合图由平台配色区分 series |
+| 多步分析 | 过渡语 → SQL → 文字解读 →（需要时出图）→ 下一 SQL → … → 总结 |
+| 交叉矩阵 | SQL 三列（行、列、计数）+ `intent=matrix`；热力图橙色系深浅表强度 |
+| 多系列对比 | `intent=auto` 或 `trend`；折线/柱/组合图由平台配色区分 series |
 | 图表失败 | 平台降级表格；markdown 或文字补充，继续分析 |
 
 勿粘贴 JSON 或 tool 名称；正文用「如下图」等指代即可。

@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
         logger.warning("Redis connection failed — session cache will use DB only")
     factory = get_async_session_factory()
     disk_profiles = discover_agent_profiles()
+    logger.info("Syncing agent profiles from disk (%d profiles)...", len(disk_profiles))
     async with factory() as session:
         await ensure_dev_seed(session)
         synced = (
