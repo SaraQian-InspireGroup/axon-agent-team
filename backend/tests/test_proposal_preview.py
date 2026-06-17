@@ -1,7 +1,9 @@
 from unittest.mock import patch
 
 from app.proposal.preview import build_live_preview, proposal_state_fingerprint
-from app.proposal.state import apply_patch, empty_proposal_state
+from app.proposal.state import apply_json_patch, empty_proposal_state
+from tests.proposal_patch_helpers import add, jp, replace
+
 
 SAMPLE_SERVICES = [
     {
@@ -18,20 +20,20 @@ SAMPLE_SERVICES = [
 
 
 def _ready_state():
-    state = empty_proposal_state()
-    state = apply_patch(state, {"op": "set_category", "category_id": "harneys-bvi"})
-    state = apply_patch(
-        state,
-        {"op": "select_packages", "package_ids": [], "selected_skus": ["BVI-incorporation-001"]},
+    return apply_json_patch(
+        empty_proposal_state(),
+        jp(
+            replace("/proposal_meta/category_id", "harneys-bvi"),
+            replace("/selection/selected_skus", ["BVI-incorporation-001"]),
+            replace("/client/company_name", "Demo Ltd"),
+        ),
     )
-    state = apply_patch(state, {"op": "set_client", "client": {"company_name": "Demo Ltd"}})
-    return state
 
 
 def test_fingerprint_changes_when_selection_changes():
     state = _ready_state()
     fp1 = proposal_state_fingerprint(state)
-    state = apply_patch(state, {"op": "add_skus", "skus": ["SKU-NEW"]})
+    state = apply_json_patch(state, jp(add("/selection/selected_skus/-", "SKU-NEW")))
     fp2 = proposal_state_fingerprint(state)
     assert fp1 != fp2
 

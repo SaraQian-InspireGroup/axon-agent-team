@@ -16,6 +16,7 @@ mcp_servers:
 allowed_tools:
   - list_categories
   - read_knowledge
+  - get_proposal_schema
   - get_proposal_state
   - patch_proposal_state
   - render_preview
@@ -26,6 +27,7 @@ allowed_tools:
   - postgres_query_data
 
 hooks:
+  proposal_persist: {}
   sql_validator:
     max_rows: 500
   result_truncator:

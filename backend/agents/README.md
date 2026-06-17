@@ -46,6 +46,7 @@ hooks:
 |------|------|------|
 | `sql_validator` | `max_rows` | `2000` |
 | `result_truncator` | `max_observation_bytes` | `50000` |
+| `proposal_persist` | — | 无参数；需 `allowed_tools` 含 proposal builtin tools |
 
 新增平台 hook：在 `hook_catalog.py` 注册 `HookSpec`，各 agent 的 profile 即可引用。
 

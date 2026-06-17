@@ -21,6 +21,7 @@ import {
   createStreamingActivityEntry,
   finalizeStreamingBlocks,
   finalizeStreamingReasoning,
+  mergeMessagesFromApi,
   type ChatBlock,
 } from '../lib/messageActivity'
 import type { ArtifactSpec } from '../types/artifact'
@@ -65,6 +66,7 @@ function shouldReplaceProposalPreview(
 ): boolean {
   if (!prev) return true
   if (next.state_fingerprint !== prev.state_fingerprint) return true
+  if (next.markdown !== prev.markdown) return true
   if (next.markdown && !prev.markdown) return true
   if (prev.markdown && !next.markdown && (next.status === 'empty' || next.status === 'blocked')) {
     return false
@@ -297,7 +299,7 @@ export function ChatPage() {
   const reloadMessagesAfterStream = useCallback(
     async (id: string, options?: { keepStreamingIfEmpty?: boolean }) => {
       const rows = await api.listMessages(id)
-      setMessages(rows)
+      setMessages((prev) => mergeMessagesFromApi(rows, prev))
       setStreamingBlocks((prev) => {
         if (rows.length === 0 && prev.length > 0) {
           return prev
@@ -431,6 +433,14 @@ export function ChatPage() {
             }
           }
           if (
+            ev.event === 'tool_result' &&
+            ev.data?.tool_name === 'patch_proposal_state' &&
+            chatId &&
+            isProposalComposer
+          ) {
+            void fetchProposalPreview(chatId)
+          }
+          if (
             (ev.event === 'reasoning' ||
               ev.event === 'tool_call' ||
               ev.event === 'tool_result') &&
@@ -449,6 +459,7 @@ export function ChatPage() {
           }
           if (ev.event === 'done' || ev.event === 'run_cancelled') {
             finishStreamingUi()
+            triggerReload()
             if (ev.event === 'done' && isProposalComposer && chatId) {
               void fetchProposalPreview(chatId)
             }

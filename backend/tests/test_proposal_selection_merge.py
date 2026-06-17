@@ -1,7 +1,9 @@
 from unittest.mock import patch
 
 from app.proposal.pipeline import run_pipeline
-from app.proposal.state import apply_patch, empty_proposal_state
+from app.proposal.state import apply_json_patch, empty_proposal_state
+from tests.proposal_patch_helpers import add, jp, replace
+
 
 LODGE = {
     "sku": "AU-LODG",
@@ -25,18 +27,19 @@ XERO = {
 }
 
 
-def test_add_skus_keeps_existing_services_in_artifact_pipeline():
-    """Simulates user adding Xero while Lodgement was already selected."""
-    state = empty_proposal_state()
-    state = apply_patch(state, {"op": "set_category", "category_id": "au-services"})
-    state = apply_patch(state, {"op": "select_packages", "package_ids": [], "selected_skus": ["AU-LODG"]})
+def test_append_skus_keeps_existing_services_in_pipeline():
+    state = apply_json_patch(
+        empty_proposal_state(),
+        jp(
+            replace("/proposal_meta/category_id", "au-services"),
+            replace("/selection/selected_skus", ["AU-LODG"]),
+        ),
+    )
 
-    # Wrong agent behavior (replace-only) drops Lodgement:
-    wrong = apply_patch(state, {"op": "select_packages", "package_ids": [], "selected_skus": ["AU-XERO"]})
+    wrong = apply_json_patch(state, jp(replace("/selection/selected_skus", ["AU-XERO"])))
     assert wrong["selection"]["selected_skus"] == ["AU-XERO"]
 
-    # Correct append keeps both:
-    state = apply_patch(state, {"op": "add_skus", "skus": ["AU-XERO"]})
+    state = apply_json_patch(state, jp(add("/selection/selected_skus/-", "AU-XERO")))
     assert state["selection"]["selected_skus"] == ["AU-LODG", "AU-XERO"]
 
     with patch("app.proposal.pipeline.expand_selected_skus", return_value=["AU-LODG", "AU-XERO"]):

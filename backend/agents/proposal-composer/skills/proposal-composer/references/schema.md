@@ -1,47 +1,60 @@
-# Proposal state (writable vs derived)
+# Proposal state schema
 
-Field dictionary for **what to patch**. **When/how to call tools** → tool descriptions, not this file.
+Machine-readable contract: **`get_proposal_schema`** returns JSON Schema Draft 2020-12.
 
-## Writable
+## Tools
 
-| Field | Purpose |
-|-------|---------|
-| `proposal_meta.category_id` | Routes MDM catalog scope |
-| `proposal_meta.template_id` | Document template (auto from category when omitted) |
-| `client.*` | Company and contact |
-| `pricing_facts.*` | Inputs for TIERED/MATRIX pricing (e.g. `share_count`) |
-| `selection.selected_packages` | Package IDs |
-| `selection.selected_skus` | Ad-hoc SKUs outside packages |
-| `pricing.overrides` | Manual line adjustments `{ sku: { amount, reason } }` |
-| `enabled_sections` | Optional template sections |
-| `fee_description` | Override fee intro text (defaults from template block) |
-| `fee_layout.custom_groups` | Split/reassign fee tables `{ group_id, display_name, skus[] }` |
-| `payment_options.options` | Payment option rows/labels (defaults derived from fee tables) |
-| `payment_options.overrides` | Adjust option totals without changing SKU pricing |
-| `appendix` | Free-form appendix content |
+| Tool | Role |
+|------|------|
+| `get_proposal_schema` | JSON Schema (editable vs `readOnly`) |
+| `get_proposal_state` | Read full state or subtree via JSON Pointer |
+| `patch_proposal_state` | RFC 6902 JSON Patch (`add` / `remove` / `replace` / …) |
 
-Semantic ops (`set_category`, `add_skus`, …) → **`patch_proposal_state` tool parameter description**.
+**Guardrails**: only schema paths without `readOnly` accept patches; invalid patches return `http_status: 422` with `errors[]`. After a successful patch the platform recomputes derived fields (`line_items`, `pricing.computed`, `completeness`, …).
 
-## Derived (do not patch)
+## Common paths
 
-| Field | Source |
-|-------|--------|
-| `selection.expanded_skus` | Packages expanded + explicit SKUs |
-| `pricing.computed` | `compute_pricing` from MDM + facts |
-| `line_items` | Fee table grouped by template `fee_layout` |
-| `payment_options.resolved` | Payment summary derived from fee tables |
-| `resolved_placeholders` | Template + knowledge index |
-| `peripheral.required_docs` | Knowledge index triggers |
-| `completeness` | Required placeholder scan |
-| `proposal_meta.stage` | Derived progress label |
+| Path | Purpose |
+|------|---------|
+| `/proposal_meta/category_id` | MDM catalog scope |
+| `/proposal_meta/template_id` | Document template |
+| `/client/*` | Company and contact |
+| `/pricing_facts/*` | TIERED/MATRIX inputs (e.g. `share_count`) |
+| `/selection/selected_packages` | Package IDs |
+| `/selection/selected_skus` | Ad-hoc SKUs |
+| `/pricing/overrides/{sku}` | Manual price override |
+| `/enabled_sections` | Optional template sections |
+| `/fee_description` | Intro paragraph above fee tables (not `###` table heading) |
+| `/fee_layout/group_labels/{group_id}` | Fee table heading override |
+| `/fee_layout/custom_groups` | Split/reassign fee tables |
+| `/payment_options/options` | Payment option rows; non-empty → auto-enables Fee summary section |
+| `/payment_options/overrides` | Payment summary tweaks |
+| `/appendix` | Appendix content |
 
-## Completeness (for user-facing gaps)
+## JSON Patch examples
 
-| Flag / list | Meaning |
-|-------------|---------|
-| `missing_required` | Required placeholders unfilled — explain in sales language |
-| `ready_to_preview` | Required placeholders filled |
-| `ready_to_generate` | Required + enabled optional sections filled |
-| `enabled_optional_unfilled` | Optional section enabled but content missing |
+```json
+[
+  {"op": "replace", "path": "/proposal_meta/category_id", "value": "au-services"},
+  {"op": "replace", "path": "/client/company_name", "value": "Acme Ltd"},
+  {"op": "add", "path": "/selection/selected_skus/-", "value": "AU-TAX"},
+  {"op": "replace", "path": "/fee_layout/group_labels/additional_services", "value": "Corporate Advisory"}
+]
+```
 
-Live Proposal panel renders draft even when incomplete; **`generate_document`** respects `ready_to_generate` unless `force=true`.
+Append SKU (keep existing): `add` to `/selection/selected_skus/-`. Replace entire list: `replace` on `/selection/selected_skus`.
+
+## Read-only (derived)
+
+`readOnly` in schema — do not patch; platform fills after write:
+
+- `/selection/expanded_skus`
+- `/pricing/computed`, `/pricing/explanations`, `/pricing/recurring_schedule`
+- `/line_items`
+- `/payment_options/resolved` — empty until Fee summary optional section is active
+- `/resolved_placeholders`, `/peripheral`, `/completeness`, `/active_optional_sections`
+- `/proposal_meta/stage`, `/artifacts`
+
+## Completeness
+
+Read `/completeness` after patch. `generate_document` respects `ready_to_generate` unless `force=true`. Live panel renders draft even when incomplete.

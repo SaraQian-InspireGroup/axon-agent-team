@@ -1,7 +1,7 @@
 import json
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -15,6 +15,17 @@ from app.proposal.state import empty_proposal_state
 from app.proposal.store import load_proposal_state_from_payload
 
 
+def _patch_payload(**state_fields):
+    return {
+        "patched": True,
+        "status": "ok",
+        "state": {
+            **empty_proposal_state(),
+            **state_fields,
+        },
+    }
+
+
 def test_load_proposal_state_ignores_empty_dict():
     assert load_proposal_state_from_payload({"proposal_state": {}}) is None
 
@@ -25,13 +36,11 @@ def test_load_proposal_state_ignores_intake_shell_without_scope():
 
 
 def test_proposal_state_from_tool_result_accepts_patched_payload():
-    payload = {
-        "patched": True,
-        "status": "ok",
-        "proposal_meta": {"category_id": "au-services", "stage": "REVIEW"},
-        "selection": {"selected_skus": ["CSS23"]},
-        "client": {"company_name": "Acme"},
-    }
+    payload = _patch_payload(
+        proposal_meta={"category_id": "au-services", "stage": "REVIEW"},
+        selection={"selected_packages": [], "selected_skus": ["CSS23"]},
+        client={"company_name": "Acme"},
+    )
     state = proposal_state_from_tool_result(payload)
     assert state is not None
     assert state["selection"]["selected_skus"] == ["CSS23"]
@@ -42,11 +51,10 @@ def test_extract_patch_result_prefers_content():
     row = SimpleNamespace(
         message_type="tool_result",
         content=json.dumps(
-            {
-                "patched": True,
-                "proposal_meta": {"category_id": "au-services"},
-                "selection": {"selected_skus": ["A"]},
-            }
+            _patch_payload(
+                proposal_meta={"category_id": "au-services"},
+                selection={"selected_packages": [], "selected_skus": ["A"]},
+            )
         ),
         message_metadata={"tool_name": "patch_proposal_state"},
     )
@@ -62,11 +70,10 @@ def test_extract_patch_result_falls_back_to_metadata_result():
         message_metadata={
             "tool_name": "patch_proposal_state",
             "result": json.dumps(
-                {
-                    "patched": True,
-                    "proposal_meta": {"category_id": "au-services"},
-                    "selection": {"selected_skus": ["B"]},
-                }
+                _patch_payload(
+                    proposal_meta={"category_id": "au-services"},
+                    selection={"selected_packages": [], "selected_skus": ["B"]},
+                )
             ),
         },
     )
@@ -82,22 +89,20 @@ async def test_recover_proposal_state_from_messages_returns_latest():
     older = SimpleNamespace(
         message_type="tool_result",
         content=json.dumps(
-            {
-                "patched": True,
-                "proposal_meta": {"category_id": "au-services"},
-                "selection": {"selected_skus": ["OLD"]},
-            }
+            _patch_payload(
+                proposal_meta={"category_id": "au-services"},
+                selection={"selected_packages": [], "selected_skus": ["OLD"]},
+            )
         ),
         message_metadata={"tool_name": "patch_proposal_state"},
     )
     newer = SimpleNamespace(
         message_type="tool_result",
         content=json.dumps(
-            {
-                "patched": True,
-                "proposal_meta": {"category_id": "au-services"},
-                "selection": {"selected_skus": ["NEW"]},
-            }
+            _patch_payload(
+                proposal_meta={"category_id": "au-services"},
+                selection={"selected_packages": [], "selected_skus": ["NEW"]},
+            )
         ),
         message_metadata={"tool_name": "patch_proposal_state"},
     )

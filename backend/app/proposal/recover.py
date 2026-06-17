@@ -7,25 +7,7 @@ import uuid
 from typing import Any
 
 from app.db.repositories.messages import MessageRepository
-from app.proposal.state import empty_proposal_state
-
-_PUBLIC_STATE_KEYS = (
-    "proposal_meta",
-    "client",
-    "pricing_facts",
-    "selection",
-    "enabled_sections",
-    "fee_description",
-    "fee_layout",
-    "payment_options",
-    "appendix",
-    "pricing",
-    "line_items",
-    "peripheral",
-    "resolved_placeholders",
-    "completeness",
-    "active_optional_sections",
-)
+from app.proposal.schema import empty_proposal_state, writable_snapshot
 
 
 def _parse_tool_payload(raw: Any) -> dict[str, Any] | None:
@@ -45,20 +27,17 @@ def _parse_tool_payload(raw: Any) -> dict[str, Any] | None:
     return None
 
 
-def _merge_public_view(state: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
-    merged = empty_proposal_state()
-    for key in _PUBLIC_STATE_KEYS:
-        if key in payload and payload[key] is not None:
-            merged[key] = payload[key]
-    return merged
-
-
 def proposal_state_from_tool_result(payload: dict[str, Any]) -> dict[str, Any] | None:
     if payload.get("status") == "error" or payload.get("error"):
         return None
-    if not payload.get("patched") and not payload.get("proposal_meta"):
+    if not payload.get("patched"):
         return None
-    state = _merge_public_view(empty_proposal_state(), payload)
+
+    raw_state = payload.get("state")
+    if not isinstance(raw_state, dict):
+        return None
+
+    state = writable_snapshot(raw_state)
     meta = state.get("proposal_meta") or {}
     selection = state.get("selection") or {}
     if not (

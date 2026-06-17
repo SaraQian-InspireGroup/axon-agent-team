@@ -1,6 +1,5 @@
 from app.proposal.loaders import get_category, load_categories, load_template_yaml
 from app.proposal.pricing import compute_pricing
-from app.proposal.state import apply_patch, empty_proposal_state
 
 
 def test_load_categories():
@@ -70,30 +69,3 @@ def test_compute_tiered_requires_share_count():
     computed, _, _ = compute_pricing(services, {"share_count": 1})
     assert computed["BVI-GOV"]["status"] == "computed"
     assert computed["BVI-GOV"]["amount"] == 350
-
-
-def test_apply_patch_semantic_ops():
-    state = empty_proposal_state()
-    state = apply_patch(state, {"op": "set_category", "category_id": "harneys-bvi"})
-    assert state["proposal_meta"]["category_id"] == "harneys-bvi"
-
-    state = apply_patch(
-        state,
-        {"op": "set_client", "client": {"company_name": "Acme"}},
-    )
-    assert state["client"]["company_name"] == "Acme"
-
-    state = apply_patch(
-        state,
-        {"op": "select_packages", "package_ids": ["PKG-BVI-INCORP-STD"]},
-    )
-    assert state["selection"]["selected_packages"] == ["PKG-BVI-INCORP-STD"]
-
-    state = apply_patch(state, {"op": "add_skus", "skus": ["SKU-A", "SKU-B"]})
-    assert state["selection"]["selected_skus"] == ["SKU-A", "SKU-B"]
-
-    state = apply_patch(state, {"op": "add_skus", "skus": ["SKU-B", "SKU-C"]})
-    assert state["selection"]["selected_skus"] == ["SKU-A", "SKU-B", "SKU-C"]
-
-    state = apply_patch(state, {"op": "remove_skus", "skus": ["SKU-B"]})
-    assert state["selection"]["selected_skus"] == ["SKU-A", "SKU-C"]

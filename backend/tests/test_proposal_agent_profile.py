@@ -15,6 +15,7 @@ def test_proposal_builtin_tools_registered():
     for name in (
         "list_categories",
         "read_knowledge",
+        "get_proposal_schema",
         "get_proposal_state",
         "patch_proposal_state",
         "render_preview",

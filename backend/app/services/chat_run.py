@@ -811,17 +811,22 @@ class _StreamSseEmitter:
                 if not call_id or call_id in self._emitted_results:
                     continue
                 self._emitted_results.add(call_id)
+                tool_name = self._call_names.get(call_id, "")
                 events.append(
                     {
                         "event": "tool_result",
                         "data": {
                             "chat_id": chat_id,
                             "call_id": call_id,
-                            "tool_name": self._call_names.get(call_id, ""),
+                            "tool_name": tool_name,
                             "result": _json_safe(getattr(content, "result", None)),
                         },
                     }
                 )
+                if tool_name == "patch_proposal_state":
+                    preview_event = _proposal_updated_event(self._chat_id)
+                    if preview_event is not None:
+                        events.append(preview_event)
                 continue
 
             if content_type == "text":

@@ -27,6 +27,39 @@ from app.proposal.pricing import compute_pricing
 from app.proposal.state import get_path
 
 
+def _sync_enabled_sections_from_writable(state: dict[str, Any]) -> None:
+    """Turn on optional sections when the agent has written their writable payload."""
+    enabled = set(state.get("enabled_sections") or [])
+    payment = state.get("payment_options") or {}
+    if payment.get("options"):
+        enabled.add("payment_options")
+    state["enabled_sections"] = sorted(enabled)
+
+
+def _compute_active_optional_sections(
+    state: dict[str, Any],
+    template_id: str | None,
+    services: list[dict[str, Any]],
+) -> list[str]:
+    if not template_id:
+        return []
+    tpl = load_template_yaml(template_id)
+    optional_sections = tpl.get("optional_sections") or []
+    service_groups = _selected_service_groups(services)
+    enabled_sections = set(state.get("enabled_sections") or [])
+    active = {
+        str(section["id"])
+        for section in optional_sections
+        if section.get("id")
+        and _optional_section_enabled(
+            section,
+            service_groups=service_groups,
+            enabled_sections=enabled_sections,
+        )
+    }
+    return sorted(active)
+
+
 def run_pipeline(state: dict[str, Any]) -> dict[str, Any]:
     meta = state.setdefault("proposal_meta", {})
     category_id = meta.get("category_id")
@@ -51,6 +84,10 @@ def run_pipeline(state: dict[str, Any]) -> dict[str, Any]:
     state["pricing"]["explanations"] = explanations
     state["pricing"]["recurring_schedule"] = recurring
 
+    _sync_enabled_sections_from_writable(state)
+    active_optional = _compute_active_optional_sections(state, template_id, services)
+    state["active_optional_sections"] = active_optional
+
     state["line_items"] = materialize_line_items(
         services,
         computed,
@@ -58,7 +95,11 @@ def run_pipeline(state: dict[str, Any]) -> dict[str, Any]:
         state=state,
         category_id=str(category_id) if category_id else None,
     )
-    state["payment_options"] = materialize_payment_options(state, state["line_items"])
+    state["payment_options"] = materialize_payment_options(
+        state,
+        state["line_items"],
+        section_active="payment_options" in active_optional,
+    )
     state["resolved_placeholders"] = resolve_placeholders(state, services, template_id)
     state["completeness"] = scan_completeness(state, template_id)
     meta["stage"] = derive_stage(state)
@@ -91,6 +132,63 @@ def _build_row(
     if include_scope and service.get("scope_of_work"):
         row["scope_of_work"] = service["scope_of_work"]
     return row
+
+
+def _collect_group_display_overrides(state: dict[str, Any]) -> dict[str, str]:
+    """Merge writable fee-table title overrides from fee_layout and payment_options."""
+    fee_layout = state.get("fee_layout") or {}
+    overrides: dict[str, str] = {}
+    raw_labels = fee_layout.get("group_labels")
+    if isinstance(raw_labels, dict):
+        for group_id, label in raw_labels.items():
+            text = str(label or "").strip()
+            if group_id and text:
+                overrides[str(group_id)] = text
+
+    custom_groups = fee_layout.get("custom_groups")
+    if isinstance(custom_groups, list):
+        for spec in custom_groups:
+            if not isinstance(spec, dict):
+                continue
+            group_id = spec.get("group_id")
+            display_name = str(spec.get("display_name") or "").strip()
+            skus = spec.get("skus")
+            if group_id and display_name and not skus:
+                overrides[str(group_id)] = display_name
+
+    payment_overrides = (state.get("payment_options") or {}).get("overrides") or {}
+    for option_patch in payment_overrides.values():
+        if not isinstance(option_patch, dict):
+            continue
+        row_patches = option_patch.get("rows") or {}
+        if not isinstance(row_patches, dict):
+            continue
+        for group_id, row_patch in row_patches.items():
+            if not isinstance(row_patch, dict):
+                continue
+            label = str(row_patch.get("label") or "").strip()
+            if group_id and label:
+                overrides[str(group_id)] = label
+
+    return overrides
+
+
+def _apply_group_display_overrides(
+    groups: list[dict[str, Any]],
+    state: dict[str, Any],
+) -> list[dict[str, Any]]:
+    overrides = _collect_group_display_overrides(state)
+    if not overrides:
+        return groups
+    updated: list[dict[str, Any]] = []
+    for group in groups:
+        group_id = str(group.get("group_id") or "")
+        label = overrides.get(group_id)
+        if label:
+            updated.append({**group, "display_name": label})
+        else:
+            updated.append(group)
+    return updated
 
 
 def _group_services_by_package(
@@ -233,6 +331,9 @@ def materialize_line_items(
     state = state or {}
     selection = state.get("selection") or {}
     custom_groups = (state.get("fee_layout") or {}).get("custom_groups")
+    use_custom_regroup = isinstance(custom_groups, list) and any(
+        isinstance(spec, dict) and spec.get("skus") for spec in custom_groups
+    )
 
     if group_by == "package":
         groups = _group_services_by_package(
@@ -241,9 +342,9 @@ def materialize_line_items(
             category_id=category_id,
             selection=selection,
             include_scope=include_scope,
-            custom_groups=custom_groups if isinstance(custom_groups, list) else None,
+            custom_groups=custom_groups if use_custom_regroup else None,
         )
-        return {"groups": groups}
+        return {"groups": _apply_group_display_overrides(groups, state)}
 
     buckets: dict[str, list[dict[str, Any]]] = {}
     group_labels: dict[str, str] = {}
@@ -267,13 +368,26 @@ def materialize_line_items(
         }
         for group_id, rows in buckets.items()
     ]
-    return {"groups": groups}
+    return {"groups": _apply_group_display_overrides(groups, state)}
 
 
-def materialize_payment_options(state: dict[str, Any], line_items: dict[str, Any]) -> dict[str, Any]:
+def materialize_payment_options(
+    state: dict[str, Any],
+    line_items: dict[str, Any],
+    *,
+    section_active: bool = False,
+) -> dict[str, Any]:
     writable = state.get("payment_options") or {}
     user_options = list(writable.get("options") or [])
     overrides = writable.get("overrides") or {}
+
+    if not section_active:
+        return {
+            "options": user_options,
+            "overrides": overrides,
+            "resolved": [],
+        }
+
     groups = line_items.get("groups") or []
 
     default_rows: list[dict[str, Any]] = []
@@ -537,18 +651,7 @@ def resolve_placeholders(
     tpl = load_template_yaml(template_id)
     placeholders = tpl.get("placeholders") or {}
     optional_sections = tpl.get("optional_sections") or []
-    service_groups = _selected_service_groups(services)
-    enabled_sections = set(state.get("enabled_sections") or [])
-    active_optional = {
-        section["id"]
-        for section in optional_sections
-        if section.get("id")
-        and _optional_section_enabled(
-            section,
-            service_groups=service_groups,
-            enabled_sections=enabled_sections,
-        )
-    }
+    active_optional = set(_compute_active_optional_sections(state, template_id, services))
     state["active_optional_sections"] = sorted(active_optional)
 
     resolved: dict[str, Any] = {

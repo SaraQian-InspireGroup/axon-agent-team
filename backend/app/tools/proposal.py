@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 from typing import Annotated, Any
 
@@ -15,55 +16,15 @@ from app.proposal.pipeline import run_pipeline
 from app.proposal.preview import build_live_preview
 from app.proposal.rehydrate import rehydrate_proposal_state
 from app.proposal.render import render_proposal_markdown
-from app.proposal.state import apply_patch
+from app.proposal.schema import PROPOSAL_STATE_SCHEMA, PatchValidationError, apply_json_patch, resolve_pointer
 from app.proposal.storage import build_filename, new_artifact_id, save_markdown
 
 _PREVIEW_CHAR_LIMIT = 1200
 logger = logging.getLogger(__name__)
 
 
-def _public_state_view(state: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "proposal_meta": state.get("proposal_meta"),
-        "client": state.get("client"),
-        "pricing_facts": state.get("pricing_facts"),
-        "selection": state.get("selection"),
-        "enabled_sections": state.get("enabled_sections"),
-        "fee_description": state.get("fee_description"),
-        "fee_layout": state.get("fee_layout"),
-        "payment_options": {
-            "options": (state.get("payment_options") or {}).get("options"),
-            "overrides": (state.get("payment_options") or {}).get("overrides"),
-            "resolved": (state.get("payment_options") or {}).get("resolved"),
-        },
-        "appendix": state.get("appendix"),
-        "pricing": {
-            "computed": (state.get("pricing") or {}).get("computed"),
-            "overrides": (state.get("pricing") or {}).get("overrides"),
-            "explanations": (state.get("pricing") or {}).get("explanations"),
-            "recurring_schedule": (state.get("pricing") or {}).get("recurring_schedule"),
-        },
-        "line_items": state.get("line_items"),
-        "peripheral": state.get("peripheral"),
-        "resolved_placeholders": {
-            key: {
-                "filled": entry.get("filled"),
-                "preview": _preview(entry.get("value")),
-            }
-            for key, entry in (state.get("resolved_placeholders") or {}).items()
-        },
-        "completeness": state.get("completeness"),
-        "active_optional_sections": state.get("active_optional_sections"),
-    }
-
-
-def _preview(value: Any, limit: int = 240) -> Any:
-    if not isinstance(value, str):
-        return value
-    text = value.strip()
-    if len(text) <= limit:
-        return text
-    return text[: limit - 3] + "..."
+def _resolve_pointer(state: dict[str, Any], pointer: str) -> Any:
+    return resolve_pointer(state, pointer)
 
 
 def _validate_read_path(relative_path: str) -> None:
@@ -81,6 +42,23 @@ def _validate_read_path(relative_path: str) -> None:
         or str(full).startswith(str(templates))
     ):
         raise ValueError("Path must be under peripheral/ or templates/*/blocks/")
+
+
+def _patch_error_response(exc: PatchValidationError) -> dict[str, Any]:
+    return {
+        "status": "error",
+        "http_status": 422,
+        "errors": exc.errors,
+        "error": str(exc),
+    }
+
+
+def _patch_ok_response(state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "patched": True,
+        "state": copy.deepcopy(state),
+    }
 
 
 @tool(
@@ -125,53 +103,69 @@ def read_knowledge(
 
 
 @tool(
+    name="get_proposal_schema",
+    description="Return the JSON Schema for proposal_state (editable vs readOnly fields).",
+)
+def get_proposal_schema() -> dict[str, Any]:
+    return {"schema": PROPOSAL_STATE_SCHEMA}
+
+
+@tool(
     name="get_proposal_state",
     description=(
-        "Read persisted proposal state (selection, line_items, pricing, completeness). "
-        "Use before confirming edits or when chat text may not match state. Read-only."
+        "Read proposal_state. Omit path for the full object; pass a JSON Pointer "
+        "(e.g. /selection) to read a subtree."
     ),
 )
-def get_proposal_state() -> dict[str, Any]:
+def get_proposal_state(
+    path: Annotated[
+        str | None,
+        "Optional JSON Pointer (/client, /selection, /completeness). Omit for full state.",
+    ] = None,
+) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
         return {"error": "Proposal context unavailable for this run."}
     if rehydrate_proposal_state(ctx.state):
         ctx.mark_dirty()
-    return _public_state_view(ctx.state)
+    if path:
+        try:
+            value = _resolve_pointer(ctx.state, path)
+        except Exception as exc:
+            return {"status": "error", "path": path, "error": str(exc)}
+        return {"path": path, "value": copy.deepcopy(value)}
+    return {"state": copy.deepcopy(ctx.state)}
 
 
 @tool(
     name="patch_proposal_state",
     description=(
-        "Write confirmed proposal changes; platform recomputes pricing and line_items. "
-        "Use for client, selection, sections, and price overrides after catalog is known. "
-        "Do not use for catalog lookup—use query_data first, then patch."
+        "Apply RFC 6902 JSON Patch to proposal_state (add, remove, replace, move, copy, test). "
+        "Only non-readOnly schema paths are allowed; readOnly fields are recomputed after write. "
+        "Invalid patches return http_status 422 with structured errors."
     ),
 )
 def patch_proposal_state(
     patch: Annotated[
-        dict[str, Any],
+        list[dict[str, Any]],
         (
-            "Patch object: semantic op and/or field merge. "
-            "Ops: set_category, set_client, select_packages (replaces full SKU list), "
-            "add_skus (append), remove_skus, set_pricing_facts, enable_sections. "
-            "Adding a service: add_skus—not select_packages with only the new SKU."
+            "JSON Patch array. Examples: "
+            '[{"op":"replace","path":"/proposal_meta/category_id","value":"au-services"}], '
+            '[{"op":"add","path":"/selection/selected_skus/-","value":"AU-TAX"}], '
+            '[{"op":"replace","path":"/client/company_name","value":"Acme Ltd"}].'
         ),
     ],
 ) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
         return {"error": "Proposal context unavailable for this run.", "status": "error"}
-    if not isinstance(patch, dict):
-        return {"error": "patch must be a JSON object", "status": "error"}
     try:
-        ctx.state = apply_patch(ctx.state, patch)
+        ctx.state = apply_json_patch(ctx.state, patch)
         run_pipeline(ctx.state)
         ctx.mark_dirty()
-        view = _public_state_view(ctx.state)
-        view["patched"] = True
-        view["status"] = "ok"
-        return view
+        return _patch_ok_response(ctx.state)
+    except PatchValidationError as exc:
+        return _patch_error_response(exc)
     except Exception as exc:
         logger.exception("patch_proposal_state failed")
         return {"status": "error", "error": str(exc) or type(exc).__name__}

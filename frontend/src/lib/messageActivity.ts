@@ -256,6 +256,24 @@ function createStreamingTextMessage(text: string): Message {
   }
 }
 
+export function mergeMessagesFromApi(persisted: Message[], local: Message[]): Message[] {
+  const merged = new Map(persisted.map((message) => [message.id, message]))
+  for (const message of local) {
+    if (!message.id.startsWith('tmp-') || message.role !== 'user' || message.message_type !== 'text') {
+      continue
+    }
+    const content = (message.content ?? '').trim()
+    if (!content) continue
+    const confirmed = persisted.some(
+      (row) => row.role === 'user' && (row.content ?? '').trim() === content,
+    )
+    if (!confirmed) {
+      merged.set(message.id, message)
+    }
+  }
+  return Array.from(merged.values()).sort((a, b) => a.sequence - b.sequence)
+}
+
 export function groupMessages(messages: Message[]): ChatBlock[] {
   const blocks: ChatBlock[] = []
 

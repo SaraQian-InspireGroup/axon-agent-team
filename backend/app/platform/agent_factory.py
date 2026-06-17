@@ -11,16 +11,16 @@ from app.memory.long_term.context_provider import LongTermMemoryProvider
 from app.memory.memory_config import parse_memory_config
 from app.memory.postgres_history import PostgresHistoryProvider
 from app.platform.agent_bundle import AgentBundle
-from app.middleware.proposal_persist import ProposalPersistMiddleware
+from app.platform.hook_config import normalize_hooks
 from app.platform.hook_registry import resolve_middleware
 from app.platform.mcp_registry import McpRegistry
 from app.platform.model_registry import ModelProvider, ModelProviderRegistry
 from app.platform.platform_instructions import append_platform_instructions
 from app.platform.session_store import SessionStore
 from app.platform.skill_registry import SkillRegistry
-from app.platform.hook_config import normalize_hooks
 from app.platform.tool_registry import ToolRegistry
 from app.tools import BUILTIN_TOOLS
+from app.tools.builtin_groups import PROPOSAL_TOOL_NAMES, resolve_builtin_tools
 
 
 class AgentFactory:
@@ -88,12 +88,15 @@ class AgentFactory:
             row.config,
             self._db,
             chat_id=chat_id,
+            session_store=store,
             extra_allowed_tools=skill_tools or None,
             stop_event=stop_event,
         )
 
         function_tools = await self._tools.resolve_for_agent(agent_id)
         mcp_tools = await self._mcp.resolve_for_agent(agent_id, agent_config=row.config)
+        allowed = list((row.config or {}).get("allowed_tools") or [])
+
         viz_tools: list = []
         if any(name == "sql_viz" for name, _ in normalize_hooks(row.config.get("hooks"))):
             for viz_name in ("list_sql_results", "suggest_visualization"):
@@ -101,28 +104,8 @@ class AgentFactory:
                 if viz_tool is not None:
                     viz_tools.append(viz_tool)
 
-        proposal_tool_names = (
-            "list_categories",
-            "read_knowledge",
-            "get_proposal_state",
-            "patch_proposal_state",
-            "render_preview",
-            "generate_document",
-        )
-        allowed = list((row.config or {}).get("allowed_tools") or [])
-        proposal_tools: list = []
-        for name in proposal_tool_names:
-            if name in allowed:
-                tool = BUILTIN_TOOLS.get(name)
-                if tool is not None:
-                    proposal_tools.append(tool)
-
+        proposal_tools = resolve_builtin_tools(allowed, PROPOSAL_TOOL_NAMES)
         combined_tools = [*viz_tools, *proposal_tools, *list(function_tools or []), *mcp_tools]
-
-        if proposal_tools and chat_id is not None:
-            middleware.append(
-                ProposalPersistMiddleware(self._db, store, chat_id=chat_id)
-            )
 
         agent = self._registry.create_agent(
             name=row.name,

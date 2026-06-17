@@ -3,8 +3,9 @@ from unittest.mock import patch
 from app.proposal.context import init_run_proposal_state, reset_run_proposal_state
 from app.proposal.pipeline import run_pipeline
 from app.proposal.render import render_proposal_markdown
-from app.proposal.state import apply_patch, empty_proposal_state
+from app.proposal.state import apply_json_patch, empty_proposal_state
 from app.tools.proposal import generate_document, render_preview
+from tests.proposal_patch_helpers import jp, replace
 
 
 SAMPLE_SERVICES = [
@@ -36,13 +37,14 @@ SAMPLE_SERVICES = [
 
 
 def _ready_state() -> dict:
-    state = empty_proposal_state()
-    state = apply_patch(state, {"op": "set_category", "category_id": "harneys-bvi"})
-    state = apply_patch(
-        state,
-        {"op": "select_packages", "package_ids": [], "selected_skus": ["BVI-incorporation-001"]},
+    state = apply_json_patch(
+        empty_proposal_state(),
+        jp(
+            replace("/proposal_meta/category_id", "harneys-bvi"),
+            replace("/selection/selected_skus", ["BVI-incorporation-001"]),
+            replace("/client/company_name", "Demo Ltd"),
+        ),
     )
-    state = apply_patch(state, {"op": "set_client", "client": {"company_name": "Demo Ltd"}})
     with patch("app.proposal.pipeline.expand_selected_skus", return_value=["BVI-incorporation-001"]):
         with patch("app.proposal.pipeline.fetch_services_by_skus", return_value=SAMPLE_SERVICES):
             run_pipeline(state)
