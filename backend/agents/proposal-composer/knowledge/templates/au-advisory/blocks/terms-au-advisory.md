@@ -1,5 +1,3 @@
-# Terms and Conditions — Australia Advisory Services
-
 ## Engagement
 
 - Fees are quoted in Australian dollars (AUD) unless otherwise stated.

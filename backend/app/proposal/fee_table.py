@@ -85,10 +85,15 @@ def row_frequency_columns(row: dict[str, Any]) -> dict[str, float | None]:
     return cols
 
 
-def format_money(amount: float | None, currency: str = "") -> str:
+_LABEL_COL_WIDTH = "60%"
+_AMOUNT_COL_WIDTH = "8%"
+_TABLE_STYLE = "width:100%;table-layout:fixed;border-collapse:collapse"
+
+
+def format_money(amount: float | None, currency: str = "", *, include_currency: bool = True) -> str:
     if amount is None:
         return ""
-    prefix = f"{currency} " if currency else ""
+    prefix = f"{currency} " if include_currency and currency else ""
     return f"{prefix}${amount:,.2f}"
 
 
@@ -133,9 +138,58 @@ def payment_summary_footer(rows: list[dict[str, Any]]) -> dict[str, float]:
     return {"once_off_total": once_off, "recurring_annualized_total": recurring}
 
 
-def _amount_cell(amount: float | None, currency: str) -> str:
-    text = format_money(amount, currency)
+def _amount_cell(
+    amount: float | None,
+    currency: str,
+    *,
+    include_currency: bool = False,
+    compact_layout: bool = False,
+) -> str:
+    text = format_money(amount, currency, include_currency=include_currency)
+    if compact_layout:
+        return (
+            f"<td class=\"proposal-fee-amount\" style=\"width:{_AMOUNT_COL_WIDTH}\">"
+            f"{escape_html(text) if text else '&nbsp;'}</td>"
+        )
     return f"<td class=\"proposal-fee-amount\">{escape_html(text) if text else '&nbsp;'}</td>"
+
+
+def _fee_table_colgroup() -> str:
+    amount_col = (
+        f'<col style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-col-amount" />'
+    )
+    return (
+        "<colgroup>"
+        f'<col style="width:{_LABEL_COL_WIDTH}" class="proposal-fee-col-label" />'
+        f"{amount_col * 5}"
+        "</colgroup>"
+    )
+
+
+def _fee_table_head(label: str) -> str:
+    return (
+        "<thead><tr>"
+        f'<th style="width:{_LABEL_COL_WIDTH}">{label}</th>'
+        f'<th style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-amount-head">Monthly</th>'
+        f'<th style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-amount-head">Quarterly</th>'
+        f'<th style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-amount-head">Annual</th>'
+        f'<th style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-amount-head">Once-Off</th>'
+        f'<th style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-amount-head">Total</th>'
+        "</tr></thead><tbody>"
+    )
+
+
+def _payment_table_head() -> str:
+    return (
+        "<thead><tr>"
+        "<th>Option</th>"
+        "<th>Monthly Fees</th>"
+        "<th>Quarterly Fees</th>"
+        "<th>Annual Fees</th>"
+        "<th>Once-Off Fees</th>"
+        "<th>Total Fees (Annualised)</th>"
+        "</tr></thead><tbody>"
+    )
 
 
 def render_frequency_table(
@@ -150,17 +204,11 @@ def render_frequency_table(
         heading = f"### {index}. {title}" if not str(title).startswith(f"{index}.") else f"### {title}"
         parts.append(heading)
         parts.append("")
-        parts.append("<table class=\"proposal-fee-table\">")
         parts.append(
-            "<thead><tr>"
-            "<th>Service</th>"
-            "<th>Monthly</th>"
-            "<th>Quarterly</th>"
-            "<th>Annual</th>"
-            "<th>Once-Off</th>"
-            "<th>Total</th>"
-            "</tr></thead><tbody>"
+            f"<table class=\"proposal-fee-table proposal-fee-table-frequency\" style=\"{_TABLE_STYLE}\">"
         )
+        parts.append(_fee_table_colgroup())
+        parts.append(_fee_table_head("Service"))
         sub = 1
         for row in group.get("rows") or []:
             cols = row.get("frequency_columns") or row_frequency_columns(row)
@@ -175,12 +223,12 @@ def render_frequency_table(
             )
             parts.append(
                 "<tr>"
-                f"<td class=\"proposal-fee-service\">{service_html}</td>"
-                + _amount_cell(cols.get("monthly"), currency)
-                + _amount_cell(cols.get("quarterly"), currency)
-                + _amount_cell(cols.get("annual"), currency)
-                + _amount_cell(cols.get("once_off"), currency)
-                + _amount_cell(total, currency)
+                f"<td class=\"proposal-fee-service\" style=\"width:{_LABEL_COL_WIDTH}\">{service_html}</td>"
+                + _amount_cell(cols.get("monthly"), currency, include_currency=bool(currency), compact_layout=True)
+                + _amount_cell(cols.get("quarterly"), currency, include_currency=bool(currency), compact_layout=True)
+                + _amount_cell(cols.get("annual"), currency, include_currency=bool(currency), compact_layout=True)
+                + _amount_cell(cols.get("once_off"), currency, include_currency=bool(currency), compact_layout=True)
+                + _amount_cell(total, currency, include_currency=bool(currency), compact_layout=True)
                 + "</tr>"
             )
             sub += 1
@@ -207,7 +255,7 @@ def render_simple_table(
                 amount_text = str(row.get("status") or "TBD")
             else:
                 row_currency = row.get("currency") or ""
-                amount_text = format_money(float(amount), row_currency).strip()
+                amount_text = format_money(float(amount), row_currency, include_currency=bool(row_currency)).strip()
             label = str(row.get("label") or row.get("sku"))
             if show_recurring and row.get("recurring") == "RECURRING":
                 label = f"{label} ({str(row.get('billing_frequency', 'recurring')).lower()})"
@@ -238,16 +286,7 @@ def render_payment_options_table(options: list[dict[str, Any]], *, currency: str
         parts.append(f"### {label}")
         parts.append("")
         parts.append("<table class=\"proposal-fee-table proposal-payment-table\">")
-        parts.append(
-            "<thead><tr>"
-            "<th>Option</th>"
-            "<th>Monthly Fees</th>"
-            "<th>Quarterly Fees</th>"
-            "<th>Annual Fees</th>"
-            "<th>Once-Off Fees</th>"
-            "<th>Total Fees (Annualised)</th>"
-            "</tr></thead><tbody>"
-        )
+        parts.append(_payment_table_head())
         rows = option.get("rows") or []
         for index, row in enumerate(rows, 1):
             row_label = row.get("label") or row.get("group_id") or f"{index}."
@@ -257,16 +296,16 @@ def render_payment_options_table(options: list[dict[str, Any]], *, currency: str
             parts.append(
                 "<tr>"
                 f"<td>{escape_html(str(row_label))}</td>"
-                + _amount_cell(row.get("monthly"), currency)
-                + _amount_cell(row.get("quarterly"), currency)
-                + _amount_cell(row.get("annual"), currency)
-                + _amount_cell(row.get("once_off"), currency)
-                + _amount_cell(total, currency)
+                + _amount_cell(row.get("monthly"), currency, include_currency=bool(currency))
+                + _amount_cell(row.get("quarterly"), currency, include_currency=bool(currency))
+                + _amount_cell(row.get("annual"), currency, include_currency=bool(currency))
+                + _amount_cell(row.get("once_off"), currency, include_currency=bool(currency))
+                + _amount_cell(total, currency, include_currency=bool(currency))
                 + "</tr>"
             )
         summary = option.get("summary") or payment_summary_footer(rows)
-        once_off = format_money(summary.get("once_off_total"), currency)
-        recurring = format_money(summary.get("recurring_annualized_total"), currency)
+        once_off = format_money(summary.get("once_off_total"), currency, include_currency=bool(currency))
+        recurring = format_money(summary.get("recurring_annualized_total"), currency, include_currency=bool(currency))
         parts.append(
             f"<tr class=\"proposal-fee-summary\">"
             f"<td colspan=\"5\">Once-Off Fees</td>"

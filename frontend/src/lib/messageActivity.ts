@@ -7,6 +7,8 @@ export type ActivityEntry = {
   kind: 'reasoning' | 'tool' | 'mcp' | 'skill'
   title: string
   detail: string
+  request?: string
+  response?: string
   status: 'running' | 'done' | 'error' | 'cancelled'
 }
 
@@ -32,7 +34,6 @@ function parseVizSpec(metadata: Record<string, unknown> | undefined): VizSpec | 
   return spec
 }
 
-const PROCESS_SEPARATOR = '\n\n---\n\n'
 const REASONING_TITLE = 'Reasoning'
 
 function formatDetail(value: unknown): string {
@@ -73,7 +74,12 @@ function inferKind(messageType: string): ActivityEntry['kind'] {
 function resultLooksLikeError(result: unknown): boolean {
   if (result == null) return false
   if (typeof result === 'string') {
-    return result.toLowerCase().includes('error') || result.includes('not allowed')
+    const lower = result.toLowerCase()
+    return (
+      lower.includes('error') ||
+      lower.includes('parsing failed') ||
+      result.includes('not allowed')
+    )
   }
   if (typeof result === 'object') {
     const obj = result as Record<string, unknown>
@@ -82,16 +88,64 @@ function resultLooksLikeError(result: unknown): boolean {
   return false
 }
 
-function isEmptyDetail(value: string): boolean {
-  const trimmed = value.trim()
-  return !trimmed || trimmed === '{}' || trimmed === 'null'
+function formatCompactDetail(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return ''
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      try {
+        return JSON.stringify(JSON.parse(trimmed))
+      } catch {
+        return trimmed
+      }
+    }
+    return trimmed
+  }
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
 }
 
-function combineDetail(input: string, output: string): string {
-  const hasInput = !isEmptyDetail(input)
-  const hasOutput = !isEmptyDetail(output)
-  if (hasInput && hasOutput) return `${input}${PROCESS_SEPARATOR}${output}`
-  return hasInput ? input : output
+function hasToolRequest(value: string | undefined): boolean {
+  if (!value) return false
+  const trimmed = value.trim()
+  return Boolean(trimmed) && trimmed !== '(empty)' && trimmed !== '{}'
+}
+
+function formatToolRequest(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') {
+    return formatCompactDetail(value)
+  }
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    if (Object.keys(obj).length === 0) return ''
+    if (Object.keys(obj).length === 1 && typeof obj.raw === 'string' && obj.raw.trim()) {
+      return formatCompactDetail(obj.raw)
+    }
+    if (typeof obj._memory_preview === 'string' && obj._memory_preview.trim()) {
+      return obj._memory_preview.trim()
+    }
+    return formatCompactDetail(obj)
+  }
+  return formatCompactDetail(value)
+}
+
+function formatToolResponse(value: unknown): string {
+  return formatCompactDetail(value)
+}
+
+function pickToolRequest(existing?: string, incoming?: string): string | undefined {
+  for (const candidate of [incoming, existing]) {
+    if (hasToolRequest(candidate)) return candidate
+  }
+  return undefined
 }
 
 function entryIdForMessage(message: Message): string {
@@ -158,23 +212,27 @@ export function messageToActivityEntry(message: Message): ActivityEntry {
   }
 
   if (type === 'tool_call' || type === 'mcp_call') {
+    const request = formatToolRequest(meta.arguments ?? meta)
     return {
       id: entryId,
       kind,
       title: toolName,
-      detail: formatDetail(meta.arguments ?? meta),
+      request: hasToolRequest(request) ? request : undefined,
+      detail: request,
       status: 'running',
     }
   }
 
   const result = meta.result ?? message.content
-  const request = meta.arguments != null ? formatDetail(meta.arguments) : ''
-  const response = formatDetail(result)
+  const request = formatToolRequest(meta.arguments)
+  const response = formatToolResponse(result)
   return {
     id: entryId,
     kind,
     title: toolName,
-    detail: combineDetail(request, response),
+    request: hasToolRequest(request) ? request : undefined,
+    response: response || undefined,
+    detail: response,
     status: resultLooksLikeError(result) ? 'error' : 'done',
   }
 }
@@ -190,19 +248,28 @@ function findProcessBlockIndex(blocks: ChatBlock[], entryId: string): number {
 }
 
 function mergeActivityPair(existing: ActivityEntry, incoming: ActivityEntry): ActivityEntry {
-  const inputPart = existing.detail.includes(PROCESS_SEPARATOR)
-    ? existing.detail.split(PROCESS_SEPARATOR)[0]
-    : existing.detail
+  const request = pickToolRequest(existing.request, incoming.request)
+  const response = incoming.response ?? existing.response
+
+  if (incoming.status === 'running') {
+    return {
+      ...existing,
+      title: existing.title !== 'unknown' ? existing.title : incoming.title,
+      request,
+      response,
+      detail: response ?? request ?? existing.detail,
+      status: 'running',
+    }
+  }
+
+  const nextResponse = incoming.response ?? formatToolResponse(incoming.detail) ?? response
   return {
     ...existing,
     title: existing.title !== 'unknown' ? existing.title : incoming.title,
-    status: incoming.status === 'running' ? existing.status : incoming.status,
-    detail:
-      incoming.status === 'running'
-        ? !isEmptyDetail(incoming.detail)
-          ? incoming.detail
-          : existing.detail
-        : combineDetail(inputPart, incoming.detail),
+    request,
+    response: nextResponse || undefined,
+    detail: nextResponse ?? existing.detail,
+    status: incoming.status,
   }
 }
 
@@ -438,11 +505,13 @@ export function createStreamingActivityEntry(
   if (event === 'tool_call') {
     const toolName = String(data.tool_name ?? '').trim() || 'unknown'
     const callId = String(data.call_id ?? `call-${Date.now()}`)
+    const request = formatToolRequest(data.arguments)
     return {
       id: callId,
       kind: 'tool',
       title: toolName,
-      detail: formatDetail(data.arguments),
+      request: hasToolRequest(request) ? request : undefined,
+      detail: request,
       status: 'running',
     }
   }
@@ -451,11 +520,15 @@ export function createStreamingActivityEntry(
     const toolName = String(data.tool_name ?? '').trim() || 'unknown'
     const callId = String(data.call_id ?? `result-${Date.now()}`)
     const result = data.result
+    const request = formatToolRequest(data.arguments)
+    const response = formatToolResponse(result)
     return {
       id: callId,
       kind: 'tool',
       title: toolName,
-      detail: formatDetail(result),
+      request: hasToolRequest(request) ? request : undefined,
+      response: response || undefined,
+      detail: response,
       status: resultLooksLikeError(result) ? 'error' : 'done',
     }
   }

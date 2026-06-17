@@ -100,9 +100,11 @@ function CancelIcon() {
 }
 
 export function ProcessStepCard({ item }: Props) {
-  const [open, setOpen] = useState(
-    () => item.status === 'cancelled' && Boolean(item.detail.trim()),
-  )
+  const showRequest = Boolean(item.request?.trim())
+  const showResponse = Boolean(item.response?.trim())
+  const showLegacyDetail =
+    item.kind === 'reasoning' || (!showRequest && !showResponse && Boolean(item.detail.trim()))
+  const [open, setOpen] = useState(false)
 
   return (
     <div className={`process-step process-step-${item.status}`}>
@@ -116,9 +118,23 @@ export function ProcessStepCard({ item }: Props) {
         <span className="process-step-title">{item.title}</span>
         <ChevronIcon open={open} />
       </button>
-      {open && item.detail && (
+      {open && (showRequest || showResponse || showLegacyDetail) && (
         <div className="process-step-body">
-          <pre className="process-step-detail">{item.detail}</pre>
+          {showRequest ? (
+            <div className="process-step-section">
+              <div className="process-step-section-label">Request</div>
+              <pre className="process-step-detail process-step-detail-compact">{item.request}</pre>
+            </div>
+          ) : null}
+          {showResponse ? (
+            <div className="process-step-section">
+              <div className="process-step-section-label">Response</div>
+              <pre className="process-step-detail process-step-detail-compact">{item.response}</pre>
+            </div>
+          ) : null}
+          {showLegacyDetail ? (
+            <pre className="process-step-detail process-step-detail-compact">{item.detail}</pre>
+          ) : null}
         </div>
       )}
     </div>

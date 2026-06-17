@@ -307,6 +307,7 @@ def maf_message_to_rows(
     *,
     start_sequence: int,
     call_names: dict[str, str] | None = None,
+    call_arguments: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Convert a MAF Message into one or more DB row dicts."""
     rows: list[dict[str, Any]] = []
@@ -336,6 +337,11 @@ def maf_message_to_rows(
             continue
 
         if getattr(content, "type", None) == "function_call":
+            call_id = getattr(content, "call_id", None)
+            call_id_str = str(call_id) if call_id is not None else ""
+            arguments = ensure_dict(getattr(content, "arguments", {}))
+            if call_arguments and call_id_str in call_arguments:
+                arguments = call_arguments[call_id_str]
             rows.append(
                 {
                     "chat_id": chat_id,
@@ -343,9 +349,9 @@ def maf_message_to_rows(
                     "message_type": "tool_call",
                     "content": None,
                     "metadata": {
-                        "call_id": getattr(content, "call_id", None),
+                        "call_id": call_id,
                         "tool_name": getattr(content, "name", None),
-                        "arguments": ensure_dict(getattr(content, "arguments", {})),
+                        "arguments": arguments,
                     },
                     "sequence": seq,
                 }
@@ -366,6 +372,7 @@ def maf_message_to_rows(
                     "metadata": {
                         "call_id": call_id,
                         "tool_name": tool_name,
+                        "arguments": (call_arguments or {}).get(call_id_str, {}),
                         "result": getattr(content, "result", None),
                     },
                     "sequence": seq,

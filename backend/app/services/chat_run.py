@@ -112,6 +112,7 @@ class ChatRunService:
         accumulator: "_StreamTurnAccumulator | None" = None,
     ) -> None:
         if accumulator is not None and accumulator.has_content():
+            accumulator.enrich_tool_arguments_from_response(response)
             await accumulator.persist(self._messages, chat_id)
         else:
             await self._persist_agent_messages(chat_id, response, skip_tool_rows=False)
@@ -360,7 +361,7 @@ class ChatRunService:
         skip_tool_rows: bool = False,
     ) -> None:
         saved = 0
-        call_names = _collect_call_names(getattr(response, "messages", None) or [])
+        call_names, call_arguments = _collect_call_context(getattr(response, "messages", None) or [])
         for message in getattr(response, "messages", None) or []:
             next_seq = await self._messages.next_sequence(chat_id)
             for row in maf_message_to_rows(
@@ -368,6 +369,7 @@ class ChatRunService:
                 message,
                 start_sequence=next_seq,
                 call_names=call_names,
+                call_arguments=call_arguments,
             ):
                 if skip_tool_rows and row["message_type"] in _TOOL_ROW_TYPES:
                     continue
@@ -447,16 +449,27 @@ def _merge_tool_arguments(
     return left
 
 
-def _collect_call_names(messages: list[Any]) -> dict[str, str]:
+def _collect_call_context(messages: list[Any]) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
     names: dict[str, str] = {}
+    arguments: dict[str, dict[str, Any]] = {}
     for message in messages:
         for content in getattr(message, "contents", None) or []:
             if getattr(content, "type", None) != "function_call":
                 continue
             call_id = getattr(content, "call_id", None)
             tool_name = getattr(content, "name", None)
-            if call_id is not None and tool_name:
-                names[str(call_id)] = str(tool_name)
+            if call_id is None:
+                continue
+            key = str(call_id)
+            if tool_name:
+                names[key] = str(tool_name)
+            incoming = _normalize_tool_arguments(getattr(content, "arguments", {}))
+            arguments[key] = _merge_tool_arguments(arguments.get(key), incoming)
+    return names, arguments
+
+
+def _collect_call_names(messages: list[Any]) -> dict[str, str]:
+    names, _ = _collect_call_context(messages)
     return names
 
 
@@ -524,6 +537,7 @@ class _StreamTurnAccumulator:
         self._emitted_calls: set[str] = set()
         self._emitted_results: set[str] = set()
         self._call_names: dict[str, str] = {}
+        self._call_arguments: dict[str, dict[str, Any]] = {}
         self._viz_seq = 0
 
     def observe(self, update: Any) -> None:
@@ -586,6 +600,8 @@ class _StreamTurnAccumulator:
                 return
             arguments = _normalize_tool_arguments(getattr(content, "arguments", {}))
             self._call_names[call_id] = tool_name
+            merged = _merge_tool_arguments(self._call_arguments.get(call_id), arguments)
+            self._call_arguments[call_id] = merged
             self._flush_text()
             if call_id in self._emitted_calls:
                 for row in reversed(self._rows):
@@ -607,7 +623,7 @@ class _StreamTurnAccumulator:
                     "metadata": {
                         "call_id": call_id,
                         "tool_name": tool_name,
-                        "arguments": arguments,
+                        "arguments": merged,
                     },
                 }
             )
@@ -628,6 +644,7 @@ class _StreamTurnAccumulator:
                     "metadata": {
                         "call_id": call_id,
                         "tool_name": self._call_names.get(call_id, ""),
+                        "arguments": self._call_arguments.get(call_id, {}),
                         "result": result,
                     },
                 }
@@ -671,6 +688,22 @@ class _StreamTurnAccumulator:
     def finalize(self) -> None:
         self._flush_reasoning()
         self._flush_text()
+
+    def enrich_tool_arguments_from_response(self, response: Any) -> None:
+        """Merge final MAF response tool arguments into streamed rows (stream chunks are often empty)."""
+        _, incoming_by_call = _collect_call_context(getattr(response, "messages", None) or [])
+        for call_id, incoming in incoming_by_call.items():
+            merged = _merge_tool_arguments(self._call_arguments.get(call_id), incoming)
+            if not merged:
+                continue
+            self._call_arguments[call_id] = merged
+            for row in self._rows:
+                meta = row.get("metadata") or {}
+                if str(meta.get("call_id") or "") != call_id:
+                    continue
+                if row.get("message_type") in ("tool_call", "tool_result", "mcp_call", "mcp_result"):
+                    meta["arguments"] = merged
+                    row["metadata"] = meta
 
     def has_content(self) -> bool:
         return bool(self._rows or self._reasoning_buffer or self._text_buffer)
@@ -819,6 +852,7 @@ class _StreamSseEmitter:
                             "chat_id": chat_id,
                             "call_id": call_id,
                             "tool_name": tool_name,
+                            "arguments": self._call_arguments.get(call_id, {}),
                             "result": _json_safe(getattr(content, "result", None)),
                         },
                     }

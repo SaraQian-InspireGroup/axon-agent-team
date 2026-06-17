@@ -50,3 +50,33 @@ def test_stream_emitter_updates_tool_call_arguments():
     assert first[0]["data"]["arguments"] == {}
     assert second[0]["event"] == "tool_call"
     assert second[0]["data"]["arguments"] == {"sql": "select 1"}
+
+
+def test_stream_emitter_tool_result_includes_arguments():
+    emitter = _StreamSseEmitter(uuid4())
+    emitter.emit(
+        _update(
+            _content(
+                "function_call",
+                call_id="c2",
+                name="patch_proposal_state",
+                arguments={"patch": [{"op": "replace", "path": "/client/company_name", "value": "Acme"}]},
+            )
+        )
+    )
+    events = emitter.emit(
+        _update(
+            _content(
+                "function_result",
+                call_id="c2",
+                result="Error: Argument parsing failed.",
+            )
+        )
+    )
+
+    assert len(events) == 1
+    assert events[0]["event"] == "tool_result"
+    assert events[0]["data"]["arguments"] == {
+        "patch": [{"op": "replace", "path": "/client/company_name", "value": "Acme"}],
+    }
+    assert events[0]["data"]["result"] == "Error: Argument parsing failed."

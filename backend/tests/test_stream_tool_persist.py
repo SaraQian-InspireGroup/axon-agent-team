@@ -61,3 +61,58 @@ async def test_accumulator_persist_tool_rows_keeps_arguments():
     assert saved == 2
     call_row = next(r for r in repo.rows if r["message_type"] == "tool_call")
     assert call_row["metadata"]["arguments"] == {"sql": "SELECT 1"}
+    result_row = next(r for r in repo.rows if r["message_type"] == "tool_result")
+    assert result_row["metadata"]["arguments"] == {"sql": "SELECT 1"}
+
+
+def test_accumulator_enriches_arguments_from_final_response():
+    acc = _StreamTurnAccumulator()
+    acc.observe(
+        _update(
+            _content(
+                "function_call",
+                call_id="c1",
+                name="patch_proposal_state",
+                arguments={},
+            )
+        )
+    )
+    acc.observe(
+        _update(
+            _content(
+                "function_result",
+                call_id="c1",
+                result={"status": "ok"},
+            )
+        )
+    )
+    final = SimpleNamespace(
+        messages=[
+            SimpleNamespace(
+                contents=[
+                    _content(
+                        "function_call",
+                        call_id="c1",
+                        name="patch_proposal_state",
+                        arguments={
+                            "patch": [
+                                {
+                                    "op": "replace",
+                                    "path": "/client/company_name",
+                                    "value": "Acme",
+                                }
+                            ]
+                        },
+                    )
+                ]
+            )
+        ]
+    )
+    acc.enrich_tool_arguments_from_response(final)
+    call_row = next(r for r in acc._rows if r["message_type"] == "tool_call")
+    result_row = next(r for r in acc._rows if r["message_type"] == "tool_result")
+    expected = {
+        "patch": [{"op": "replace", "path": "/client/company_name", "value": "Acme"}]
+    }
+    assert call_row["metadata"]["arguments"] == expected
+    assert result_row["metadata"]["arguments"] == expected

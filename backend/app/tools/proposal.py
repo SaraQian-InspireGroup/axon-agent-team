@@ -141,6 +141,7 @@ def get_proposal_state(
     name="patch_proposal_state",
     description=(
         "Apply RFC 6902 JSON Patch to proposal_state (add, remove, replace, move, copy, test). "
+        "Parameter `patch` must be a JSON array of operations (never a string). "
         "Only non-readOnly schema paths are allowed; readOnly fields are recomputed after write. "
         "Invalid patches return http_status 422 with structured errors."
     ),

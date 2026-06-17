@@ -5,36 +5,39 @@ Attention: **{{client.contact_name}}**
 {{/if}}
 
 ---
+# About Incorp
 
 {{static.introduction}}
 
-## Solution and professional fees
+---
+# Solution and professional fees
 
 {{solution_and_price}}
 
 {{#optional payment_options}}
-
+---
 ## Fee summary
 
 {{payment_options}}
 
 {{/optional}}
 
-## Terms and conditions
+---
+# Terms and conditions
 
 {{static.terms}}
 
 {{#optional credentials}}
-
-## Credentials
+---
+# Credentials
 
 {{knowledge.credentials}}
 
 {{/optional}}
 
 {{#optional appendix}}
-
-## Appendix
+---
+# Appendix
 
 {{session.appendix}}
 
