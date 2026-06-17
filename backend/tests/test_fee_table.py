@@ -58,9 +58,9 @@ def test_frequency_table_html_keeps_all_rows_together():
     ]
     table = render_frequency_table(groups, currency="AUD", include_scope=True)
     assert "proposal-fee-table-frequency" in table
-    assert 'width:60%' in table
-    assert table.count('width:8%') >= 10
-    assert 'proposal-fee-service" style="width:60%' in table
+    assert 'width="33.333%"' in table
+    assert table.count('width="13.333%"') >= 10
+    assert 'proposal-fee-service" style="width:33.333%' in table
     assert "proposal-fee-col-amount" in table
     assert table.count("proposal-fee-service") == 3
     assert "AUD $4,500.00" in table

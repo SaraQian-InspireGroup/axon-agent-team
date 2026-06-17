@@ -85,8 +85,8 @@ def row_frequency_columns(row: dict[str, Any]) -> dict[str, float | None]:
     return cols
 
 
-_LABEL_COL_WIDTH = "60%"
-_AMOUNT_COL_WIDTH = "8%"
+_LABEL_COL_WIDTH = "33.333%"
+_AMOUNT_COL_WIDTH = "13.333%"
 _TABLE_STYLE = "width:100%;table-layout:fixed;border-collapse:collapse"
 
 
@@ -148,7 +148,8 @@ def _amount_cell(
     text = format_money(amount, currency, include_currency=include_currency)
     if compact_layout:
         return (
-            f"<td class=\"proposal-fee-amount\" style=\"width:{_AMOUNT_COL_WIDTH}\">"
+            f"<td width=\"{_AMOUNT_COL_WIDTH}\" class=\"proposal-fee-amount\" "
+            f"style=\"width:{_AMOUNT_COL_WIDTH}\">"
             f"{escape_html(text) if text else '&nbsp;'}</td>"
         )
     return f"<td class=\"proposal-fee-amount\">{escape_html(text) if text else '&nbsp;'}</td>"
@@ -156,11 +157,13 @@ def _amount_cell(
 
 def _fee_table_colgroup() -> str:
     amount_col = (
-        f'<col style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-col-amount" />'
+        f'<col width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'class="proposal-fee-col-amount" />'
     )
     return (
         "<colgroup>"
-        f'<col style="width:{_LABEL_COL_WIDTH}" class="proposal-fee-col-label" />'
+        f'<col width="{_LABEL_COL_WIDTH}" style="width:{_LABEL_COL_WIDTH}" '
+        f'class="proposal-fee-col-label" />'
         f"{amount_col * 5}"
         "</colgroup>"
     )
@@ -169,12 +172,17 @@ def _fee_table_colgroup() -> str:
 def _fee_table_head(label: str) -> str:
     return (
         "<thead><tr>"
-        f'<th style="width:{_LABEL_COL_WIDTH}">{label}</th>'
-        f'<th style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-amount-head">Monthly</th>'
-        f'<th style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-amount-head">Quarterly</th>'
-        f'<th style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-amount-head">Annual</th>'
-        f'<th style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-amount-head">Once-Off</th>'
-        f'<th style="width:{_AMOUNT_COL_WIDTH}" class="proposal-fee-amount-head">Total</th>'
+        f'<th width="{_LABEL_COL_WIDTH}" style="width:{_LABEL_COL_WIDTH}">{label}</th>'
+        f'<th width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'class="proposal-fee-amount-head">Monthly</th>'
+        f'<th width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'class="proposal-fee-amount-head">Quarterly</th>'
+        f'<th width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'class="proposal-fee-amount-head">Annual</th>'
+        f'<th width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'class="proposal-fee-amount-head">Once-Off</th>'
+        f'<th width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'class="proposal-fee-amount-head">Total</th>'
         "</tr></thead><tbody>"
     )
 
@@ -223,7 +231,8 @@ def render_frequency_table(
             )
             parts.append(
                 "<tr>"
-                f"<td class=\"proposal-fee-service\" style=\"width:{_LABEL_COL_WIDTH}\">{service_html}</td>"
+                f"<td width=\"{_LABEL_COL_WIDTH}\" class=\"proposal-fee-service\" "
+                f"style=\"width:{_LABEL_COL_WIDTH}\">{service_html}</td>"
                 + _amount_cell(cols.get("monthly"), currency, include_currency=bool(currency), compact_layout=True)
                 + _amount_cell(cols.get("quarterly"), currency, include_currency=bool(currency), compact_layout=True)
                 + _amount_cell(cols.get("annual"), currency, include_currency=bool(currency), compact_layout=True)
