@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import uuid
 from typing import Any
 
@@ -15,9 +16,17 @@ def load_proposal_state_from_payload(payload: dict[str, Any] | None) -> dict[str
     if not payload:
         return None
     stored = payload.get(PROPOSAL_STATE_KEY)
-    if isinstance(stored, dict):
-        return stored
-    return None
+    if not isinstance(stored, dict) or not stored:
+        return None
+    meta = stored.get("proposal_meta") or {}
+    selection = stored.get("selection") or {}
+    if not (
+        meta.get("category_id")
+        or selection.get("selected_packages")
+        or selection.get("selected_skus")
+    ):
+        return None
+    return stored
 
 
 def merge_proposal_state_into_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -34,5 +43,9 @@ async def persist_proposal_state_if_dirty(session_store, chat_id: uuid.UUID) -> 
     ctx = get_run_proposal_state()
     if ctx is None or not ctx.dirty:
         return
-    await session_store.merge_extension(chat_id, PROPOSAL_STATE_KEY, ctx.state)
+    await session_store.merge_extension(
+        chat_id,
+        PROPOSAL_STATE_KEY,
+        copy.deepcopy(ctx.state),
+    )
     ctx.dirty = False

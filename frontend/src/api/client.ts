@@ -7,6 +7,7 @@ import type {
   StreamEvent,
   User,
 } from '../types'
+import type { ProposalPreview } from '../types/proposalPreview'
 
 const API = '/api/v1'
 
@@ -36,6 +37,11 @@ export const api = {
       body: JSON.stringify({ agent_id: agentId }),
     }),
   listMessages: (chatId: string) => request<Message[]>(`/chats/${chatId}/messages`),
+
+  getProposalPreview: (chatId: string, draft = true) =>
+    request<ProposalPreview>(
+      `/chats/${chatId}/proposal/preview?draft=${draft ? 'true' : 'false'}`,
+    ),
 
   cancelRun: (runId: string) =>
     request<{ run_id: string; chat_id: string; status: string }>(`/runs/${runId}/cancel`, {

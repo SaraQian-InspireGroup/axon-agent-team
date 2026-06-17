@@ -58,17 +58,27 @@ def test_render_proposal_markdown_replaces_placeholders():
     assert "{{solution_and_price}}" not in markdown
 
 
-def test_render_preview_queues_artifact():
+def test_render_preview_returns_live_summary():
     reset_run_proposal_state()
-    init_run_proposal_state()
     ctx_state = _ready_state()
-    ctx = init_run_proposal_state(initial_state=ctx_state)
+    init_run_proposal_state(initial_state=ctx_state, rehydrate=False)
 
-    result = render_preview()
-    assert result["status"] == "queued"
-    assert result["kind"] == "proposal_preview"
-    assert "Demo Ltd" in result["content"]
-    assert len(ctx.pending_artifacts) == 1
+    with patch("app.tools.proposal.rehydrate_proposal_state", return_value=False):
+        with patch("app.tools.proposal.build_live_preview") as build_preview:
+            build_preview.return_value = {
+                "status": "ok",
+                "title": "Demo Ltd",
+                "state_fingerprint": "abc123",
+                "completeness": {
+                    "missing_required": [],
+                    "ready_to_preview": True,
+                    "ready_to_generate": False,
+                },
+            }
+            result = render_preview()
+    assert result["status"] == "ok"
+    assert "Live proposal panel" in result["message"]
+    assert result["state_fingerprint"] == "abc123"
 
     reset_run_proposal_state()
 

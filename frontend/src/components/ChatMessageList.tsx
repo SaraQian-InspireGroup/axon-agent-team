@@ -3,12 +3,15 @@ import { MessageBubble } from './MessageBubble'
 import { VizBubble } from './VizBubble'
 import { ArtifactBubble } from './ArtifactBubble'
 import { groupMessages, shouldShowPendingIndicator, type ChatBlock } from '../lib/messageActivity'
+import type { ArtifactSpec } from '../types/artifact'
 import type { Message } from '../types'
 
 type Props = {
   messages: Message[]
   streamingBlocks?: ChatBlock[]
   loading?: boolean
+  liveProposalOpen?: boolean
+  onExpandArtifact?: (spec: ArtifactSpec) => void
 }
 
 function PendingIndicator() {
@@ -19,7 +22,12 @@ function PendingIndicator() {
   )
 }
 
-function renderBlock(block: ChatBlock, key: string) {
+function renderBlock(
+  block: ChatBlock,
+  key: string,
+  liveProposalOpen?: boolean,
+  onExpandArtifact?: (spec: ArtifactSpec) => void,
+) {
   if (block.kind === 'bubble') {
     return <MessageBubble key={key} message={block.message} />
   }
@@ -33,7 +41,11 @@ function renderBlock(block: ChatBlock, key: string) {
   if (block.kind === 'artifact') {
     return (
       <div key={key} className="chat-artifact-row">
-        <ArtifactBubble spec={block.spec} />
+        <ArtifactBubble
+          spec={block.spec}
+          expanded={Boolean(liveProposalOpen)}
+          onExpand={onExpandArtifact}
+        />
       </div>
     )
   }
@@ -44,7 +56,13 @@ function renderBlock(block: ChatBlock, key: string) {
   )
 }
 
-export function ChatMessageList({ messages, streamingBlocks = [], loading = false }: Props) {
+export function ChatMessageList({
+  messages,
+  streamingBlocks = [],
+  loading = false,
+  liveProposalOpen = false,
+  onExpandArtifact,
+}: Props) {
   const blocks = [...groupMessages(messages), ...streamingBlocks]
   const showPending = shouldShowPendingIndicator(loading, streamingBlocks)
 
@@ -54,6 +72,8 @@ export function ChatMessageList({ messages, streamingBlocks = [], loading = fals
         renderBlock(
           block,
           block.kind === 'bubble' ? block.message.id : `${block.kind}-${block.id}-${index}`,
+          liveProposalOpen,
+          onExpandArtifact,
         ),
       )}
       {showPending && <PendingIndicator />}

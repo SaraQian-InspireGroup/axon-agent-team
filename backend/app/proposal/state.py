@@ -37,6 +37,9 @@ def empty_proposal_state() -> dict[str, Any]:
         },
         "line_items": {"groups": []},
         "enabled_sections": [],
+        "fee_description": None,
+        "fee_layout": {},
+        "payment_options": {"options": [], "overrides": {}},
         "appendix": [],
         "resolved_placeholders": {},
         "completeness": {
@@ -81,6 +84,24 @@ def apply_semantic_ops(state: dict[str, Any], patch: dict[str, Any]) -> dict[str
         selection["selected_packages"] = list(patch.get("package_ids") or [])
         if patch.get("selected_skus") is not None:
             selection["selected_skus"] = list(patch.get("selected_skus") or [])
+        return working
+    if op == "add_skus":
+        selection = working.setdefault("selection", {})
+        existing = list(selection.get("selected_skus") or [])
+        seen = set(existing)
+        for sku in patch.get("skus") or patch.get("selected_skus") or []:
+            text = str(sku).strip()
+            if text and text not in seen:
+                existing.append(text)
+                seen.add(text)
+        selection["selected_skus"] = existing
+        return working
+    if op == "remove_skus":
+        selection = working.setdefault("selection", {})
+        remove = {str(sku).strip() for sku in (patch.get("skus") or patch.get("selected_skus") or [])}
+        selection["selected_skus"] = [
+            sku for sku in (selection.get("selected_skus") or []) if str(sku) not in remove
+        ]
         return working
     if op == "set_pricing_facts":
         working["pricing_facts"] = {

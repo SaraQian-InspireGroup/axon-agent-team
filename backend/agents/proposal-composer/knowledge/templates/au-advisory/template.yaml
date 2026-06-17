@@ -3,11 +3,23 @@ category_id: au-services
 display_name: Australia Tax and Advisory
 body: proposal.md
 
+document_title:
+  prefix: INCORP ADVISORY PROPOSAL
+  name_from:
+    - client.company_name
+    - client.contract_name
+  fallback: INCORP ADVISORY PROPOSAL
+
 placeholders:
   client.company_name:
     type: state
     path: client.company_name
-    required: true
+    required: false
+
+  client.contract_name:
+    type: state
+    path: client.contract_name
+    required: false
 
   client.contact_name:
     type: state
@@ -23,11 +35,20 @@ placeholders:
     type: solution_and_price
     title: Solution and professional fees
     required: true
-    # AU 展示层：按 department_team 分组；附带 scope_of_work 文本（有则显示）
+    fee_description:
+      file: blocks/fee-description-au-advisory.md
     fee_layout:
-      group_by: department_team
+      group_by: package
+      table_style: frequency_columns
+      currency: AUD
       show_line_amount: true
     include_scope_of_work: true
+
+  payment_options:
+    type: payment_options
+    title: Fee summary
+    required: false
+    intro_file: blocks/payment-option-intro-au-advisory.md
 
   knowledge.credentials:
     type: knowledge
@@ -46,6 +67,13 @@ placeholders:
     required: true
 
 optional_sections:
+  - id: payment_options
+    title: Fee summary
+    placeholder: payment_options
+    trigger:
+      any_of:
+        - enabled_sections: [payment_options]
+
   - id: credentials
     title: Credentials
     placeholder: knowledge.credentials

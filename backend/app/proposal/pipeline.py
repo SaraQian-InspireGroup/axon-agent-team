@@ -4,13 +4,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.proposal.catalog import expand_selected_skus, fetch_services_by_skus
+from app.proposal.catalog import expand_selected_skus, fetch_packages_by_ids, fetch_services_by_skus
+from app.proposal.fee_table import (
+    payment_summary_footer,
+    render_frequency_table,
+    render_payment_options_table,
+    render_simple_table,
+    row_frequency_columns,
+    row_total_annualized,
+    sum_group_columns,
+)
 from app.proposal.loaders import (
     get_category,
     load_knowledge_index,
     load_template_yaml,
     read_knowledge_file,
     read_static_block,
+    resolve_document_title,
     resolve_template_id,
 )
 from app.proposal.pricing import compute_pricing
@@ -41,17 +51,176 @@ def run_pipeline(state: dict[str, Any]) -> dict[str, Any]:
     state["pricing"]["explanations"] = explanations
     state["pricing"]["recurring_schedule"] = recurring
 
-    state["line_items"] = materialize_line_items(services, computed, template_id)
+    state["line_items"] = materialize_line_items(
+        services,
+        computed,
+        template_id,
+        state=state,
+        category_id=str(category_id) if category_id else None,
+    )
+    state["payment_options"] = materialize_payment_options(state, state["line_items"])
     state["resolved_placeholders"] = resolve_placeholders(state, services, template_id)
     state["completeness"] = scan_completeness(state, template_id)
     meta["stage"] = derive_stage(state)
     return state
 
 
+def _build_row(
+    service: dict[str, Any],
+    computed: dict[str, Any],
+    *,
+    include_scope: bool,
+) -> dict[str, Any] | None:
+    sku = service["sku"]
+    price = computed.get(sku) or {}
+    if price.get("status") == "not_applicable":
+        return None
+    row: dict[str, Any] = {
+        "sku": sku,
+        "label": service.get("service_name_on_proposal") or service.get("product_name"),
+        "amount": price.get("amount"),
+        "currency": price.get("currency") or service.get("price_currency"),
+        "status": price.get("status"),
+        "recurring": service.get("recurring"),
+        "billing_frequency": service.get("billing_frequency"),
+        "service_group": service.get("service_group"),
+        "department_team": service.get("department_team"),
+        "package_id": service.get("_package_id"),
+    }
+    row["frequency_columns"] = row_frequency_columns(row)
+    if include_scope and service.get("scope_of_work"):
+        row["scope_of_work"] = service["scope_of_work"]
+    return row
+
+
+def _group_services_by_package(
+    services: list[dict[str, Any]],
+    computed: dict[str, Any],
+    *,
+    category_id: str | None,
+    selection: dict[str, Any],
+    include_scope: bool,
+    custom_groups: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    service_by_sku = {service["sku"]: service for service in services}
+    expanded = [service["sku"] for service in services]
+
+    if custom_groups:
+        groups: list[dict[str, Any]] = []
+        assigned: set[str] = set()
+        for index, spec in enumerate(custom_groups, 1):
+            group_id = str(spec.get("group_id") or f"table_{index}")
+            rows: list[dict[str, Any]] = []
+            for sku in spec.get("skus") or []:
+                service = service_by_sku.get(str(sku))
+                if not service:
+                    continue
+                row = _build_row(service, computed, include_scope=include_scope)
+                if row:
+                    rows.append(row)
+                    assigned.add(str(sku))
+            if rows:
+                groups.append(
+                    {
+                        "group_id": group_id,
+                        "display_name": spec.get("display_name") or group_id,
+                        "rows": rows,
+                    }
+                )
+        leftover = [sku for sku in expanded if sku not in assigned]
+        if leftover:
+            rows = []
+            for sku in leftover:
+                service = service_by_sku.get(sku)
+                if not service:
+                    continue
+                row = _build_row(service, computed, include_scope=include_scope)
+                if row:
+                    rows.append(row)
+            if rows:
+                groups.append(
+                    {
+                        "group_id": "additional_services",
+                        "display_name": "Additional services",
+                        "rows": rows,
+                    }
+                )
+        return groups
+
+    package_ids = list(selection.get("selected_packages") or [])
+    packages = fetch_packages_by_ids(category_id, package_ids) if category_id and package_ids else []
+    sku_to_package: dict[str, dict[str, Any]] = {}
+    for package in packages:
+        for sku in package.get("linked_skus") or []:
+            if sku in expanded and sku not in sku_to_package:
+                sku_to_package[sku] = package
+
+    groups = []
+    for package in packages:
+        rows: list[dict[str, Any]] = []
+        for sku in package.get("linked_skus") or []:
+            service = service_by_sku.get(sku)
+            if not service:
+                continue
+            service = {**service, "_package_id": package["package_id"]}
+            row = _build_row(service, computed, include_scope=include_scope)
+            if row:
+                rows.append(row)
+        if rows:
+            groups.append(
+                {
+                    "group_id": package["package_id"],
+                    "display_name": package.get("package_name") or package["package_id"],
+                    "rows": rows,
+                }
+            )
+
+    adhoc_skus = [
+        sku
+        for sku in expanded
+        if sku not in sku_to_package and sku in service_by_sku
+    ]
+    if adhoc_skus:
+        rows = []
+        for sku in adhoc_skus:
+            row = _build_row(service_by_sku[sku], computed, include_scope=include_scope)
+            if row:
+                rows.append(row)
+        if rows:
+            if len(groups) == 1:
+                groups[0]["rows"].extend(rows)
+            else:
+                groups.append(
+                    {
+                        "group_id": "additional_services",
+                        "display_name": "Additional services",
+                        "rows": rows,
+                    }
+                )
+    elif not groups:
+        rows = []
+        for service in services:
+            row = _build_row(service, computed, include_scope=include_scope)
+            if row:
+                rows.append(row)
+        if rows:
+            groups.append(
+                {
+                    "group_id": "professional_fees",
+                    "display_name": "Professional fees",
+                    "rows": rows,
+                }
+            )
+    return groups
+
+
 def materialize_line_items(
     services: list[dict[str, Any]],
     computed: dict[str, Any],
     template_id: str | None,
+    *,
+    state: dict[str, Any] | None = None,
+    category_id: str | None = None,
 ) -> dict[str, Any]:
     if not services or not template_id:
         return {"groups": []}
@@ -61,14 +230,26 @@ def materialize_line_items(
     layout = placeholder.get("fee_layout") or {}
     group_by = layout.get("group_by") or "service_group"
     include_scope = bool(placeholder.get("include_scope_of_work"))
+    state = state or {}
+    selection = state.get("selection") or {}
+    custom_groups = (state.get("fee_layout") or {}).get("custom_groups")
+
+    if group_by == "package":
+        groups = _group_services_by_package(
+            services,
+            computed,
+            category_id=category_id,
+            selection=selection,
+            include_scope=include_scope,
+            custom_groups=custom_groups if isinstance(custom_groups, list) else None,
+        )
+        return {"groups": groups}
 
     buckets: dict[str, list[dict[str, Any]]] = {}
     group_labels: dict[str, str] = {}
-
     for service in services:
-        sku = service["sku"]
-        price = computed.get(sku) or {}
-        if price.get("status") == "not_applicable":
+        row = _build_row(service, computed, include_scope=include_scope)
+        if not row:
             continue
         group_key = str(service.get(group_by) or "other")
         group_labels[group_key] = (
@@ -76,19 +257,6 @@ def materialize_line_items(
             or service.get("department_team")
             or group_key.replace("_", " ").title()
         )
-        row: dict[str, Any] = {
-            "sku": sku,
-            "label": service.get("service_name_on_proposal") or service.get("product_name"),
-            "amount": price.get("amount"),
-            "currency": price.get("currency") or service.get("price_currency"),
-            "status": price.get("status"),
-            "recurring": service.get("recurring"),
-            "billing_frequency": service.get("billing_frequency"),
-            "service_group": service.get("service_group"),
-            "department_team": service.get("department_team"),
-        }
-        if include_scope and service.get("scope_of_work"):
-            row["scope_of_work"] = service["scope_of_work"]
         buckets.setdefault(group_key, []).append(row)
 
     groups = [
@@ -100,6 +268,84 @@ def materialize_line_items(
         for group_id, rows in buckets.items()
     ]
     return {"groups": groups}
+
+
+def materialize_payment_options(state: dict[str, Any], line_items: dict[str, Any]) -> dict[str, Any]:
+    writable = state.get("payment_options") or {}
+    user_options = list(writable.get("options") or [])
+    overrides = writable.get("overrides") or {}
+    groups = line_items.get("groups") or []
+
+    default_rows: list[dict[str, Any]] = []
+    for index, group in enumerate(groups, 1):
+        totals = sum_group_columns(group.get("rows") or [])
+        row = {
+            "group_id": group.get("group_id"),
+            "label": group.get("display_name") or f"{index}. Services",
+            **totals,
+            "total_annualized": row_total_annualized(totals),
+        }
+        default_rows.append(row)
+
+    default_option = {
+        "option_id": "option_a",
+        "label": "Payment Option A",
+        "rows": default_rows,
+        "summary": payment_summary_footer(default_rows),
+    }
+
+    if not user_options:
+        resolved = [_apply_payment_overrides(default_option, overrides.get("option_a") or {})]
+    else:
+        resolved = []
+        for option in user_options:
+            merged = _merge_payment_option(option, default_option)
+            resolved.append(_apply_payment_overrides(merged, overrides.get(option.get("option_id")) or {}))
+
+    return {
+        "options": user_options,
+        "overrides": overrides,
+        "resolved": resolved,
+    }
+
+
+def _merge_payment_option(user_option: dict[str, Any], default_option: dict[str, Any]) -> dict[str, Any]:
+    option_id = user_option.get("option_id") or default_option.get("option_id")
+    label = user_option.get("label") or default_option.get("label")
+    user_rows = user_option.get("rows") or []
+    if not user_rows:
+        rows = [dict(row) for row in default_option.get("rows") or []]
+    else:
+        default_by_group = {
+            str(row.get("group_id")): row for row in default_option.get("rows") or [] if row.get("group_id")
+        }
+        rows = []
+        for row in user_rows:
+            base = dict(default_by_group.get(str(row.get("group_id")), {}))
+            base.update({k: v for k, v in row.items() if v is not None})
+            if base.get("total_annualized") is None:
+                base["total_annualized"] = row_total_annualized(base)
+            rows.append(base)
+    summary = payment_summary_footer(rows)
+    return {"option_id": option_id, "label": label, "rows": rows, "summary": summary}
+
+
+def _apply_payment_overrides(option: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    if not overrides:
+        return option
+    merged = dict(option)
+    row_overrides = overrides.get("rows") or {}
+    rows = []
+    for row in option.get("rows") or []:
+        patch = row_overrides.get(row.get("group_id")) or {}
+        updated = {**row, **{k: v for k, v in patch.items() if v is not None}}
+        updated["total_annualized"] = row_total_annualized(updated)
+        rows.append(updated)
+    merged["rows"] = rows
+    if overrides.get("label"):
+        merged["label"] = overrides["label"]
+    merged["summary"] = payment_summary_footer(rows)
+    return merged
 
 
 def _selected_service_groups(services: list[dict[str, Any]]) -> set[str]:
@@ -180,6 +426,20 @@ def _resolve_knowledge_entries(
     return resolved
 
 
+def _resolve_fee_description(state: dict[str, Any], template_id: str | None, spec: dict[str, Any]) -> str:
+    override = state.get("fee_description")
+    if isinstance(override, str) and override.strip():
+        return override.strip()
+    fee_spec = spec.get("fee_description") or {}
+    file_ref = fee_spec.get("file")
+    if file_ref and template_id:
+        try:
+            return read_static_block(template_id, str(file_ref)).strip()
+        except OSError:
+            return ""
+    return ""
+
+
 def render_solution_and_price(state: dict[str, Any], template_id: str | None) -> str:
     line_items = state.get("line_items") or {}
     groups = line_items.get("groups") or []
@@ -191,30 +451,63 @@ def render_solution_and_price(state: dict[str, Any], template_id: str | None) ->
 
     tpl = load_template_yaml(template_id) if template_id else {}
     placeholder = (tpl.get("placeholders") or {}).get("solution_and_price") or {}
-    show_recurring = placeholder.get("fee_layout", {}).get("show_recurring", True)
+    layout = placeholder.get("fee_layout") or {}
+    table_style = layout.get("table_style") or "simple_amount"
+    show_recurring = layout.get("show_recurring", True)
     include_scope = bool(placeholder.get("include_scope_of_work"))
+    currency = layout.get("currency") or _default_currency(groups)
 
     parts: list[str] = []
+    fee_description = _resolve_fee_description(state, template_id, placeholder)
+    if fee_description:
+        parts.append(fee_description)
+        parts.append("")
+
+    if table_style == "frequency_columns":
+        parts.append(
+            render_frequency_table(groups, currency=currency, include_scope=include_scope)
+        )
+    else:
+        parts.append(
+            render_simple_table(
+                groups,
+                show_recurring=show_recurring,
+                include_scope=include_scope,
+            )
+        )
+    return "\n".join(parts).strip()
+
+
+def _default_currency(groups: list[dict[str, Any]]) -> str:
     for group in groups:
-        parts.append(f"### {group.get('display_name') or group.get('group_id')}")
-        parts.append("")
-        parts.append("| Service | Amount |")
-        parts.append("| --- | --- |")
         for row in group.get("rows") or []:
-            amount = row.get("amount")
-            if amount is None:
-                amount_text = row.get("status") or "TBD"
-            else:
-                currency = row.get("currency") or ""
-                amount_text = f"{currency} {amount:,.2f}".strip()
-            label = row.get("label") or row.get("sku")
-            if show_recurring and row.get("recurring") == "RECURRING":
-                label = f"{label} ({row.get('billing_frequency', 'recurring').lower()})"
-            parts.append(f"| {label} | {amount_text} |")
-            if include_scope and row.get("scope_of_work"):
-                parts.append("")
-                parts.append(f"_{row['scope_of_work']}_")
-        parts.append("")
+            currency = row.get("currency")
+            if currency:
+                return str(currency)
+    return ""
+
+
+def render_payment_options(state: dict[str, Any], template_id: str | None) -> str:
+    payment = state.get("payment_options") or {}
+    options = payment.get("resolved") or []
+    if not options:
+        return "_Payment options will appear once services are selected._"
+
+    tpl = load_template_yaml(template_id) if template_id else {}
+    layout = (
+        (tpl.get("placeholders") or {}).get("solution_and_price") or {}
+    ).get("fee_layout") or {}
+    currency = layout.get("currency") or "AUD"
+    intro_spec = (tpl.get("placeholders") or {}).get("payment_options") or {}
+    intro_file = intro_spec.get("intro_file")
+    parts: list[str] = []
+    if intro_file and template_id:
+        try:
+            parts.append(read_static_block(template_id, str(intro_file)).strip())
+            parts.append("")
+        except OSError:
+            pass
+    parts.append(render_payment_options_table(options, currency=currency))
     return "\n".join(parts).strip()
 
 
@@ -258,7 +551,12 @@ def resolve_placeholders(
     }
     state["active_optional_sections"] = sorted(active_optional)
 
-    resolved: dict[str, Any] = {}
+    resolved: dict[str, Any] = {
+        "document_title": {
+            "filled": True,
+            "value": resolve_document_title(state, template_id),
+        }
+    }
     doc_entries = _resolve_knowledge_entries(state, services, kind_filter="required_doc")
 
     for key, spec in placeholders.items():
@@ -294,6 +592,15 @@ def resolve_placeholders(
                 "filled": has_selection and not missing_facts,
                 "value": content,
                 "missing_facts": missing_facts,
+            }
+        elif ptype == "payment_options":
+            if "payment_options" not in active_optional:
+                resolved[key] = {"filled": True, "value": "", "skipped_optional": True}
+                continue
+            content = render_payment_options(state, template_id)
+            resolved[key] = {
+                "filled": bool((state.get("line_items") or {}).get("groups")),
+                "value": content,
             }
         elif ptype == "knowledge":
             if spec.get("resolver") == "triggered":
@@ -381,6 +688,6 @@ def derive_stage(state: dict[str, Any]) -> str:
         if computed:
             return "PRICING"
         return "SELECTION"
-    if client.get("company_name"):
+    if client.get("company_name") or client.get("contract_name"):
         return "SCOPING"
     return "INTAKE"

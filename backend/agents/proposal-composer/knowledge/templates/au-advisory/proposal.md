@@ -1,4 +1,4 @@
-# Proposal — {{client.company_name}}
+# {{document_title}}
 
 {{#if client.contact_name}}
 Attention: **{{client.contact_name}}**
@@ -11,6 +11,14 @@ Attention: **{{client.contact_name}}**
 ## Solution and professional fees
 
 {{solution_and_price}}
+
+{{#optional payment_options}}
+
+## Fee summary
+
+{{payment_options}}
+
+{{/optional}}
 
 ## Terms and conditions
 

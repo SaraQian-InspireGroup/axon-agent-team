@@ -11,6 +11,7 @@ from app.memory.long_term.context_provider import LongTermMemoryProvider
 from app.memory.memory_config import parse_memory_config
 from app.memory.postgres_history import PostgresHistoryProvider
 from app.platform.agent_bundle import AgentBundle
+from app.middleware.proposal_persist import ProposalPersistMiddleware
 from app.platform.hook_registry import resolve_middleware
 from app.platform.mcp_registry import McpRegistry
 from app.platform.model_registry import ModelProvider, ModelProviderRegistry
@@ -117,6 +118,11 @@ class AgentFactory:
                     proposal_tools.append(tool)
 
         combined_tools = [*viz_tools, *proposal_tools, *list(function_tools or []), *mcp_tools]
+
+        if proposal_tools and chat_id is not None:
+            middleware.append(
+                ProposalPersistMiddleware(self._db, store, chat_id=chat_id)
+            )
 
         agent = self._registry.create_agent(
             name=row.name,

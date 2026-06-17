@@ -182,8 +182,9 @@ class SessionStore:
         if db_payload is None:
             return cached
         merged = dict(cached)
+        # Persisted extensions: DB is source of truth (Redis may lag or hold stale empties).
         for key in _PERSISTED_EXTENSION_KEYS:
-            if key not in merged and key in db_payload:
+            if key in db_payload:
                 merged[key] = db_payload[key]
         return merged
 

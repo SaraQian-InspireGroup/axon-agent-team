@@ -43,6 +43,62 @@ async def test_session_store_merges_proposal_state_from_db_when_redis_missing_it
     assert merged["working_set"]["rows"] == []
 
 
+@pytest.mark.asyncio
+async def test_session_store_db_proposal_state_wins_over_stale_redis_empty():
+    chat_id = __import__("uuid").uuid4()
+    db = AsyncMock()
+    store = SessionStore(db)
+    db_payload = {
+        "session": {"session_id": str(chat_id)},
+        "proposal_state": {
+            "proposal_meta": {"category_id": "au-services"},
+            "selection": {"selected_skus": ["AU-LODG"]},
+        },
+    }
+    redis_payload = {
+        "session": {"session_id": str(chat_id)},
+        "proposal_state": {},
+        "working_set": {"rows": [{"sequence": 1}]},
+    }
+
+    with patch.object(store, "_load_payload_from_db", return_value=db_payload):
+        with patch.object(store, "_get_from_redis", return_value=redis_payload):
+            merged = await store._load_payload(chat_id)
+
+    assert merged["proposal_state"]["selection"]["selected_skus"] == ["AU-LODG"]
+    assert merged["working_set"]["rows"] == [{"sequence": 1}]
+
+
+@pytest.mark.asyncio
+async def test_append_completed_turn_preserves_proposal_state():
+    chat_id = __import__("uuid").uuid4()
+    db = AsyncMock()
+    store = SessionStore(db)
+    db_payload = {
+        "session": {"session_id": str(chat_id)},
+        "proposal_state": {"selection": {"selected_skus": ["X"]}},
+    }
+    saved_payloads: list[dict] = []
+
+    async def capture_save(_chat_id, payload):
+        saved_payloads.append(dict(payload))
+
+    with patch.object(store, "_load_payload_from_db", return_value=db_payload):
+        with patch.object(store, "_get_from_redis", return_value=None):
+            with patch.object(store, "_load_db_rows", return_value=[{"sequence": 1, "role": "user"}]):
+                with patch.object(store, "_save_payload", side_effect=capture_save):
+                    from app.memory.memory_config import parse_memory_config
+
+                    await store.append_completed_turn(
+                        chat_id,
+                        parse_memory_config({}),
+                        turn_start_sequence=1,
+                    )
+
+    assert saved_payloads
+    assert saved_payloads[-1]["proposal_state"]["selection"]["selected_skus"] == ["X"]
+
+
 def test_init_rehydrates_persisted_state():
     reset_run_proposal_state()
     state = empty_proposal_state()

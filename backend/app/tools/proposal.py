@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Annotated, Any
 
 from agent_framework import tool
 
@@ -12,6 +12,7 @@ from app.proposal.context import get_run_proposal_state
 from app.proposal.loaders import load_categories, read_knowledge_file
 from app.proposal.paths import KNOWLEDGE_ROOT, PERIPHERAL_ROOT, TEMPLATES_ROOT
 from app.proposal.pipeline import run_pipeline
+from app.proposal.preview import build_live_preview
 from app.proposal.rehydrate import rehydrate_proposal_state
 from app.proposal.render import render_proposal_markdown
 from app.proposal.state import apply_patch
@@ -28,6 +29,13 @@ def _public_state_view(state: dict[str, Any]) -> dict[str, Any]:
         "pricing_facts": state.get("pricing_facts"),
         "selection": state.get("selection"),
         "enabled_sections": state.get("enabled_sections"),
+        "fee_description": state.get("fee_description"),
+        "fee_layout": state.get("fee_layout"),
+        "payment_options": {
+            "options": (state.get("payment_options") or {}).get("options"),
+            "overrides": (state.get("payment_options") or {}).get("overrides"),
+            "resolved": (state.get("payment_options") or {}).get("resolved"),
+        },
         "appendix": state.get("appendix"),
         "pricing": {
             "computed": (state.get("pricing") or {}).get("computed"),
@@ -77,7 +85,10 @@ def _validate_read_path(relative_path: str) -> None:
 
 @tool(
     name="list_categories",
-    description="List proposal categories (region × BU) from categories.yaml with default templates.",
+    description=(
+        "List proposal categories (region × BU) and default template IDs. "
+        "Use when category is unset or the user asks what regions/BUs are available."
+    ),
 )
 def list_categories() -> dict[str, Any]:
     categories = load_categories()
@@ -98,11 +109,13 @@ def list_categories() -> dict[str, Any]:
 @tool(
     name="read_knowledge",
     description=(
-        "Read a markdown knowledge file under proposal-composer knowledge/. "
-        "Allowed roots: peripheral/ and templates/*/blocks/."
+        "Read markdown from knowledge/ (peripheral/ or templates/*/blocks/). "
+        "Use for terms, bios, and required-doc copy—not for SKU/package pricing."
     ),
 )
-def read_knowledge(path: str) -> dict[str, Any]:
+def read_knowledge(
+    path: Annotated[str, "Relative path under knowledge/, e.g. peripheral/required-docs/MY/director-id.md"],
+) -> dict[str, Any]:
     try:
         _validate_read_path(path)
         content = read_knowledge_file(path)
@@ -114,8 +127,8 @@ def read_knowledge(path: str) -> dict[str, Any]:
 @tool(
     name="get_proposal_state",
     description=(
-        "Return current proposal state including resolved placeholders, "
-        "pricing summary, and completeness."
+        "Read persisted proposal state (selection, line_items, pricing, completeness). "
+        "Use before confirming edits or when chat text may not match state. Read-only."
     ),
 )
 def get_proposal_state() -> dict[str, Any]:
@@ -130,13 +143,22 @@ def get_proposal_state() -> dict[str, Any]:
 @tool(
     name="patch_proposal_state",
     description=(
-        "Patch writable proposal fields (client, selection, pricing_facts, proposal_meta, "
-        "enabled_sections, appendix, pricing.overrides). Platform reruns pricing and "
-        "placeholder resolution automatically. Supports semantic ops: set_category, set_client, "
-        "select_packages, set_pricing_facts, enable_sections."
+        "Write confirmed proposal changes; platform recomputes pricing and line_items. "
+        "Use for client, selection, sections, and price overrides after catalog is known. "
+        "Do not use for catalog lookup—use query_data first, then patch."
     ),
 )
-def patch_proposal_state(patch: dict[str, Any]) -> dict[str, Any]:
+def patch_proposal_state(
+    patch: Annotated[
+        dict[str, Any],
+        (
+            "Patch object: semantic op and/or field merge. "
+            "Ops: set_category, set_client, select_packages (replaces full SKU list), "
+            "add_skus (append), remove_skus, set_pricing_facts, enable_sections. "
+            "Adding a service: add_skus—not select_packages with only the new SKU."
+        ),
+    ],
+) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
         return {"error": "Proposal context unavailable for this run.", "status": "error"}
@@ -199,11 +221,14 @@ def _queue_artifact(spec: ArtifactSpec) -> dict[str, Any]:
 @tool(
     name="render_preview",
     description=(
-        "Render the current proposal template to markdown and show a preview artifact in chat. "
-        "Requires completeness.ready_to_preview unless draft=true."
+        "Confirm the live proposal panel reflects current state (optional). "
+        "The UI auto-renders from state after patches—do not call repeatedly for side-panel updates. "
+        "Use draft=true when required fields are missing but the user wants to see a draft."
     ),
 )
-def render_preview(draft: bool = False) -> dict[str, Any]:
+def render_preview(
+    draft: Annotated[bool, "If true, preview even when completeness.ready_to_preview is false."] = False,
+) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
         return {"status": "error", "message": "Proposal context unavailable for this run."}
@@ -219,32 +244,32 @@ def render_preview(draft: bool = False) -> dict[str, Any]:
     try:
         if rehydrate_proposal_state(ctx.state):
             ctx.mark_dirty()
-        content = render_proposal_markdown(ctx.state)
+        preview = build_live_preview(ctx.state, draft=True)
     except ValueError as exc:
         return {"status": "error", "message": str(exc)}
 
-    company = (ctx.state.get("client") or {}).get("company_name") or "Proposal"
-    spec = _build_artifact_spec(
-        kind="proposal_preview",
-        title=f"Preview — {company}",
-        content=content,
-        filename=build_filename(ctx.state),
-        chat_id=ctx.chat_id,
-        persist=False,
-    )
-    ctx.state.setdefault("artifacts", {})["last_preview_id"] = spec.artifact_id
-    ctx.mark_dirty()
-    return _queue_artifact(spec)
+    ctx.state.setdefault("artifacts", {})["last_preview_at"] = preview.get("state_fingerprint")
+    return {
+        "status": preview.get("status") or "ok",
+        "message": "Live proposal panel updates automatically after state changes.",
+        "title": preview.get("title"),
+        "state_fingerprint": preview.get("state_fingerprint"),
+        "completeness": preview.get("completeness"),
+        "missing_required": (preview.get("completeness") or {}).get("missing_required") or [],
+    }
 
 
 @tool(
     name="generate_document",
     description=(
-        "Generate a downloadable proposal markdown document. "
-        "Requires completeness.ready_to_generate unless force=true."
+        "Create a downloadable proposal file for the client. "
+        "Use when the user asks to export or download; the live Proposal panel already shows the draft. "
+        "Blocked unless force=true when required fields are missing."
     ),
 )
-def generate_document(force: bool = False) -> dict[str, Any]:
+def generate_document(
+    force: Annotated[bool, "If true, generate even when completeness.ready_to_generate is false."] = False,
+) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
         return {"status": "error", "message": "Proposal context unavailable for this run."}
@@ -266,9 +291,14 @@ def generate_document(force: bool = False) -> dict[str, Any]:
         return {"status": "error", "message": str(exc)}
 
     company = (ctx.state.get("client") or {}).get("company_name") or "Proposal"
+    doc_title = (
+        (ctx.state.get("resolved_placeholders") or {})
+        .get("document_title", {})
+        .get("value")
+    ) or company
     spec = _build_artifact_spec(
         kind="proposal_document",
-        title=f"Proposal — {company}",
+        title=str(doc_title),
         content=content,
         filename=build_filename(ctx.state),
         chat_id=ctx.chat_id,

@@ -3,6 +3,8 @@ import { api, streamChat } from '../api/client'
 import { AgentIcon } from '../components/AgentIcon'
 import { ChatHistoryPanel } from '../components/ChatHistoryPanel'
 import { MemoryPanel } from '../components/MemoryPanel'
+import { ProposalLivePanel } from '../components/ProposalLivePanel'
+import { ProposalPanelShell, readProposalPanelWidth } from '../components/ProposalPanelShell'
 import { ChatHistoryIcon } from '../components/ChatHistoryIcon'
 import { ChatMessageList } from '../components/ChatMessageList'
 import { LoadingSpinner } from '../components/LoadingSpinner'
@@ -23,9 +25,52 @@ import {
 } from '../lib/messageActivity'
 import type { ArtifactSpec } from '../types/artifact'
 import type { VizSpec } from '../types/viz'
+import type { ProposalPreview } from '../types/proposalPreview'
 import type { Agent, ChatSummary, Message } from '../types'
 
 const SIDEBAR_COLLAPSED_KEY = 'agent-platform:sidebar-collapsed'
+const PROPOSAL_COMPOSER_SLUG = 'proposal-composer'
+
+function parseProposalPreview(data: Record<string, unknown>): ProposalPreview | null {
+  if (typeof data.state_fingerprint !== 'string' || typeof data.title !== 'string') {
+    return null
+  }
+  const completenessRaw = data.completeness
+  const completeness =
+    completenessRaw && typeof completenessRaw === 'object'
+      ? {
+          missing_required: Array.isArray((completenessRaw as ProposalPreview['completeness']).missing_required)
+            ? ((completenessRaw as ProposalPreview['completeness']).missing_required as string[])
+            : [],
+          ready_to_preview: Boolean((completenessRaw as ProposalPreview['completeness']).ready_to_preview),
+          ready_to_generate: Boolean((completenessRaw as ProposalPreview['completeness']).ready_to_generate),
+        }
+      : { missing_required: [], ready_to_preview: false, ready_to_generate: false }
+
+  return {
+    chat_id: typeof data.chat_id === 'string' ? data.chat_id : undefined,
+    status: (data.status as ProposalPreview['status']) || 'empty',
+    title: data.title,
+    markdown: typeof data.markdown === 'string' ? data.markdown : '',
+    filename: typeof data.filename === 'string' ? data.filename : 'proposal.md',
+    state_fingerprint: data.state_fingerprint,
+    message: typeof data.message === 'string' ? data.message : null,
+    completeness,
+  }
+}
+
+function shouldReplaceProposalPreview(
+  prev: ProposalPreview | null,
+  next: ProposalPreview,
+): boolean {
+  if (!prev) return true
+  if (next.state_fingerprint !== prev.state_fingerprint) return true
+  if (next.markdown && !prev.markdown) return true
+  if (prev.markdown && !next.markdown && (next.status === 'empty' || next.status === 'blocked')) {
+    return false
+  }
+  return !prev.markdown
+}
 
 function readSidebarCollapsed(): boolean {
   try {
@@ -53,6 +98,12 @@ export function ChatPage() {
   const [chatSessionLoading, setChatSessionLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
+  const [proposalPanelCollapsed, setProposalPanelCollapsed] = useState(true)
+  const [proposalPanelWidth, setProposalPanelWidth] = useState(readProposalPanelWidth)
+  const [proposalPreview, setProposalPreview] = useState<ProposalPreview | null>(null)
+  const [proposalPreviewLoading, setProposalPreviewLoading] = useState(false)
+  const [proposalPreviewError, setProposalPreviewError] = useState<string | null>(null)
+  const proposalPreviewFetchGenRef = useRef(0)
   const [memoryRefreshKey, setMemoryRefreshKey] = useState(0)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const pinToBottomRef = useRef(true)
@@ -76,6 +127,59 @@ export function ChatPage() {
     el.scrollTop = el.scrollHeight
   }, [])
 
+  const selected = agents.find((a) => a.id === selectedId) ?? null
+  const isProposalComposer = selected?.slug === PROPOSAL_COMPOSER_SLUG
+  const showChat = !agentsLoading && selected != null
+
+  const fetchProposalPreview = useCallback(async (id: string) => {
+    const generation = ++proposalPreviewFetchGenRef.current
+    setProposalPreviewLoading(true)
+    setProposalPreviewError(null)
+    try {
+      const preview = await api.getProposalPreview(id, true)
+      if (generation !== proposalPreviewFetchGenRef.current) return
+      setProposalPreview((prev) =>
+        shouldReplaceProposalPreview(prev, preview) ? preview : prev,
+      )
+    } catch (e) {
+      if (generation !== proposalPreviewFetchGenRef.current) return
+      setProposalPreviewError(e instanceof Error ? e.message : 'Failed to load proposal preview')
+    } finally {
+      if (generation === proposalPreviewFetchGenRef.current) {
+        setProposalPreviewLoading(false)
+      }
+    }
+  }, [])
+
+  const applyProposalPreview = useCallback((preview: ProposalPreview) => {
+    ++proposalPreviewFetchGenRef.current
+    setProposalPreview(preview)
+    setProposalPreviewLoading(false)
+    setProposalPreviewError(null)
+    if (preview.markdown) {
+      setProposalPanelCollapsed(false)
+    }
+  }, [])
+
+  const collapseProposalPanel = useCallback(() => {
+    setProposalPanelCollapsed(true)
+  }, [])
+
+  const expandProposalPanel = useCallback(() => {
+    setProposalPanelCollapsed(false)
+    if (chatId) void fetchProposalPreview(chatId)
+  }, [chatId, fetchProposalPreview])
+
+  const handleExpandArtifact = useCallback(
+    (_spec: ArtifactSpec) => {
+      if (!isProposalComposer) return
+      expandProposalPanel()
+      setHistoryOpen(false)
+      setMemoryOpen(false)
+    },
+    [expandProposalPanel, isProposalComposer],
+  )
+
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
       const next = !prev
@@ -87,9 +191,6 @@ export function ChatPage() {
       return next
     })
   }
-
-  const selected = agents.find((a) => a.id === selectedId) ?? null
-  const showChat = !agentsLoading && selected != null
 
   const refreshChatHistory = useCallback(async (agentId: string) => {
     setChatHistoryLoading(true)
@@ -106,6 +207,8 @@ export function ChatPage() {
   const openChatById = useCallback(async (agentId: string, id: string) => {
     setError(null)
     setChatId(id)
+    setProposalPreview(null)
+    setProposalPreviewError(null)
     setStoredChatId(agentId, id)
     setStreamingBlocks([])
     setInput('')
@@ -174,6 +277,18 @@ export function ChatPage() {
       () => setUserEmail(null),
     )
   }, [])
+
+  useEffect(() => {
+    if (!isProposalComposer) {
+      setProposalPanelCollapsed(true)
+      setProposalPreview(null)
+      setProposalPreviewError(null)
+      return
+    }
+    if (!chatId) return
+    setProposalPanelCollapsed(false)
+    void fetchProposalPreview(chatId)
+  }, [isProposalComposer, chatId, fetchProposalPreview])
 
   useEffect(() => {
     scrollToBottomIfPinned()
@@ -309,6 +424,12 @@ export function ChatPage() {
             const spec = ev.data.spec as ArtifactSpec
             setStreamingBlocks((prev) => applyStreamingArtifact(prev, spec))
           }
+          if (ev.event === 'proposal_updated') {
+            const preview = parseProposalPreview(ev.data)
+            if (preview) {
+              applyProposalPreview(preview)
+            }
+          }
           if (
             (ev.event === 'reasoning' ||
               ev.event === 'tool_call' ||
@@ -328,6 +449,9 @@ export function ChatPage() {
           }
           if (ev.event === 'done' || ev.event === 'run_cancelled') {
             finishStreamingUi()
+            if (ev.event === 'done' && isProposalComposer && chatId) {
+              void fetchProposalPreview(chatId)
+            }
           }
           if (ev.event === 'error') {
             throw new Error(String(ev.data.error ?? 'stream error'))
@@ -358,6 +482,7 @@ export function ChatPage() {
   const startNewChat = async () => {
     if (!selectedId || loading || chatSessionLoading) return
     setHistoryOpen(false)
+    setProposalPreview(null)
     setError(null)
     setChatSessionLoading(true)
     setMessages([])
@@ -496,7 +621,7 @@ export function ChatPage() {
 
       <section className="chat-main flex min-w-0 flex-1 flex-col">
         {showChat && selected ? (
-          <div className="chat-main-layout">
+          <div className={`chat-main-layout${isProposalComposer ? ' chat-main-layout-proposal' : ''}`}>
             <div className="chat-main-inner">
             <div className="chat-header">
               <div className="chat-header-brand">
@@ -526,7 +651,9 @@ export function ChatPage() {
                     onClick={() => {
                       setMemoryOpen((open) => {
                         const next = !open
-                        if (next) setHistoryOpen(false)
+                        if (next) {
+                          setHistoryOpen(false)
+                        }
                         return next
                       })
                     }}
@@ -586,6 +713,8 @@ export function ChatPage() {
                           messages={messages}
                           streamingBlocks={streamingBlocks}
                           loading={loading}
+                          liveProposalOpen={isProposalComposer && !proposalPanelCollapsed}
+                          onExpandArtifact={handleExpandArtifact}
                         />
                       </>
                     )}
@@ -668,6 +797,27 @@ export function ChatPage() {
               </div>
             </div>
             </div>
+
+            {isProposalComposer && (
+              <ProposalPanelShell
+                open={!proposalPanelCollapsed}
+                width={proposalPanelWidth}
+                onWidthChange={setProposalPanelWidth}
+                onExpand={expandProposalPanel}
+              >
+                <ProposalLivePanel
+                  open
+                  embedded
+                  preview={proposalPreview}
+                  loading={proposalPreviewLoading}
+                  error={proposalPreviewError}
+                  onCollapse={collapseProposalPanel}
+                  onRefresh={() => {
+                    if (chatId) void fetchProposalPreview(chatId)
+                  }}
+                />
+              </ProposalPanelShell>
+            )}
 
             <MemoryPanel
               open={memoryOpen}

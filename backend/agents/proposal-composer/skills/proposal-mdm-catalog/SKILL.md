@@ -1,20 +1,22 @@
 ---
 name: proposal-mdm-catalog
 description: >-
-  MDM catalog SQL patterns for proposal-composer when BD/sales intent is clear on region
-  but package/SKU still needs lookup, comparison, or keyword search. Read-only Postgres;
-  load after proposal-composer when exploration beats guessing.
+  Read-only MDM SQL templates when region/BU is known but package_id or SKU still needs keyword
+  search, comparison, or package composition lookup. Load for catalog exploration—not for
+  post-selection edits (use patch_proposal_state per its tool description).
 ---
 
 # Proposal MDM Catalog — Skill（对内）
 
-**何时加载**：销售说的方案还不对应具体 `package_id` / SKU，或需要 **对比多个 package、按关键词搜服务、看 package 里含哪些 SKU** 时。若用户已明确 package 名且你认得 ID，直接 patch，不必为查而查。
+**何时加载**：销售说的方案还不对应具体 `package_id` / SKU，或需要 **对比 package、按关键词搜服务、看 package 含哪些 SKU**。
+
+**何时不必加载**：用户已明确 package/SKU 且你要做的是 **改单、增删服务、改客户**——直接 patch（tool description）；不要为改单反复 SQL。
 
 ## 原则
 
 - 只读 SELECT；`category_id` + `status = 'ACTIVE'`。
-- 查完用 **销售语言** 总结；确认后再 `patch_proposal_state`——**选型不能只留在对话里**。
-- 价格展示以 patch 后算价为准；SQL 里的 `price_amount` 仅作推荐参考。
+- 查完用 **销售语言** 总结；**确认后再写入 selection**（选型不能只留在对话里）。
+- SQL 里的 `price_amount` 仅作推荐；对外报价以 patch 后 **line_items** 为准。
 
 ## 表
 
@@ -63,4 +65,6 @@ ORDER BY department_team, sku
 LIMIT 50;
 ```
 
-更多 BVI/AU 片段见 Skill `proposal-composer` → `references/bvi-sql.md` / `au-sql.md`。
+更多片段：Skill `proposal-composer` → `references/bvi-sql.md` / `au-sql.md`。
+
+**`query_data` 调用格式**（空参数禁止等）→ Postgres MCP tool description，此处不重复。

@@ -61,6 +61,23 @@ class MessageOut(BaseModel):
     created_at: str | None
 
 
+class ProposalCompletenessOut(BaseModel):
+    missing_required: list[str] = Field(default_factory=list)
+    ready_to_preview: bool = False
+    ready_to_generate: bool = False
+
+
+class ProposalPreviewOut(BaseModel):
+    chat_id: str | None = None
+    status: str
+    title: str
+    markdown: str = ""
+    filename: str = "proposal.md"
+    state_fingerprint: str
+    message: str | None = None
+    completeness: ProposalCompletenessOut = Field(default_factory=ProposalCompletenessOut)
+
+
 class MemoryBulletOut(BaseModel):
     prefix: str
     text: str

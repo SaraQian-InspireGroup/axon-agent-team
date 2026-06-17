@@ -23,6 +23,15 @@ def test_harneys_template_has_solution_and_price():
     assert placeholders["solution_and_price"]["fee_layout"]["group_by"] == "service_group"
 
 
+def test_au_template_fee_layout():
+    tpl = load_template_yaml("au-advisory")
+    sap = (tpl.get("placeholders") or {}).get("solution_and_price") or {}
+    layout = sap.get("fee_layout") or {}
+    assert layout.get("group_by") == "package"
+    assert layout.get("table_style") == "frequency_columns"
+    assert tpl.get("document_title", {}).get("prefix") == "INCORP ADVISORY PROPOSAL"
+
+
 def test_compute_fixed_pricing():
     services = [
         {
@@ -79,3 +88,12 @@ def test_apply_patch_semantic_ops():
         {"op": "select_packages", "package_ids": ["PKG-BVI-INCORP-STD"]},
     )
     assert state["selection"]["selected_packages"] == ["PKG-BVI-INCORP-STD"]
+
+    state = apply_patch(state, {"op": "add_skus", "skus": ["SKU-A", "SKU-B"]})
+    assert state["selection"]["selected_skus"] == ["SKU-A", "SKU-B"]
+
+    state = apply_patch(state, {"op": "add_skus", "skus": ["SKU-B", "SKU-C"]})
+    assert state["selection"]["selected_skus"] == ["SKU-A", "SKU-B", "SKU-C"]
+
+    state = apply_patch(state, {"op": "remove_skus", "skus": ["SKU-B"]})
+    assert state["selection"]["selected_skus"] == ["SKU-A", "SKU-C"]

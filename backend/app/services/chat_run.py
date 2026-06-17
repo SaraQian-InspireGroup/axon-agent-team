@@ -18,6 +18,8 @@ from app.platform.agent_factory import AgentFactory
 from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
 from app.platform.session_store import SessionStore
 from app.proposal.context import get_run_proposal_state, init_run_proposal_state, reset_run_proposal_state
+from app.proposal.preview import build_live_preview
+from app.proposal.recover import recover_proposal_state_from_messages
 from app.proposal.store import load_proposal_state_from_payload, persist_proposal_state_if_dirty
 from app.proposal.artifact_spec import ArtifactSpec
 from app.runs.manager import get_run_manager
@@ -95,6 +97,8 @@ class ChatRunService:
             return
         payload = await self._sessions.get_payload(chat.id)
         initial = load_proposal_state_from_payload(payload)
+        if initial is None:
+            initial = await recover_proposal_state_from_messages(self._messages, chat.id)
         init_run_proposal_state(chat_id=chat.id, initial_state=initial)
 
     async def _finalize_success(
@@ -134,6 +138,7 @@ class ChatRunService:
                 await self._persist_agent_messages(chat_id, response)
             elif accumulator is not None and accumulator.has_content():
                 await accumulator.persist(self._messages, chat_id)
+            await persist_proposal_state_if_dirty(self._sessions, chat_id)
             await self._persist_run_error(chat_id, exc)
             await self._db.commit()
         except Exception:
@@ -319,6 +324,9 @@ class ChatRunService:
                 turn_start_sequence=user_row.sequence,
                 accumulator=accumulator,
             )
+            preview_event = _proposal_updated_event(chat_id)
+            if preview_event is not None:
+                yield preview_event
             yield {"event": "done", "data": {"text": final.text or ""}}
         except MiddlewareTermination:
             if run.stop_event.is_set():
@@ -381,6 +389,15 @@ class ChatRunService:
                 content=text,
             )
         await self._db.flush()
+
+def _proposal_updated_event(chat_id: uuid.UUID) -> dict[str, Any] | None:
+    ctx = get_run_proposal_state()
+    if ctx is None:
+        return None
+    data = build_live_preview(ctx.state, draft=True)
+    data["chat_id"] = str(chat_id)
+    return {"event": "proposal_updated", "data": data}
+
 
 def _json_safe(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)) or value is None:

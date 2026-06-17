@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
-from app.db.mdm_models import MdmPackageService, MdmService
+from app.db.mdm_models import MdmPackage, MdmPackageService, MdmService
 
 T = TypeVar("T")
 
@@ -61,6 +61,51 @@ async def _fetch_services_by_skus(category_id: str, skus: list[str]) -> list[dic
         return [_service_to_dict(row) for row in rows]
 
 
+async def _fetch_packages_by_ids(
+    category_id: str, package_ids: list[str]
+) -> list[dict[str, Any]]:
+    if not package_ids:
+        return []
+    async with _ephemeral_session() as session:
+        packages = (
+            await session.scalars(
+                select(MdmPackage).where(
+                    MdmPackage.category_id == category_id,
+                    MdmPackage.package_id.in_(package_ids),
+                    MdmPackage.status == "ACTIVE",
+                )
+            )
+        ).all()
+        if not packages:
+            return []
+        links = (
+            await session.scalars(
+                select(MdmPackageService).where(
+                    MdmPackageService.category_id == category_id,
+                    MdmPackageService.package_id.in_(package_ids),
+                )
+            )
+        ).all()
+        skus_by_package: dict[str, list[str]] = {pkg.package_id: [] for pkg in packages}
+        for link in links:
+            skus_by_package.setdefault(link.package_id, []).append(link.sku)
+        ordered: list[dict[str, Any]] = []
+        pkg_by_id = {pkg.package_id: pkg for pkg in packages}
+        for package_id in package_ids:
+            pkg = pkg_by_id.get(package_id)
+            if not pkg:
+                continue
+            ordered.append(
+                {
+                    "package_id": pkg.package_id,
+                    "package_name": pkg.package_name,
+                    "package_detail": pkg.package_detail,
+                    "linked_skus": skus_by_package.get(package_id, []),
+                }
+            )
+        return ordered
+
+
 async def _fetch_package_skus(category_id: str, package_ids: list[str]) -> list[str]:
     if not package_ids:
         return []
@@ -82,6 +127,10 @@ def fetch_services_by_skus(category_id: str, skus: list[str]) -> list[dict[str, 
 
 def fetch_package_skus(category_id: str, package_ids: list[str]) -> list[str]:
     return _run_async(_fetch_package_skus(category_id, package_ids))
+
+
+def fetch_packages_by_ids(category_id: str, package_ids: list[str]) -> list[dict[str, Any]]:
+    return _run_async(_fetch_packages_by_ids(category_id, package_ids))
 
 
 def expand_selected_skus(category_id: str, selection: dict[str, Any]) -> list[str]:
