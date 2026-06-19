@@ -7,14 +7,13 @@ BD/销售跨 region 出具 Proposal 的 agent（draft-first proposal composer）
 | 组件 | 位置 |
 |------|------|
 | Draft 管线 | `backend/app/proposal/draft.py` |
-| Builtin tools | `list_categories`, `read_knowledge`, `initialize_proposal_draft`, `get_proposal_draft`, `patch_proposal_draft`, `add_package_to_proposal_draft`, `add_service_to_proposal_draft`, `enable_proposal_draft_section`, `render_preview`, `generate_document` |
+| Builtin tools | `list_templates`, `read_knowledge`, `initialize_proposal_draft`, `get_proposal_draft`, `patch_proposal_draft`, `add_package_to_proposal_draft`, `add_service_to_proposal_draft`, `enable_proposal_draft_section`, `render_preview`, `generate_document` |
 | 会话持久化 | `Chat.session_state.proposal_draft` |
 
 ## `knowledge/` 布局（运行时数据）
 
 ```
 knowledge/
-  categories.yaml              # category 路由
   knowledge-index.yaml         # 选型 → required doc / credential（极简）
   templates/{template_id}/
     template.yaml              # draft sections 契约
@@ -25,8 +24,7 @@ knowledge/
 | 数据 | 来源 |
 |------|------|
 | 产品 SKU / package | PostgreSQL `mdm_*`（Postgres MCP + SQL） |
-| Category 路由 | `categories.yaml` |
-| 模版骨架与 draft sections | `templates/{id}/template.yaml` |
+| Template 入口、catalog filter、draft sections | `templates/{id}/template.yaml` |
 | Agent 读模版契约 | `read_knowledge("templates/{template_id}/template.yaml")` — 见 skill `references/template-contract.md` |
 | 触发型知识 | `knowledge-index.yaml` → `peripheral/` |
 
@@ -34,7 +32,7 @@ knowledge/
 
 ## 已实施模版
 
-| template_id | category | 说明 |
+| template_id | catalog filter | 说明 |
 |-------------|----------|------|
-| `harneys-bvi` | `harneys-bvi` | draft `fee_section`；`fee_layout.group_by: service_group` |
-| `au-advisory` | `au-advisory` | draft `fee_section` + optional `payment_options` derived section |
+| `harneys-bvi` | `region=BVI`, `bu=Harneys` | draft `fee_section`；`fee_layout.group_by: service_group` |
+| `au-advisory` | `region=AU`, `bu=Incorp` | draft `fee_section` + optional `payment_options` derived section |

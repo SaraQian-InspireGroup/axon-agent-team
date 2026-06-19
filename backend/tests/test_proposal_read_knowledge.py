@@ -20,7 +20,6 @@ def test_validate_read_path_allowed(path: str) -> None:
 @pytest.mark.parametrize(
     "path",
     [
-        "categories.yaml",
         "knowledge-index.yaml",
         "../peripheral/x.md",
         "templates/foo.md",

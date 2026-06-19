@@ -13,7 +13,7 @@ def test_proposal_composer_profile_loads():
 
 def test_proposal_builtin_tools_registered():
     for name in (
-        "list_categories",
+        "list_templates",
         "read_knowledge",
         "initialize_proposal_draft",
         "get_proposal_draft",

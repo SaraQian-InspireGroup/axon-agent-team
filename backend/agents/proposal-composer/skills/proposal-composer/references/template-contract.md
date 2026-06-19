@@ -14,7 +14,7 @@ Read it with **`read_knowledge`** when section ids, section kinds, optional bloc
 |-----------|----------------|
 | Draft was just initialized or template changed | **Yes** — before filling optional sections, derived sections, or custom tables |
 | User asks for audit vs advisory (AU) | **Yes** — after choosing `au-advisory` vs future `au-audit` |
-| First time on a category with unfamiliar layout | **Yes** |
+| First time on a template with unfamiliar layout | **Yes** |
 | Small patch only (e.g. client name) and template already understood this session | Optional |
 | Exploring SKU/package prices | **No** — use Postgres MCP + `proposal-mdm-catalog` |
 
@@ -24,7 +24,7 @@ Read it with **`read_knowledge`** when section ids, section kinds, optional bloc
 read_knowledge("templates/{template_id}/template.yaml")
 ```
 
-Use `/meta/template_id` from draft, or `default_template_id` from `list_categories` when category is known but template is not.
+Use `/meta/template_id` from draft, or `list_templates` when the proposal type is not known yet.
 
 ## What is in `template.yaml`
 
@@ -43,7 +43,7 @@ There is no separate body markdown template. `template.yaml` is the source of tr
 
 ## How to use after reading
 
-1. **`initialize_proposal_draft`** — materialize sections from category/template.
+1. **`initialize_proposal_draft`** — materialize sections from template.
 2. **`template.yaml`** — section ids, kinds, default enabled flags, editability, materializers, derivations.
 3. **Draft tools** — use `add_*_to_proposal_draft` for catalog additions and `patch_proposal_draft` for visible copy/table edits.
 4. **`get_proposal_draft`** — verify fee tables, rows, optional sections, and client facts after patch.
@@ -78,7 +78,7 @@ There is no separate body markdown template. `template.yaml` is the source of tr
 
 ## Examples
 
-**AU advisory — after setting category:**
+**AU advisory — after setting template:**
 
 ```text
 read_knowledge("templates/au-advisory/template.yaml")
@@ -89,4 +89,4 @@ Check: `solution_and_fees` is the fee section; `payment_options` is optional der
 ## Do not
 
 - Duplicate template rules in skill prose — link here and read the file.
-- Use `categories.yaml` via `list_categories` — not readable through `read_knowledge`.
+- Treat template rules as prose memory — read `template.yaml` when unsure.

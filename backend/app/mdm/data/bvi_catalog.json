@@ -2,7 +2,6 @@
   "services": [
     {
       "sku": "CSS001",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -36,7 +35,6 @@
     },
     {
       "sku": "CSS002",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -70,7 +68,6 @@
     },
     {
       "sku": "CSS003",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -100,7 +97,6 @@
     },
     {
       "sku": "CSS004",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -130,7 +126,6 @@
     },
     {
       "sku": "CSS005",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -160,7 +155,6 @@
     },
     {
       "sku": "CSS006",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -190,7 +184,6 @@
     },
     {
       "sku": "CSS007",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -220,7 +213,6 @@
     },
     {
       "sku": "CSS008",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -250,7 +242,6 @@
     },
     {
       "sku": "CSS009",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -284,7 +275,6 @@
     },
     {
       "sku": "CSS010",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -318,7 +308,6 @@
     },
     {
       "sku": "CSS011",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -348,7 +337,6 @@
     },
     {
       "sku": "CSS012",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -378,7 +366,6 @@
     },
     {
       "sku": "CSS013",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -408,7 +395,6 @@
     },
     {
       "sku": "CSS014",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -438,7 +424,6 @@
     },
     {
       "sku": "CSS015",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -468,7 +453,6 @@
     },
     {
       "sku": "CSS016",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -506,7 +490,6 @@
     },
     {
       "sku": "CSS017",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -544,7 +527,6 @@
     },
     {
       "sku": "CSS018",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -576,7 +558,6 @@
     },
     {
       "sku": "CSS019",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -606,7 +587,6 @@
     },
     {
       "sku": "CSS020",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -638,7 +618,6 @@
     },
     {
       "sku": "CSS021",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -668,7 +647,6 @@
     },
     {
       "sku": "CSS022",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Corporate Services",
@@ -700,7 +678,6 @@
     },
     {
       "sku": "ACC001",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Accounting & FAR",
@@ -730,7 +707,6 @@
     },
     {
       "sku": "ACC002",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Accounting & FAR",
@@ -760,7 +736,6 @@
     },
     {
       "sku": "ACC003",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Accounting & FAR",
@@ -790,7 +765,6 @@
     },
     {
       "sku": "ACC004",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Accounting & FAR",
@@ -820,7 +794,6 @@
     },
     {
       "sku": "AM001",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -850,7 +823,6 @@
     },
     {
       "sku": "AM002",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -880,7 +852,6 @@
     },
     {
       "sku": "AM003",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -910,7 +881,6 @@
     },
     {
       "sku": "AM004",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -940,7 +910,6 @@
     },
     {
       "sku": "AM005",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -970,7 +939,6 @@
     },
     {
       "sku": "AM006",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1000,7 +968,6 @@
     },
     {
       "sku": "AM007",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1030,7 +997,6 @@
     },
     {
       "sku": "AM008",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1060,7 +1026,6 @@
     },
     {
       "sku": "AM009",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1090,7 +1055,6 @@
     },
     {
       "sku": "AM010",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1120,7 +1084,6 @@
     },
     {
       "sku": "AM011",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1150,7 +1113,6 @@
     },
     {
       "sku": "AM012",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1180,7 +1142,6 @@
     },
     {
       "sku": "AM013",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1210,7 +1171,6 @@
     },
     {
       "sku": "AM014",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1240,7 +1200,6 @@
     },
     {
       "sku": "AM015",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1270,7 +1229,6 @@
     },
     {
       "sku": "AM016",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1300,7 +1258,6 @@
     },
     {
       "sku": "AM017",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1330,7 +1287,6 @@
     },
     {
       "sku": "AM018",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1360,7 +1316,6 @@
     },
     {
       "sku": "AM019",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1390,7 +1345,6 @@
     },
     {
       "sku": "AM020",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1420,7 +1374,6 @@
     },
     {
       "sku": "AM021",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1450,7 +1403,6 @@
     },
     {
       "sku": "AM022",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1482,7 +1434,6 @@
     },
     {
       "sku": "AM023",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1514,7 +1465,6 @@
     },
     {
       "sku": "AM024",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1546,7 +1496,6 @@
     },
     {
       "sku": "AM025",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1578,7 +1527,6 @@
     },
     {
       "sku": "AM026",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1610,7 +1558,6 @@
     },
     {
       "sku": "AM027",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -1642,7 +1589,6 @@
     },
     {
       "sku": "PW001",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -1674,7 +1620,6 @@
     },
     {
       "sku": "PW002",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -1706,7 +1651,6 @@
     },
     {
       "sku": "PW003",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -1738,7 +1682,6 @@
     },
     {
       "sku": "PW004",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -1770,7 +1713,6 @@
     },
     {
       "sku": "PW005",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -1802,7 +1744,6 @@
     },
     {
       "sku": "PW006",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -1834,7 +1775,6 @@
     },
     {
       "sku": "PW007",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -1866,7 +1806,6 @@
     },
     {
       "sku": "PW008",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -1898,7 +1837,6 @@
     },
     {
       "sku": "PW009",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -1930,7 +1868,6 @@
     },
     {
       "sku": "PW010",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -1962,7 +1899,6 @@
     },
     {
       "sku": "PW011",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -1994,7 +1930,6 @@
     },
     {
       "sku": "PW012",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -2026,7 +1961,6 @@
     },
     {
       "sku": "PW013",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -2056,7 +1990,6 @@
     },
     {
       "sku": "PW014",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -2088,7 +2021,6 @@
     },
     {
       "sku": "PW015",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -2120,7 +2052,6 @@
     },
     {
       "sku": "PW016",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -2152,7 +2083,6 @@
     },
     {
       "sku": "PW017",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Private Wealth",
@@ -2184,7 +2114,6 @@
     },
     {
       "sku": "COM001",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2216,7 +2145,6 @@
     },
     {
       "sku": "COM002",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2248,7 +2176,6 @@
     },
     {
       "sku": "COM003",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2280,7 +2207,6 @@
     },
     {
       "sku": "COM004",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2310,7 +2236,6 @@
     },
     {
       "sku": "COM005",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2342,7 +2267,6 @@
     },
     {
       "sku": "COM006",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2374,7 +2298,6 @@
     },
     {
       "sku": "COM007",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2406,7 +2329,6 @@
     },
     {
       "sku": "COM008",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2438,7 +2360,6 @@
     },
     {
       "sku": "COM009",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2470,7 +2391,6 @@
     },
     {
       "sku": "COM010",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2502,7 +2422,6 @@
     },
     {
       "sku": "COM011",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2534,7 +2453,6 @@
     },
     {
       "sku": "COM012",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2566,7 +2484,6 @@
     },
     {
       "sku": "COM013",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2598,7 +2515,6 @@
     },
     {
       "sku": "COM014",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2630,7 +2546,6 @@
     },
     {
       "sku": "COM015",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2662,7 +2577,6 @@
     },
     {
       "sku": "COM016",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2694,7 +2608,6 @@
     },
     {
       "sku": "COM017",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2726,7 +2639,6 @@
     },
     {
       "sku": "COM018",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2756,7 +2668,6 @@
     },
     {
       "sku": "COM019",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2786,7 +2697,6 @@
     },
     {
       "sku": "COM020",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2816,7 +2726,6 @@
     },
     {
       "sku": "COM021",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2848,7 +2757,6 @@
     },
     {
       "sku": "COM022",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2878,7 +2786,6 @@
     },
     {
       "sku": "COM023",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2910,7 +2817,6 @@
     },
     {
       "sku": "COM024",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2942,7 +2848,6 @@
     },
     {
       "sku": "COM025",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -2974,7 +2879,6 @@
     },
     {
       "sku": "COM026",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3006,7 +2910,6 @@
     },
     {
       "sku": "COM027",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3038,7 +2941,6 @@
     },
     {
       "sku": "COM028",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3070,7 +2972,6 @@
     },
     {
       "sku": "COM029",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3102,7 +3003,6 @@
     },
     {
       "sku": "COM030",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3134,7 +3034,6 @@
     },
     {
       "sku": "COM031",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3166,7 +3065,6 @@
     },
     {
       "sku": "COM032",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3196,7 +3094,6 @@
     },
     {
       "sku": "COM033",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3226,7 +3123,6 @@
     },
     {
       "sku": "COM034",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3258,7 +3154,6 @@
     },
     {
       "sku": "COM035",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3290,7 +3185,6 @@
     },
     {
       "sku": "COM036",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3320,7 +3214,6 @@
     },
     {
       "sku": "COM037",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3350,7 +3243,6 @@
     },
     {
       "sku": "COM038",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3380,7 +3272,6 @@
     },
     {
       "sku": "COM039",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3412,7 +3303,6 @@
     },
     {
       "sku": "COM040",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3442,7 +3332,6 @@
     },
     {
       "sku": "COM041",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3474,7 +3363,6 @@
     },
     {
       "sku": "COM042",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3504,7 +3392,6 @@
     },
     {
       "sku": "COM043",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3534,7 +3421,6 @@
     },
     {
       "sku": "COM044",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "Compliance Solutions",
@@ -3566,7 +3452,6 @@
     },
     {
       "sku": "TRU001",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3596,7 +3481,6 @@
     },
     {
       "sku": "TRU002",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3626,7 +3510,6 @@
     },
     {
       "sku": "TRU003",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3658,7 +3541,6 @@
     },
     {
       "sku": "TRU004",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3690,7 +3572,6 @@
     },
     {
       "sku": "TRU005",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3722,7 +3603,6 @@
     },
     {
       "sku": "TRU006",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3752,7 +3632,6 @@
     },
     {
       "sku": "TRU007",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3784,7 +3663,6 @@
     },
     {
       "sku": "TRU008",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3814,7 +3692,6 @@
     },
     {
       "sku": "TRU009",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3844,7 +3721,6 @@
     },
     {
       "sku": "TRU010",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3876,7 +3752,6 @@
     },
     {
       "sku": "TRU011",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3906,7 +3781,6 @@
     },
     {
       "sku": "TRU012",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3936,7 +3810,6 @@
     },
     {
       "sku": "TRU013",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -3968,7 +3841,6 @@
     },
     {
       "sku": "TRU014",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4000,7 +3872,6 @@
     },
     {
       "sku": "TRU015",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4032,7 +3903,6 @@
     },
     {
       "sku": "TRU016",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4062,7 +3932,6 @@
     },
     {
       "sku": "TRU017",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4094,7 +3963,6 @@
     },
     {
       "sku": "TRU018",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4124,7 +3992,6 @@
     },
     {
       "sku": "TRU019",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4154,7 +4021,6 @@
     },
     {
       "sku": "TRU020",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4186,7 +4052,6 @@
     },
     {
       "sku": "TRU021",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4216,7 +4081,6 @@
     },
     {
       "sku": "TRU022",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4246,7 +4110,6 @@
     },
     {
       "sku": "TRU023",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4278,7 +4141,6 @@
     },
     {
       "sku": "TRU024",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4310,7 +4172,6 @@
     },
     {
       "sku": "TRU025",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4342,7 +4203,6 @@
     },
     {
       "sku": "TRU026",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4372,7 +4232,6 @@
     },
     {
       "sku": "TRU027",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4404,7 +4263,6 @@
     },
     {
       "sku": "TRU028",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4436,7 +4294,6 @@
     },
     {
       "sku": "TRU029",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4468,7 +4325,6 @@
     },
     {
       "sku": "TRU030",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4498,7 +4354,6 @@
     },
     {
       "sku": "TRU031",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4530,7 +4385,6 @@
     },
     {
       "sku": "TRU032",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4560,7 +4414,6 @@
     },
     {
       "sku": "TRU033",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4590,7 +4443,6 @@
     },
     {
       "sku": "TRU034",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4622,7 +4474,6 @@
     },
     {
       "sku": "TRU035",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4652,7 +4503,6 @@
     },
     {
       "sku": "TRU036",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4682,7 +4532,6 @@
     },
     {
       "sku": "TRU037",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4714,7 +4563,6 @@
     },
     {
       "sku": "TRU038",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4746,7 +4594,6 @@
     },
     {
       "sku": "TRU039",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4778,7 +4625,6 @@
     },
     {
       "sku": "TRU040",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4808,7 +4654,6 @@
     },
     {
       "sku": "TRU041",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4840,7 +4685,6 @@
     },
     {
       "sku": "TRU042",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4870,7 +4714,6 @@
     },
     {
       "sku": "TRU043",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4900,7 +4743,6 @@
     },
     {
       "sku": "TRU044",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4932,7 +4774,6 @@
     },
     {
       "sku": "TRU045",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4962,7 +4803,6 @@
     },
     {
       "sku": "TRU046",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -4992,7 +4832,6 @@
     },
     {
       "sku": "TRU047",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -5024,7 +4863,6 @@
     },
     {
       "sku": "TRU048",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -5056,7 +4894,6 @@
     },
     {
       "sku": "TRU049",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -5088,7 +4925,6 @@
     },
     {
       "sku": "TRU050",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -5118,7 +4954,6 @@
     },
     {
       "sku": "TRU051",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -5150,7 +4985,6 @@
     },
     {
       "sku": "TRU052",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -5180,7 +5014,6 @@
     },
     {
       "sku": "TRU053",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -5210,7 +5043,6 @@
     },
     {
       "sku": "TRU054",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "department_team": "nan",
@@ -5244,7 +5076,6 @@
   "packages": [
     {
       "package_id": "PKG001",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "Incorporation",
@@ -5263,7 +5094,6 @@
     },
     {
       "package_id": "PKG002",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "Annual maintenance",
@@ -5285,7 +5115,6 @@
     },
     {
       "package_id": "PKG003",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "Approval Manager",
@@ -5323,7 +5152,6 @@
     },
     {
       "package_id": "PKG004",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "AEOI Services (as required for Reporting Financial Institutions",
@@ -5339,7 +5167,6 @@
     },
     {
       "package_id": "PKG005",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "AEOI Services – CRS only (as required for FATCA Exempt Management Entities)",
@@ -5353,7 +5180,6 @@
     },
     {
       "package_id": "PKG006",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "AML Services- AML Officers",
@@ -5369,7 +5195,6 @@
     },
     {
       "package_id": "PKG007",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "AML Policies and Procedures",
@@ -5384,7 +5209,6 @@
     },
     {
       "package_id": "PKG008",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "AML/CFT/CPF and Sanctions Training",
@@ -5398,7 +5222,6 @@
     },
     {
       "package_id": "PKG009",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "Independent AML Audit",
@@ -5412,7 +5235,6 @@
     },
     {
       "package_id": "PKG010",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "Digital Asset Services (AML Officer)",
@@ -5428,7 +5250,6 @@
     },
     {
       "package_id": "PKG011",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "Digital Asset Services (AML Policies and Procedures)",
@@ -5442,7 +5263,6 @@
     },
     {
       "package_id": "PKG012",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "Digital Asset Services (AML/CFT/ CPF Training)",
@@ -5455,7 +5275,6 @@
     },
     {
       "package_id": "PKG013",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "RTA Services",
@@ -5472,7 +5291,6 @@
     },
     {
       "package_id": "PKG014",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "CDD Services",
@@ -5486,7 +5304,6 @@
     },
     {
       "package_id": "PKG015",
-      "category_id": "harneys-bvi",
       "region": "BVI",
       "bu": "Harneys",
       "package_name": "Screening Services",

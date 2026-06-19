@@ -1,6 +1,8 @@
 template_id: harneys-bvi
-category_id: harneys-bvi
 display_name: Harneys BVI Corporate Services
+catalog_filter:
+  region: BVI
+  bu: Harneys
 
 sections:
   - id: introduction

@@ -3,7 +3,7 @@ name: proposal-composer
 description: >-
   Domain rules for the Proposal Composer agent: editable proposal_draft semantics,
   template section contracts, MDM catalog lookup discipline, and region-specific proposal
-  constraints. Use for proposal-composer chats involving category/template selection,
+  constraints. Use for proposal-composer chats involving template selection,
   draft fee rows, optional/derived sections, pricing facts, or MDM-backed proposals.
 ---
 
@@ -24,7 +24,7 @@ description: >-
 ## 核心目标（每轮 implicit checklist）
 
 1. **Draft 是展示草稿**——用户看到什么就改 draft 的对应 node。
-2. **Catalog additions 走 materializer**——新增 MDM package/service 用 add tools，让平台生成 fee table/row 与 source/provenance；不要手写完整 fee row。
+2. **Catalog additions 走 materializer**——新增 MDM package/service 先用 MCP SQL 查询，再把返回行传给 add tools，让平台生成 fee table/row 与 source/provenance；不要手写完整 fee row。
 3. **展示编辑走 patch**——客户信息、section content、table title、fee row `service_name` / `scope_of_work` / `price.amount` 用 JSON Patch。
 4. **选型后检查 draft fee tables**——添加 package/service 后读 draft 的 `fee_section.tables[].rows[]`，确认右侧展示对象真的更新。
 5. **Readiness 只影响导出**——缺项可继续 draft/preview；正式下载看 `generate_document` 返回的 ready/block 状态。
@@ -33,11 +33,11 @@ description: >-
 
 | 销售信号 | 你要完成的 |
 |----------|------------|
-| 刚明确 region/BU，尚未定 category | 对齐 `category_id` |
-| **template_id 刚设定** | `initialize_proposal_draft(category_id, template_id)`；必要时读 `templates/{id}/template.yaml` |
+| 刚明确 region/BU，尚未定 template | 对齐可用 `template_id` |
+| **template_id 刚设定** | `initialize_proposal_draft(template_id)`；必要时读 `templates/{id}/template.yaml` |
 | 口头点了方案名 / SKU，ID 不确定 | 加载 **`proposal-mdm-catalog`**：`describe_table` → SQL 查 `package_id` / `sku` |
-| **追加**服务（保留已有 fee rows） | `add_service_to_proposal_draft(sku)` |
-| **添加 package** | `add_package_to_proposal_draft(package_id)`，必须用 **`mdm_packages.package_id`** |
+| **追加**服务（保留已有 fee rows） | 先用 MCP SQL 查 service row，再 `add_service_to_proposal_draft(service={...})` |
+| **添加 package** | 先用 MCP SQL 查 package row + service rows，再 `add_package_to_proposal_draft(package={...}, services=[...])` |
 | 给了客户名、联系人等 | patch draft `/facts/client/*` |
 | 要 credentials / appendix / payment summary 等块 | patch draft section 或用 `enable_proposal_draft_section` 启用；AU payment options 是 `payment_options` derived section，多报价方式写入该 section 的 `options` |
 | 销售要改某一行的价 | patch draft fee row `price.amount`；必要时把 `edit_state.price` 设为 `manual` |
@@ -57,8 +57,8 @@ description: >-
 ## Catalog（本 Skill 保留的部分）
 
 - **Schema-first**：写 MDM SQL 前必须先 **`postgres_describe_table`** / **`get_schema`**，再 `query_data`；禁止臆造列名（如 **`price_note` 不存在**）。详见 **`proposal-mdm-catalog`** 与 `references/*-sql.md` 中的 few-shot。
-- SQL 仅 SELECT；scope = 当前 `category_id` + `status = 'ACTIVE'`
-- Package JOIN 必须 `ps.category_id = s.category_id`（及 sku 对齐）
+- SQL 仅 SELECT；scope = 当前 template 的 `catalog_filter` + `status = 'ACTIVE'`
+- Package 内容查询通过 `mdm_packages.region/bu` 限定 scope，并用 `ps.sku = s.sku` 对齐服务
 - 意图模糊：`sku_semantic_for_ai` / `package_semantic_for_ai` / `ILIKE`
 - BVI 政府费：`pricing_type = 'TIERED'`，`price_spec.dimension = 'share_count'`
 - 常用片段：`references/bvi-sql.md`、`references/au-sql.md`；深度探索 → **`proposal-mdm-catalog`**

@@ -21,7 +21,7 @@ from app.proposal.draft import (
     patch_draft,
     render_draft_markdown,
 )
-from app.proposal.loaders import load_categories, read_knowledge_file
+from app.proposal.loaders import load_templates, read_knowledge_file
 from app.proposal.paths import KNOWLEDGE_ROOT, PERIPHERAL_ROOT, TEMPLATES_ROOT
 from app.proposal.storage import new_artifact_id, save_markdown
 
@@ -80,25 +80,23 @@ def _validate_read_path(relative_path: str) -> None:
 
 
 @tool(
-    name="list_categories",
+    name="list_templates",
     description=(
-        "List available proposal categories (region x BU) and their default templates. "
-        "Use when the user has not clearly chosen a category/region/BU, or asks what "
+        "List available proposal templates and their MDM catalog filters. "
+        "Use when the user has not clearly chosen a proposal type, or asks what "
         "proposal types are supported. Do not use for service/package lookup."
     ),
 )
-def list_categories() -> dict[str, Any]:
-    categories = load_categories()
+def list_templates() -> dict[str, Any]:
+    templates = load_templates()
     return {
-        "categories": [
+        "templates": [
             {
-                "category_id": row.get("category_id"),
-                "region": row.get("region"),
-                "bu": row.get("bu"),
+                "template_id": row.get("template_id"),
                 "display_name": row.get("display_name"),
-                "default_template_id": row.get("default_template_id"),
+                "catalog_filter": row.get("catalog_filter"),
             }
-            for row in categories
+            for row in templates
         ]
     }
 
@@ -135,15 +133,14 @@ def read_knowledge(
 @tool(
     name="initialize_proposal_draft",
     description=(
-        "Create or reset the editable proposal draft from a chosen category/template. "
-        "Use once after category/template is known, or when the user explicitly switches "
-        "template/category. This materializes template sections and preserves existing client "
+        "Create or reset the editable proposal draft from a chosen template. "
+        "Use once after the template is known, or when the user explicitly switches "
+        "template. This materializes template sections and preserves existing client "
         "facts when possible. Do not use for normal edits to an existing draft."
     ),
 )
 def initialize_proposal_draft(
-    category_id: Annotated[str, "Proposal category_id, e.g. au-advisory."],
-    template_id: Annotated[str | None, "Optional template_id; defaults from the category."] = None,
+    template_id: Annotated[str, "Proposal template_id, e.g. au-advisory."],
 ) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
@@ -151,7 +148,6 @@ def initialize_proposal_draft(
     client = (ctx.draft or {}).get("facts", {}).get("client") or {}
     try:
         ctx.draft = materialize_draft(
-            category_id=category_id,
             template_id=template_id,
             client=copy.deepcopy(client),
         )
@@ -227,14 +223,14 @@ def patch_proposal_draft(
 @tool(
     name="add_package_to_proposal_draft",
     description=(
-        "Materialize a confirmed MDM package into the draft fee section. This looks up the "
-        "package, expands linked services, creates a fee table, and maps MDM service fields "
-        "into editable fee rows with source/provenance. Use after the user confirms a "
-        "package_id. Do not use for renaming/editing an existing package table; patch the draft."
+        "Materialize a confirmed MDM package into the draft fee section from rows already "
+        "queried via MCP SQL. Pass the package row and its service rows; this tool does not "
+        "query MDM. Do not use for renaming/editing an existing package table; patch the draft."
     ),
 )
 def add_package_to_proposal_draft(
-    package_id: Annotated[str, "Exact MDM mdm_packages.package_id, e.g. PKG-AU-..."],
+    package: Annotated[dict[str, Any], "MDM package row, including package_id and package_name."],
+    services: Annotated[list[dict[str, Any]], "MDM service rows returned for this package."],
 ) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
@@ -242,7 +238,7 @@ def add_package_to_proposal_draft(
     if ctx.draft is None:
         return {"status": "error", "error": "Proposal draft is not initialized."}
     try:
-        ctx.draft = add_package_to_draft(ctx.draft, package_id)
+        ctx.draft = add_package_to_draft(ctx.draft, package, services)
         ctx.mark_draft_dirty()
         return {"status": "ok", "draft": copy.deepcopy(ctx.draft)}
     except Exception as exc:
@@ -253,14 +249,13 @@ def add_package_to_proposal_draft(
 @tool(
     name="add_service_to_proposal_draft",
     description=(
-        "Materialize one confirmed MDM service/SKU into the draft fee section. This looks up "
-        "the service, maps catalog fields into an editable fee row, and appends it to an "
-        "existing or new fee table. Use after the user confirms a SKU. Do not use for editing "
+        "Materialize one confirmed MDM service/SKU into the draft fee section from a row "
+        "already queried via MCP SQL. This tool does not query MDM. Do not use for editing "
         "service name, SOW, or price on an existing row; patch the draft."
     ),
 )
 def add_service_to_proposal_draft(
-    sku: Annotated[str, "Exact MDM mdm_services.sku to add."],
+    service: Annotated[dict[str, Any], "MDM service row, including sku, pricing fields, and display fields."],
     table_id: Annotated[str | None, "Optional fee table id. Existing table is reused; otherwise a new table is created."] = None,
     table_title: Annotated[str, "Title used only when a new fee table is created."] = "Additional services",
 ) -> dict[str, Any]:
@@ -270,7 +265,7 @@ def add_service_to_proposal_draft(
     if ctx.draft is None:
         return {"status": "error", "error": "Proposal draft is not initialized."}
     try:
-        ctx.draft = add_service_to_draft(ctx.draft, sku, table_id=table_id, table_title=table_title)
+        ctx.draft = add_service_to_draft(ctx.draft, service, table_id=table_id, table_title=table_title)
         ctx.mark_draft_dirty()
         return {"status": "ok", "draft": copy.deepcopy(ctx.draft)}
     except Exception as exc:

@@ -1,18 +1,17 @@
-from app.proposal.loaders import get_category, load_categories, load_template_yaml
+from app.proposal.loaders import load_template_yaml, load_templates
 from app.proposal.pricing import compute_pricing
 
 
-def test_load_categories():
-    categories = load_categories()
-    ids = {row["category_id"] for row in categories}
+def test_load_templates():
+    templates = load_templates()
+    ids = {row["template_id"] for row in templates}
     assert "harneys-bvi" in ids
     assert "au-advisory" in ids
 
 
-def test_category_default_template():
-    cat = get_category("harneys-bvi")
-    assert cat is not None
-    assert cat["default_template_id"] == "harneys-bvi"
+def test_template_declares_catalog_filter():
+    tpl = load_template_yaml("harneys-bvi")
+    assert tpl["catalog_filter"] == {"region": "BVI", "bu": "Harneys"}
 
 
 def test_harneys_template_has_solution_and_price():

@@ -1,6 +1,7 @@
 # BVI catalog SQL
 
-Category: `harneys-bvi`
+Template: `harneys-bvi`  
+Catalog filter: `region = 'BVI'`, `bu = 'Harneys'`
 
 ## Schema-first（必做）
 
@@ -12,7 +13,7 @@ Category: `harneys-bvi`
 ```sql
 SELECT package_id, package_name, package_semantic_for_ai
 FROM mdm_packages
-WHERE category_id = 'harneys-bvi' AND status = 'ACTIVE';
+WHERE region = 'BVI' AND bu = 'Harneys' AND status = 'ACTIVE';
 ```
 
 ## Few-shot 2 — Services by group
@@ -21,7 +22,7 @@ WHERE category_id = 'harneys-bvi' AND status = 'ACTIVE';
 SELECT service_group, sku, service_name_on_proposal, pricing_type,
        price_amount, price_spec
 FROM mdm_services
-WHERE category_id = 'harneys-bvi' AND status = 'ACTIVE'
+WHERE region = 'BVI' AND bu = 'Harneys' AND status = 'ACTIVE'
 ORDER BY service_group, sku;
 ```
 
@@ -31,10 +32,14 @@ ORDER BY service_group, sku;
 SELECT ps.package_id, ps.sku, s.service_name_on_proposal, s.pricing_type,
        s.price_amount, s.fee_raw
 FROM mdm_package_services ps
+JOIN mdm_packages p
+  ON p.package_id = ps.package_id
 JOIN mdm_services s
-  ON s.sku = ps.sku AND s.category_id = ps.category_id
-WHERE ps.category_id = 'harneys-bvi'
+  ON s.sku = ps.sku AND s.region = p.region AND s.bu = p.bu
+WHERE p.region = 'BVI'
+  AND p.bu = 'Harneys'
   AND ps.package_id = 'PKG001'
+  AND p.status = 'ACTIVE'
   AND s.status = 'ACTIVE';
 ```
 
@@ -45,7 +50,8 @@ WHERE ps.category_id = 'harneys-bvi'
 ```sql
 SELECT sku, service_name_on_proposal, pricing_type, price_amount, price_spec
 FROM mdm_services
-WHERE category_id = 'harneys-bvi'
+WHERE region = 'BVI'
+  AND bu = 'Harneys'
   AND status = 'ACTIVE'
   AND pricing_type = 'TIERED';
 ```

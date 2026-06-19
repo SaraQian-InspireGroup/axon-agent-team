@@ -6,7 +6,7 @@
 
 ## Template contract
 
-After category/template is known, initialize the draft and read:
+After template is known, initialize the draft and read:
 
 ```text
 templates/{template_id}/template.yaml
@@ -18,7 +18,6 @@ via `read_knowledge`. That file defines section kinds, default enabled flags, ed
 
 | Path | Purpose |
 |------|---------|
-| `/meta/category_id` | MDM catalog scope |
 | `/meta/template_id` | Document template |
 | `/facts/client/*` | Company and contact |
 | `/document/sections/{index}/enabled` | Section visibility |

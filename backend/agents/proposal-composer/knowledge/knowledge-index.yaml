@@ -17,12 +17,14 @@ entries:
 triggers:
   # required docs：由已选 SKU 的 service_group 决定（非 template 写死 incorporation 章节）
   - match:
-      category_id: harneys-bvi
+      region: BVI
+      bu: Harneys
       service_group: incorporation
     add: [passport-bvi, utility-bill-bvi]
 
   - match:
-      category_id: harneys-bvi
+      region: BVI
+      bu: Harneys
       service_group: transfer_in
     add: [passport-bvi, utility-bill-bvi]
 

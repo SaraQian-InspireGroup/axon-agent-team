@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 from app.proposal.draft import (
     add_package_to_draft,
     build_draft_preview,
@@ -24,7 +22,6 @@ AU_SERVICE = {
 
 def test_materialize_au_draft_from_template_sections():
     draft = materialize_draft(
-        category_id="au-advisory",
         template_id="au-advisory",
         client={"company_name": "Walking Limited"},
     )
@@ -38,7 +35,6 @@ def test_materialize_au_draft_from_template_sections():
 
 def test_materialize_bvi_draft_from_template_sections():
     draft = materialize_draft(
-        category_id="harneys-bvi",
         template_id="harneys-bvi",
         client={"company_name": "BVI Demo Ltd"},
     )
@@ -52,22 +48,12 @@ def test_materialize_bvi_draft_from_template_sections():
 
 
 def test_add_package_materializes_editable_fee_rows():
-    draft = materialize_draft(category_id="au-advisory", template_id="au-advisory")
-    with patch(
-        "app.proposal.draft.fetch_packages_by_ids",
-        return_value=[
-            {
-                "package_id": "PKG-AU-1",
-                "package_name": "Tax Package 2",
-                "linked_skus": ["TA01"],
-            }
-        ],
-    ):
-        with patch(
-            "app.proposal.draft.resolve_services_for_selection",
-        ) as resolve:
-            resolve.return_value.services = [AU_SERVICE]
-            updated = add_package_to_draft(draft, "PKG-AU-1")
+    draft = materialize_draft(template_id="au-advisory")
+    updated = add_package_to_draft(
+        draft,
+        {"package_id": "PKG-AU-1", "package_name": "Tax Package 2"},
+        [AU_SERVICE],
+    )
 
     fee = next(s for s in updated["document"]["sections"] if s["kind"] == "fee_section")
     row = fee["tables"][0]["rows"][0]
@@ -77,7 +63,7 @@ def test_add_package_materializes_editable_fee_rows():
 
 
 def test_patch_draft_updates_display_row_and_preview():
-    draft = materialize_draft(category_id="au-advisory", template_id="au-advisory")
+    draft = materialize_draft(template_id="au-advisory")
     fee = next(s for s in draft["document"]["sections"] if s["kind"] == "fee_section")
     fee["tables"] = [
         {
@@ -124,7 +110,7 @@ def test_patch_draft_updates_display_row_and_preview():
 
 
 def test_payment_options_derived_from_fee_tables_when_enabled():
-    draft = materialize_draft(category_id="au-advisory", template_id="au-advisory")
+    draft = materialize_draft(template_id="au-advisory")
     fee = next(s for s in draft["document"]["sections"] if s["kind"] == "fee_section")
     fee["tables"] = [
         {
@@ -183,7 +169,7 @@ def test_payment_options_derived_from_fee_tables_when_enabled():
 
 
 def test_payment_options_render_multiple_configured_options():
-    draft = materialize_draft(category_id="au-advisory", template_id="au-advisory")
+    draft = materialize_draft(template_id="au-advisory")
     fee = next(s for s in draft["document"]["sections"] if s["kind"] == "fee_section")
     fee["tables"] = [
         {
@@ -261,7 +247,7 @@ def test_payment_options_render_multiple_configured_options():
 
 
 def test_payment_options_render_override_only_options():
-    draft = materialize_draft(category_id="au-advisory", template_id="au-advisory")
+    draft = materialize_draft(template_id="au-advisory")
     fee = next(s for s in draft["document"]["sections"] if s["kind"] == "fee_section")
     fee["tables"] = [
         {
@@ -332,7 +318,7 @@ def test_payment_options_render_override_only_options():
 
 
 def test_static_sections_render_template_titles_once():
-    draft = materialize_draft(category_id="au-advisory", template_id="au-advisory")
+    draft = materialize_draft(template_id="au-advisory")
     preview = build_draft_preview(draft)
 
     assert "# About Incorp" in preview["markdown"]

@@ -9,7 +9,6 @@ from typing import Any
 import yaml
 
 from app.proposal.paths import (
-    CATEGORIES_PATH,
     KNOWLEDGE_INDEX_PATH,
     KNOWLEDGE_ROOT,
     TEMPLATES_ROOT,
@@ -22,19 +21,6 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
-@lru_cache(maxsize=1)
-def load_categories() -> list[dict[str, Any]]:
-    raw = _load_yaml(CATEGORIES_PATH)
-    return list(raw.get("categories") or [])
-
-
-def get_category(category_id: str) -> dict[str, Any] | None:
-    for row in load_categories():
-        if row.get("category_id") == category_id:
-            return row
-    return None
-
-
 def template_dir(template_id: str) -> Path:
     return TEMPLATES_ROOT / template_id
 
@@ -43,6 +29,24 @@ def template_dir(template_id: str) -> Path:
 def load_template_yaml(template_id: str) -> dict[str, Any]:
     path = template_dir(template_id) / "template.yaml"
     return _load_yaml(path)
+
+
+@lru_cache(maxsize=1)
+def load_templates() -> list[dict[str, Any]]:
+    templates: list[dict[str, Any]] = []
+    if not TEMPLATES_ROOT.exists():
+        return templates
+    for path in sorted(TEMPLATES_ROOT.glob("*/template.yaml")):
+        tpl = _load_yaml(path)
+        template_id = str(tpl.get("template_id") or path.parent.name)
+        templates.append(
+            {
+                "template_id": template_id,
+                "display_name": tpl.get("display_name") or template_id,
+                "catalog_filter": dict(tpl.get("catalog_filter") or {}),
+            }
+        )
+    return templates
 
 
 @lru_cache(maxsize=1)

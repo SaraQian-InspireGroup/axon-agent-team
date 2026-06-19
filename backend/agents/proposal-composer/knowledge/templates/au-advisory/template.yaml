@@ -1,6 +1,8 @@
 template_id: au-advisory
-category_id: au-advisory
 display_name: Australia Advisory
+catalog_filter:
+  region: AU
+  bu: Incorp
 
 sections:
   - id: introduction

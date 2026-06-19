@@ -19,14 +19,14 @@ description: >-
 
 1. **`postgres_describe_table`**（或 **`postgres_get_schema`**）确认 `mdm_services` / `mdm_packages` / `mdm_package_services` 的列名。
 2. 只 SELECT 上一步看到的列；
-3. **`postgres_query_data`**（`query` 参数必填、非空 SELECT）；scope 带 **`category_id`** + **`status = 'ACTIVE'`**。
-4. 用销售语言总结；**确认后再** 用 `add_package_to_proposal_draft` / `add_service_to_proposal_draft` 写入 draft fee section。
+3. **`postgres_query_data`**（`query` 参数必填、非空 SELECT）；scope 带 template 的 **`catalog_filter`**（如 `region`/`bu`）+ **`status = 'ACTIVE'`**。
+4. 用销售语言总结；**确认后再** 把查询返回的 package/service 行作为 payload 传给 `add_package_to_proposal_draft` / `add_service_to_proposal_draft` 写入 draft fee section。
 
 `mdm_services` 常用列（以 describe 结果为准）：
 
 | 列 | 用途 |
 |----|------|
-| `sku`, `category_id`, `status` | 过滤 |
+| `sku`, `region`, `bu`, `status` | 过滤 |
 | `service_name_on_proposal`, `scope_of_work`, `sku_semantic_for_ai` | 展示 / 搜索 |
 | `service_group`, `department_team` | 分组 |
 | `pricing_type`, `price_amount`, `price_min`, `price_max`, `price_currency` | 定价 |
@@ -38,8 +38,8 @@ description: >-
 
 ## 原则
 
-- 只读 SELECT；`category_id` + `status = 'ACTIVE'`。
-- Package ↔ SKU 的 JOIN 必须带 **`ps.category_id = s.category_id`**（及 `ps.sku = s.sku`）。
+- 只读 SELECT；用当前 template 的 `catalog_filter`（通常是 `region` + `bu`）+ `status = 'ACTIVE'`。
+- Package ↔ SKU 的 JOIN 必须带 `ps.sku = s.sku`；package scope 由 `mdm_packages.region/bu` 过滤。
 - SQL 里的 `price_amount` 仅作推荐；对外报价以 draft fee rows 为准。
 
 ## Few-shot 工作流
@@ -51,7 +51,7 @@ description: >-
 → postgres_query_data: 列出 package（见 au-sql.md）
 → postgres_query_data: 按关键词或 package_id 查 SKU
 → 向用户确认 package/SKU
-→ add_package_to_proposal_draft / add_service_to_proposal_draft
+→ add_package_to_proposal_draft(package={...}, services=[...]) / add_service_to_proposal_draft(service={...})
 ```
 
 ### 2）已知 package_id，查包含哪些服务
@@ -59,12 +59,18 @@ description: >-
 ```sql
 SELECT ps.package_id, ps.sku,
        s.service_name_on_proposal, s.pricing_type,
-       s.price_amount, s.fee_raw, s.footnotes, s.price_spec
+       s.price_currency, s.price_amount, s.price_min, s.price_max,
+       s.billing_frequency, s.recurring, s.scope_of_work,
+       s.fee_raw, s.footnotes, s.price_spec
 FROM mdm_package_services ps
+JOIN mdm_packages p
+  ON p.package_id = ps.package_id
 JOIN mdm_services s
-  ON ps.sku = s.sku AND ps.category_id = s.category_id
-WHERE ps.category_id = 'au-advisory'
+  ON ps.sku = s.sku AND s.region = p.region AND s.bu = p.bu
+WHERE p.region = 'AU'
+  AND p.bu = 'Incorp'
   AND ps.package_id = 'PKG-AU-EXAMPLE'
+  AND p.status = 'ACTIVE'
   AND s.status = 'ACTIVE'
 ORDER BY ps.sku;
 ```
@@ -73,9 +79,11 @@ ORDER BY ps.sku;
 
 ```sql
 SELECT sku, department_team, service_name_on_proposal,
-       pricing_type, price_amount, price_spec
+       pricing_type, price_currency, price_amount, price_min, price_max,
+       billing_frequency, recurring, scope_of_work, price_spec
 FROM mdm_services
-WHERE category_id = 'au-advisory'
+WHERE region = 'AU'
+  AND bu = 'Incorp'
   AND status = 'ACTIVE'
   AND sku NOT LIKE 'ADT%'
   AND (
@@ -89,9 +97,11 @@ ORDER BY department_team, sku;
 
 ```sql
 SELECT sku, service_name_on_proposal, pricing_type,
-       price_amount, scope_of_work, fee_raw
+       price_currency, price_amount, price_min, price_max,
+       billing_frequency, recurring, scope_of_work, fee_raw, price_spec
 FROM mdm_services
-WHERE category_id = 'au-advisory'
+WHERE region = 'AU'
+  AND bu = 'Incorp'
   AND status = 'ACTIVE'
   AND sku IN ('TA01', 'TA05', 'CSS030')
 ORDER BY sku;
@@ -106,8 +116,9 @@ SELECT p.package_id, p.package_name, p.package_semantic_for_ai,
        array_agg(ps.sku ORDER BY ps.sku) AS skus
 FROM mdm_packages p
 JOIN mdm_package_services ps
-  ON ps.package_id = p.package_id AND ps.category_id = p.category_id
-WHERE p.category_id = 'harneys-bvi'
+  ON ps.package_id = p.package_id
+WHERE p.region = 'BVI'
+  AND p.bu = 'Harneys'
   AND p.status = 'ACTIVE'
 GROUP BY p.package_id, p.package_name, p.package_semantic_for_ai;
 ```
@@ -121,11 +132,11 @@ SELECT sku, price_amount, price_note FROM mdm_services WHERE ...
 -- BAD: 空参数调用 query_data
 {}
 
--- BAD: JOIN 缺少 category_id 对齐（可能错行）
+-- BAD: package contents 查询未通过 mdm_packages 限定 region/bu
 JOIN mdm_services s ON s.sku = ps.sku
 
 -- BAD: 未 filter status
-WHERE category_id = 'au-advisory'
+WHERE region = 'AU'
 ```
 
 ## 表

@@ -1,7 +1,7 @@
 # AU catalog SQL
 
-Category: `au-advisory`  
-Templates: `au-advisory` (default), future `au-audit` (ADT% SKUs)
+Template: `au-advisory`  
+Catalog filter: `region = 'AU'`, `bu = 'Incorp'`
 
 ## Schema-first（必做）
 
@@ -20,7 +20,8 @@ AU canonical 名称整串存在 `package_name`，格式为 `内部名*外部名`
 ```sql
 SELECT package_id, package_name, package_semantic_for_ai
 FROM mdm_packages
-WHERE category_id = 'au-advisory'
+WHERE region = 'AU'
+  AND bu = 'Incorp'
   AND status = 'ACTIVE'
 ORDER BY package_name;
 ```
@@ -33,7 +34,8 @@ ORDER BY package_name;
 SELECT sku, department_team, service_name_on_proposal, pricing_type,
        price_amount, scope_of_work
 FROM mdm_services
-WHERE category_id = 'au-advisory'
+WHERE region = 'AU'
+  AND bu = 'Incorp'
   AND status = 'ACTIVE'
   AND sku NOT LIKE 'ADT%'
 ORDER BY department_team, sku;
@@ -46,10 +48,14 @@ SELECT ps.package_id, ps.sku,
        s.service_name_on_proposal, s.pricing_type, s.price_amount,
        s.scope_of_work, s.fee_raw
 FROM mdm_package_services ps
+JOIN mdm_packages p
+  ON p.package_id = ps.package_id
 JOIN mdm_services s
-  ON ps.sku = s.sku AND ps.category_id = s.category_id
-WHERE ps.category_id = 'au-advisory'
+  ON ps.sku = s.sku AND s.region = p.region AND s.bu = p.bu
+WHERE p.region = 'AU'
+  AND p.bu = 'Incorp'
   AND ps.package_id = 'PKG-AU-REPLACE-ME'
+  AND p.status = 'ACTIVE'
   AND s.status = 'ACTIVE'
 ORDER BY ps.sku;
 ```
@@ -60,7 +66,8 @@ ORDER BY ps.sku;
 SELECT sku, service_name_on_proposal, pricing_type,
        price_amount, billing_frequency, scope_of_work
 FROM mdm_services
-WHERE category_id = 'au-advisory'
+WHERE region = 'AU'
+  AND bu = 'Incorp'
   AND status = 'ACTIVE'
   AND sku IN ('TA01', 'TA05', 'CSS030')
 ORDER BY sku;
@@ -72,7 +79,8 @@ ORDER BY sku;
 SELECT sku, department_team, service_name_on_proposal,
        pricing_type, price_amount, price_spec
 FROM mdm_services
-WHERE category_id = 'au-advisory'
+WHERE region = 'AU'
+  AND bu = 'Incorp'
   AND status = 'ACTIVE'
   AND sku NOT LIKE 'ADT%'
   AND (

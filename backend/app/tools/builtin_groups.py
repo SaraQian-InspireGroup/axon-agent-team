@@ -6,7 +6,7 @@ from app.tools import BUILTIN_TOOLS
 
 PROPOSAL_TOOL_NAMES = frozenset(
     {
-        "list_categories",
+        "list_templates",
         "read_knowledge",
         "initialize_proposal_draft",
         "get_proposal_draft",

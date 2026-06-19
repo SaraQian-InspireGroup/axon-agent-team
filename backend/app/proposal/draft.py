@@ -12,7 +12,6 @@ from typing import Any
 
 import jsonpatch
 
-from app.proposal.catalog import fetch_packages_by_ids, resolve_services_for_selection
 from app.proposal.fee_table import render_frequency_table, render_simple_table, row_frequency_columns
 from app.proposal.fee_table import (
     payment_summary_footer,
@@ -21,7 +20,6 @@ from app.proposal.fee_table import (
     sum_group_columns,
 )
 from app.proposal.loaders import (
-    get_category,
     load_template_yaml,
     read_static_block,
 )
@@ -39,7 +37,7 @@ class DraftPatchError(Exception):
 def empty_proposal_draft() -> dict[str, Any]:
     return {
         "version": 1,
-        "meta": {"category_id": None, "template_id": None, "title": None},
+        "meta": {"template_id": None, "title": None},
         "facts": {"client": {}, "inputs": {}},
         "document": {"sections": []},
     }
@@ -231,13 +229,9 @@ def _derived_section(spec: dict[str, Any]) -> dict[str, Any]:
 
 def materialize_draft(
     *,
-    category_id: str,
-    template_id: str | None = None,
+    template_id: str,
     client: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if not template_id:
-        category = get_category(category_id)
-        template_id = str((category or {}).get("default_template_id") or "")
     if not template_id:
         raise ValueError("template_id is required")
 
@@ -247,7 +241,6 @@ def materialize_draft(
         raise ValueError(f"Template {template_id!r} does not define sections")
 
     draft = empty_proposal_draft()
-    draft["meta"]["category_id"] = category_id
     draft["meta"]["template_id"] = template_id
     draft["facts"]["client"] = copy.deepcopy(client or {})
     draft["meta"]["title"] = _render_draft_title(tpl, draft["facts"]["client"])
@@ -338,17 +331,13 @@ def _draft_fee_row(service: dict[str, Any], *, package_id: str | None = None) ->
     }
 
 
-def add_package_to_draft(draft: dict[str, Any], package_id: str) -> dict[str, Any]:
+def add_package_to_draft(draft: dict[str, Any], package: dict[str, Any], services: list[dict[str, Any]]) -> dict[str, Any]:
     updated = copy.deepcopy(draft)
-    category_id = str((updated.get("meta") or {}).get("category_id") or "")
-    if not category_id:
-        raise ValueError("Draft meta.category_id is required")
-    packages = fetch_packages_by_ids(category_id, [package_id])
-    if not packages:
-        raise ValueError(f"Package not found: {package_id}")
-    package = packages[0]
-    skus = [str(s) for s in package.get("linked_skus") or []]
-    services = resolve_services_for_selection(category_id, skus).services
+    package_id = str(package.get("package_id") or "").strip()
+    if not package_id:
+        raise ValueError("package.package_id is required")
+    if not services:
+        raise ValueError("services are required")
 
     fee_section = _first_fee_section(updated)
     rows = [_draft_fee_row(service, package_id=package_id) for service in services]
@@ -379,19 +368,15 @@ def add_package_to_draft(draft: dict[str, Any], package_id: str) -> dict[str, An
 
 def add_service_to_draft(
     draft: dict[str, Any],
-    sku: str,
+    service: dict[str, Any],
     *,
     table_id: str | None = None,
     table_title: str = "Additional services",
 ) -> dict[str, Any]:
     updated = copy.deepcopy(draft)
-    category_id = str((updated.get("meta") or {}).get("category_id") or "")
-    if not category_id:
-        raise ValueError("Draft meta.category_id is required")
-    result = resolve_services_for_selection(category_id, [sku])
-    if not result.services:
-        raise ValueError(f"Service not found: {sku}")
-    row = _draft_fee_row(result.services[0])
+    if not service.get("sku"):
+        raise ValueError("service.sku is required")
+    row = _draft_fee_row(service)
     fee_section = _first_fee_section(updated)
     tables = fee_section.setdefault("tables", [])
     target = None

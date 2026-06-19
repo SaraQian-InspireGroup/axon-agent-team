@@ -19,7 +19,7 @@ def load_proposal_draft_from_payload(payload: dict[str, Any] | None) -> dict[str
         return None
     meta = stored.get("meta") or {}
     sections = ((stored.get("document") or {}).get("sections") or [])
-    if not (meta.get("category_id") or meta.get("template_id") or sections):
+    if not (meta.get("template_id") or sections):
         return None
     return stored
 
