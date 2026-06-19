@@ -72,7 +72,7 @@ def test_accumulator_enriches_arguments_from_final_response():
             _content(
                 "function_call",
                 call_id="c1",
-                name="patch_proposal_state",
+                name="patch_proposal_draft",
                 arguments={},
             )
         )
@@ -93,12 +93,12 @@ def test_accumulator_enriches_arguments_from_final_response():
                     _content(
                         "function_call",
                         call_id="c1",
-                        name="patch_proposal_state",
+                        name="patch_proposal_draft",
                         arguments={
                             "patch": [
                                 {
                                     "op": "replace",
-                                    "path": "/client/company_name",
+                                    "path": "/facts/client/company_name",
                                     "value": "Acme",
                                 }
                             ]
@@ -112,7 +112,7 @@ def test_accumulator_enriches_arguments_from_final_response():
     call_row = next(r for r in acc._rows if r["message_type"] == "tool_call")
     result_row = next(r for r in acc._rows if r["message_type"] == "tool_result")
     expected = {
-        "patch": [{"op": "replace", "path": "/client/company_name", "value": "Acme"}]
+        "patch": [{"op": "replace", "path": "/facts/client/company_name", "value": "Acme"}]
     }
     assert call_row["metadata"]["arguments"] == expected
     assert result_row["metadata"]["arguments"] == expected

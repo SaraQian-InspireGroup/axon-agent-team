@@ -1,5 +1,5 @@
 # 知识索引 — 仅用于「选型 → 知识条目」解析（required doc、credential 等）
-# 静态模版块由 templates/*/template.yaml 的 static placeholder 直接指向文件
+# 静态模版块由 templates/*/template.yaml 的 draft sections 直接指向文件
 
 entries:
   passport-bvi:
@@ -26,4 +26,4 @@ triggers:
       service_group: transfer_in
     add: [passport-bvi, utility-bill-bvi]
 
-  # optional 章节 additional_info 的 service 触发见 templates/harneys-bvi/template.yaml optional_sections.trigger
+  # additional_info 是 draft optional section；是否启用由对话意图或后续规则决定

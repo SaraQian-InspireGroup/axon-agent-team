@@ -59,8 +59,12 @@ def test_stream_emitter_tool_result_includes_arguments():
             _content(
                 "function_call",
                 call_id="c2",
-                name="patch_proposal_state",
-                arguments={"patch": [{"op": "replace", "path": "/client/company_name", "value": "Acme"}]},
+                name="patch_proposal_draft",
+                arguments={
+                    "patch": [
+                        {"op": "replace", "path": "/facts/client/company_name", "value": "Acme"}
+                    ]
+                },
             )
         )
     )
@@ -77,6 +81,6 @@ def test_stream_emitter_tool_result_includes_arguments():
     assert len(events) == 1
     assert events[0]["event"] == "tool_result"
     assert events[0]["data"]["arguments"] == {
-        "patch": [{"op": "replace", "path": "/client/company_name", "value": "Acme"}],
+        "patch": [{"op": "replace", "path": "/facts/client/company_name", "value": "Acme"}],
     }
     assert events[0]["data"]["result"] == "Error: Argument parsing failed."

@@ -77,7 +77,7 @@ HOOK_CATALOG: dict[str, HookSpec] = {
     ),
     "proposal_persist": HookSpec(
         description=(
-            "Post-tool: persist proposal_state to chat session after patch_proposal_state, "
+            "Post-tool: persist proposal_draft to chat session after draft write tools, "
             "render_preview, or generate_document."
         ),
         defaults={},

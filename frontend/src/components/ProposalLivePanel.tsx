@@ -8,6 +8,7 @@ type Props = {
   embedded?: boolean
   preview: ProposalPreview | null
   loading: boolean
+  syncing?: boolean
   error: string | null
   onCollapse: () => void
   onRefresh: () => void
@@ -31,6 +32,7 @@ export function ProposalLivePanel({
   embedded = false,
   preview,
   loading,
+  syncing = false,
   error,
   onCollapse,
   onRefresh,
@@ -47,22 +49,34 @@ export function ProposalLivePanel({
   const title = preview?.title || 'Proposal draft'
   const canDownload = Boolean(preview?.markdown)
   const missing = preview?.completeness.missing_required ?? []
+  const subtitle = syncing
+    ? 'Syncing draft…'
+    : 'Current draft · live from state'
 
   return (
     <aside
       className={`artifact-side-panel${open ? ' artifact-side-panel-open' : ''}${
         embedded ? ' artifact-side-panel-embedded' : ''
-      }`}
+      }${syncing ? ' proposal-live-panel-syncing' : ''}`}
       aria-hidden={!open}
       aria-label={title}
+      aria-busy={syncing || loading}
     >
       <div className="artifact-side-panel-inner">
+        {syncing && (
+          <div className="proposal-live-panel-sync-bar" aria-hidden>
+            <span className="proposal-live-panel-sync-bar-fill" />
+          </div>
+        )}
         <div className="artifact-side-panel-header">
           <div className="proposal-live-panel-heading">
             <h2 className="artifact-side-panel-title" title={title}>
               {title}
             </h2>
-            <p className="proposal-live-panel-subtitle">Current draft · live from state</p>
+            <p className="proposal-live-panel-subtitle">
+              {syncing && <span className="proposal-live-panel-sync-dot" aria-hidden />}
+              {subtitle}
+            </p>
           </div>
           <div className="artifact-side-panel-actions">
             <button
@@ -128,7 +142,9 @@ export function ProposalLivePanel({
           {preview?.markdown ? (
             <MarkdownContent
               content={preview.markdown}
-              className="markdown-body artifact-markdown-body"
+              className={`markdown-body artifact-markdown-body${
+                syncing ? ' proposal-live-panel-content-syncing' : ''
+              }`}
               allowHtml
             />
           ) : null}

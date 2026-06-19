@@ -1,5 +1,3 @@
-# Additional Information — BVI
-
 ## Financial Annual Return (FAR)
 
 The Financial Annual Return must be filed within nine months of the financial year end. FAR preparation may require separate accounting and bookkeeping services depending on the entity's records.

@@ -4,6 +4,7 @@ import uuid
 from typing import Any
 
 from agent_framework import AgentSession
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 SESSION_TTL_SECONDS = 60 * 60 * 24
 WORKING_SET_VERSION = 1
 # Extensions that must survive redis/DB merge (redis may lag behind DB on cold start).
-_PERSISTED_EXTENSION_KEYS = ("proposal_state",)
+_PERSISTED_EXTENSION_KEYS = ("proposal_draft",)
 
 
 class SessionStore:
@@ -195,6 +196,7 @@ class SessionStore:
         chat = result.scalar_one_or_none()
         if chat is not None:
             chat.session_state = payload
+            flag_modified(chat, "session_state")
             await self._db.flush()
 
     async def _get_from_redis(self, chat_id: uuid.UUID) -> dict | None:

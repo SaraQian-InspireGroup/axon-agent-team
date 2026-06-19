@@ -1,5 +1,3 @@
-# Terms and Conditions — BVI Corporate Services
-
 These terms apply to engagements for British Virgin Islands corporate and fiduciary services provided by Harneys Fiduciary.
 
 ## Engagement

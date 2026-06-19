@@ -1,57 +1,54 @@
 template_id: harneys-bvi
 category_id: harneys-bvi
 display_name: Harneys BVI Corporate Services
-body: proposal.md
 
-# 选型来自对话 + MDM（Postgres）；本文件只声明「如何展示」，不声明卖哪些 service_group
-placeholders:
-  client.company_name:
-    type: state
-    path: client.company_name
+sections:
+  - id: introduction
+    kind: markdown_block
+    title: Introduction
     required: true
+    editable: true
+    content: "Harneys Fiduciary is pleased to provide this proposal for British Virgin Islands corporate and fiduciary services."
 
-  client.contact_name:
-    type: state
-    path: client.contact_name
-    required: false
-
-  client.contact_email:
-    type: state
-    path: client.contact_email
-    required: false
-
-  solution_and_price:
-    type: solution_and_price
+  - id: solution_and_fees
+    kind: fee_section
     title: Solution and pricing
     required: true
-    # BVI 展示层：按 MDM service_group 分组；行集 = state.selection 展开后的 SKU
+    materializer: mdm_fee_tables
     fee_layout:
       group_by: service_group
       show_line_amount: true
       show_recurring: true
 
-  knowledge.required_docs:
-    type: knowledge
-    resolver: triggered
+  - id: required_documents
+    kind: markdown_block
     title: Required documents
-    required: true
-
-  static.terms:
-    type: static
-    file: blocks/terms-bvi.md
-    required: true
-
-  static.additional_info:
-    type: static
-    file: blocks/additional-info-bvi.md
     required: false
+    default_enabled: false
+    editable: true
 
-optional_sections:
   - id: additional_info
+    kind: static_block
     title: Additional information
-    placeholder: static.additional_info
-    # 出现条件：选了 transfer-in 相关服务，或用户/agent 显式启用
-    trigger:
-      any_of:
-        - service_groups: [transfer_in]
-        - enabled_sections: [additional_info]
+    required: false
+    default_enabled: false
+    editable: false
+    source:
+      type: template_file
+      file: blocks/additional-info-bvi.md
+
+  - id: terms
+    kind: static_block
+    title: Terms and conditions
+    required: true
+    editable: false
+    source:
+      type: template_file
+      file: blocks/terms-bvi.md
+
+document_title:
+  prefix: Proposal
+  name_from:
+    - client.company_name
+    - client.contract_name
+  fallback: Proposal

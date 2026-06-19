@@ -18,9 +18,11 @@ from app.platform.agent_factory import AgentFactory
 from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
 from app.platform.session_store import SessionStore
 from app.proposal.context import get_run_proposal_state, init_run_proposal_state, reset_run_proposal_state
-from app.proposal.preview import build_live_preview
-from app.proposal.recover import recover_proposal_state_from_messages
-from app.proposal.store import load_proposal_state_from_payload, persist_proposal_state_if_dirty
+from app.proposal.draft import build_draft_preview
+from app.proposal.store import (
+    load_proposal_draft_from_payload,
+    persist_proposal_draft_if_dirty,
+)
 from app.proposal.artifact_spec import ArtifactSpec
 from app.runs.manager import get_run_manager
 from app.viz.context import get_run_viz_state, init_run_viz_state, reset_run_viz_state
@@ -96,10 +98,11 @@ class ChatRunService:
             reset_run_proposal_state()
             return
         payload = await self._sessions.get_payload(chat.id)
-        initial = load_proposal_state_from_payload(payload)
-        if initial is None:
-            initial = await recover_proposal_state_from_messages(self._messages, chat.id)
-        init_run_proposal_state(chat_id=chat.id, initial_state=initial)
+        initial_draft = load_proposal_draft_from_payload(payload)
+        init_run_proposal_state(
+            chat_id=chat.id,
+            initial_draft=initial_draft,
+        )
 
     async def _finalize_success(
         self,
@@ -116,7 +119,7 @@ class ChatRunService:
             await accumulator.persist(self._messages, chat_id)
         else:
             await self._persist_agent_messages(chat_id, response, skip_tool_rows=False)
-        await persist_proposal_state_if_dirty(self._sessions, chat_id)
+        await persist_proposal_draft_if_dirty(self._sessions, chat_id)
         await self._sessions.append_completed_turn(
             chat_id,
             memory_config,
@@ -139,7 +142,7 @@ class ChatRunService:
                 await self._persist_agent_messages(chat_id, response)
             elif accumulator is not None and accumulator.has_content():
                 await accumulator.persist(self._messages, chat_id)
-            await persist_proposal_state_if_dirty(self._sessions, chat_id)
+            await persist_proposal_draft_if_dirty(self._sessions, chat_id)
             await self._persist_run_error(chat_id, exc)
             await self._db.commit()
         except Exception:
@@ -317,6 +320,12 @@ class ChatRunService:
 
                 final = await stream.get_final_response()
 
+            # Unlock client UI before DB/session persistence (can take seconds on tool-heavy turns).
+            yield {
+                "event": "stream_idle",
+                "data": {"chat_id": str(chat_id), "run_id": str(run.run_id)},
+            }
+
             await self._finalize_success(
                 chat_id,
                 session,
@@ -394,9 +403,9 @@ class ChatRunService:
 
 def _proposal_updated_event(chat_id: uuid.UUID) -> dict[str, Any] | None:
     ctx = get_run_proposal_state()
-    if ctx is None:
+    if ctx is None or ctx.draft is None:
         return None
-    data = build_live_preview(ctx.state, draft=True)
+    data = build_draft_preview(ctx.draft)
     data["chat_id"] = str(chat_id)
     return {"event": "proposal_updated", "data": data}
 
@@ -857,7 +866,13 @@ class _StreamSseEmitter:
                         },
                     }
                 )
-                if tool_name == "patch_proposal_state":
+                if tool_name in {
+                    "initialize_proposal_draft",
+                    "patch_proposal_draft",
+                    "add_package_to_proposal_draft",
+                    "add_service_to_proposal_draft",
+                    "enable_proposal_draft_section",
+                }:
                     preview_event = _proposal_updated_event(self._chat_id)
                     if preview_event is not None:
                         events.append(preview_event)

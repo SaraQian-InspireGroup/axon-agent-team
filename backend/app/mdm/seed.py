@@ -85,12 +85,14 @@ async def seed_mdm_catalog(session: AsyncSession, snapshot: MdmCatalogSnapshot) 
         session.add(_package_model(package))
         for sku in package.linked_skus:
             service = sku_index.get((package.category_id, sku))
+            if service is None:
+                continue
             session.add(
                 MdmPackageService(
                     package_id=package.package_id,
                     category_id=package.category_id,
                     sku=sku,
-                    service_id=service.id if service else None,
+                    service_id=service.id,
                 )
             )
 

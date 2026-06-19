@@ -4,27 +4,67 @@ from __future__ import annotations
 
 import copy
 import logging
+from pathlib import Path
 from typing import Annotated, Any
 
 from agent_framework import tool
 
 from app.proposal.artifact_spec import ArtifactKind, ArtifactSpec
 from app.proposal.context import get_run_proposal_state
+from app.proposal.draft import (
+    DraftPatchError,
+    add_package_to_draft,
+    add_service_to_draft,
+    build_draft_preview,
+    enable_draft_section,
+    materialize_draft,
+    patch_draft,
+    render_draft_markdown,
+)
 from app.proposal.loaders import load_categories, read_knowledge_file
 from app.proposal.paths import KNOWLEDGE_ROOT, PERIPHERAL_ROOT, TEMPLATES_ROOT
-from app.proposal.pipeline import run_pipeline
-from app.proposal.preview import build_live_preview
-from app.proposal.rehydrate import rehydrate_proposal_state
-from app.proposal.render import render_proposal_markdown
-from app.proposal.schema import PROPOSAL_STATE_SCHEMA, PatchValidationError, apply_json_patch, resolve_pointer
-from app.proposal.storage import build_filename, new_artifact_id, save_markdown
+from app.proposal.storage import new_artifact_id, save_markdown
 
 _PREVIEW_CHAR_LIMIT = 1200
 logger = logging.getLogger(__name__)
 
 
 def _resolve_pointer(state: dict[str, Any], pointer: str) -> Any:
-    return resolve_pointer(state, pointer)
+    if pointer == "":
+        return state
+    if not pointer.startswith("/"):
+        raise ValueError("JSON Pointer must start with '/'.")
+    value: Any = state
+    for raw_part in pointer.split("/")[1:]:
+        part = raw_part.replace("~1", "/").replace("~0", "~")
+        if isinstance(value, list):
+            value = value[int(part)]
+        elif isinstance(value, dict):
+            value = value[part]
+        else:
+            raise ValueError(f"Cannot resolve through non-container at {part!r}.")
+    return value
+
+
+def _is_allowed_knowledge_path(rel: str, full: Path) -> bool:
+    """peripheral/* and template contracts/blocks under knowledge/."""
+    peripheral = PERIPHERAL_ROOT.resolve()
+    templates = TEMPLATES_ROOT.resolve()
+    if str(full).startswith(str(peripheral)):
+        return True
+    if str(full).startswith(str(templates)):
+        parts = [p for p in rel.split("/") if p]
+        # templates/{template_id}/template.yaml or templates/{template_id}/blocks/...
+        return (
+            len(parts) == 3
+            and parts[0] == "templates"
+            and parts[2] == "template.yaml"
+        ) or (
+            len(parts) >= 4
+            and parts[0] == "templates"
+            and parts[2] == "blocks"
+        )
+    return False
 
 
 def _validate_read_path(relative_path: str) -> None:
@@ -35,37 +75,16 @@ def _validate_read_path(relative_path: str) -> None:
     root = KNOWLEDGE_ROOT.resolve()
     if not str(full).startswith(str(root)):
         raise ValueError("Path escapes knowledge root")
-    peripheral = PERIPHERAL_ROOT.resolve()
-    templates = TEMPLATES_ROOT.resolve()
-    if not (
-        str(full).startswith(str(peripheral))
-        or str(full).startswith(str(templates))
-    ):
-        raise ValueError("Path must be under peripheral/ or templates/*/blocks/")
-
-
-def _patch_error_response(exc: PatchValidationError) -> dict[str, Any]:
-    return {
-        "status": "error",
-        "http_status": 422,
-        "errors": exc.errors,
-        "error": str(exc),
-    }
-
-
-def _patch_ok_response(state: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "status": "ok",
-        "patched": True,
-        "state": copy.deepcopy(state),
-    }
+    if not _is_allowed_knowledge_path(rel, full):
+        raise ValueError("Path must be under peripheral/, templates/{template_id}/template.yaml, or templates/{template_id}/blocks/")
 
 
 @tool(
     name="list_categories",
     description=(
-        "List proposal categories (region × BU) and default template IDs. "
-        "Use when category is unset or the user asks what regions/BUs are available."
+        "List available proposal categories (region x BU) and their default templates. "
+        "Use when the user has not clearly chosen a category/region/BU, or asks what "
+        "proposal types are supported. Do not use for service/package lookup."
     ),
 )
 def list_categories() -> dict[str, Any]:
@@ -87,12 +106,23 @@ def list_categories() -> dict[str, Any]:
 @tool(
     name="read_knowledge",
     description=(
-        "Read markdown from knowledge/ (peripheral/ or templates/*/blocks/). "
-        "Use for terms, bios, and required-doc copy—not for SKU/package pricing."
+        "Read text from knowledge/: peripheral/ (markdown, CSV, etc.) or "
+        "templates/{template_id}/ (template.yaml, blocks/*.md). "
+        "Use template.yaml to understand draft section ids/kinds/editability/derivations; "
+        "use blocks/peripheral files for reusable proposal content. "
+        "SKU/package pricing comes from Postgres MCP, not this tool."
     ),
 )
 def read_knowledge(
-    path: Annotated[str, "Relative path under knowledge/, e.g. peripheral/required-docs/MY/director-id.md"],
+    path: Annotated[
+        str,
+        (
+            "Relative path under knowledge/, e.g. "
+            "templates/au-advisory/template.yaml, "
+            "templates/harneys-bvi/blocks/terms-bvi.md, "
+            "peripheral/required-docs/BVI/passport.md"
+        ),
+    ],
 ) -> dict[str, Any]:
     try:
         _validate_read_path(path)
@@ -103,72 +133,177 @@ def read_knowledge(
 
 
 @tool(
-    name="get_proposal_schema",
-    description="Return the JSON Schema for proposal_state (editable vs readOnly fields).",
-)
-def get_proposal_schema() -> dict[str, Any]:
-    return {"schema": PROPOSAL_STATE_SCHEMA}
-
-
-@tool(
-    name="get_proposal_state",
+    name="initialize_proposal_draft",
     description=(
-        "Read proposal_state. Omit path for the full object; pass a JSON Pointer "
-        "(e.g. /selection) to read a subtree."
+        "Create or reset the editable proposal draft from a chosen category/template. "
+        "Use once after category/template is known, or when the user explicitly switches "
+        "template/category. This materializes template sections and preserves existing client "
+        "facts when possible. Do not use for normal edits to an existing draft."
     ),
 )
-def get_proposal_state(
-    path: Annotated[
-        str | None,
-        "Optional JSON Pointer (/client, /selection, /completeness). Omit for full state.",
-    ] = None,
+def initialize_proposal_draft(
+    category_id: Annotated[str, "Proposal category_id, e.g. au-services."],
+    template_id: Annotated[str | None, "Optional template_id; defaults from the category."] = None,
 ) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
-        return {"error": "Proposal context unavailable for this run."}
-    if rehydrate_proposal_state(ctx.state):
-        ctx.mark_dirty()
+        return {"status": "error", "error": "Proposal context unavailable for this run."}
+    client = (ctx.draft or {}).get("facts", {}).get("client") or {}
+    try:
+        ctx.draft = materialize_draft(
+            category_id=category_id,
+            template_id=template_id,
+            client=copy.deepcopy(client),
+        )
+        ctx.mark_draft_dirty()
+        preview = build_draft_preview(ctx.draft)
+        return {
+            "status": "ok",
+            "draft": copy.deepcopy(ctx.draft),
+            "preview_status": preview.get("status"),
+        }
+    except Exception as exc:
+        logger.exception("initialize_proposal_draft failed")
+        return {"status": "error", "error": str(exc) or type(exc).__name__}
+
+
+@tool(
+    name="get_proposal_draft",
+    description=(
+        "Read the editable proposal draft that renders the right-hand Proposal Preview. "
+        "Use before patching when you need exact section/table/row indexes or ids. "
+        "Omit path for the full draft; pass a JSON Pointer for a subtree."
+    ),
+)
+def get_proposal_draft(
+    path: Annotated[str | None, "Optional JSON Pointer, e.g. /document/sections."] = None,
+) -> dict[str, Any]:
+    ctx = get_run_proposal_state()
+    if ctx is None:
+        return {"status": "error", "error": "Proposal context unavailable for this run."}
+    if ctx.draft is None:
+        return {"status": "empty", "draft": None}
     if path:
         try:
-            value = _resolve_pointer(ctx.state, path)
+            value = _resolve_pointer(ctx.draft, path)
         except Exception as exc:
             return {"status": "error", "path": path, "error": str(exc)}
-        return {"path": path, "value": copy.deepcopy(value)}
-    return {"state": copy.deepcopy(ctx.state)}
+        return {"status": "ok", "path": path, "value": copy.deepcopy(value)}
+    return {"status": "ok", "draft": copy.deepcopy(ctx.draft)}
 
 
 @tool(
-    name="patch_proposal_state",
+    name="patch_proposal_draft",
     description=(
-        "Apply RFC 6902 JSON Patch to proposal_state (add, remove, replace, move, copy, test). "
-        "Parameter `patch` must be a JSON array of operations (never a string). "
-        "Only non-readOnly schema paths are allowed; readOnly fields are recomputed after write. "
-        "Invalid patches return http_status 422 with structured errors."
+        "Apply RFC 6902 JSON Patch to existing proposal draft nodes. Use for visible "
+        "display edits: client facts, section content, table titles, fee row service_name, "
+        "scope_of_work, price.amount, or row/table ordering. If adding an MDM package or "
+        "service, use add_package_to_proposal_draft/add_service_to_proposal_draft instead "
+        "so catalog fields and provenance are materialized correctly."
     ),
 )
-def patch_proposal_state(
+def patch_proposal_draft(
     patch: Annotated[
         list[dict[str, Any]],
-        (
-            "JSON Patch array. Examples: "
-            '[{"op":"replace","path":"/proposal_meta/category_id","value":"au-services"}], '
-            '[{"op":"add","path":"/selection/selected_skus/-","value":"AU-TAX"}], '
-            '[{"op":"replace","path":"/client/company_name","value":"Acme Ltd"}].'
-        ),
-    ],
+        "RFC 6902 JSON Patch array targeting proposal_draft paths. Read draft first if indexes are unknown.",
+    ]
 ) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
-        return {"error": "Proposal context unavailable for this run.", "status": "error"}
+        return {"status": "error", "error": "Proposal context unavailable for this run."}
+    if ctx.draft is None:
+        return {"status": "error", "error": "Proposal draft is not initialized."}
     try:
-        ctx.state = apply_json_patch(ctx.state, patch)
-        run_pipeline(ctx.state)
-        ctx.mark_dirty()
-        return _patch_ok_response(ctx.state)
-    except PatchValidationError as exc:
-        return _patch_error_response(exc)
+        ctx.draft = patch_draft(ctx.draft, patch)
+        ctx.mark_draft_dirty()
+        return {"status": "ok", "patched": True, "draft": copy.deepcopy(ctx.draft)}
+    except DraftPatchError as exc:
+        return {"status": "error", "http_status": 422, "error": exc.message}
     except Exception as exc:
-        logger.exception("patch_proposal_state failed")
+        logger.exception("patch_proposal_draft failed")
+        return {"status": "error", "error": str(exc) or type(exc).__name__}
+
+
+@tool(
+    name="add_package_to_proposal_draft",
+    description=(
+        "Materialize a confirmed MDM package into the draft fee section. This looks up the "
+        "package, expands linked services, creates a fee table, and maps MDM service fields "
+        "into editable fee rows with source/provenance. Use after the user confirms a "
+        "package_id. Do not use for renaming/editing an existing package table; patch the draft."
+    ),
+)
+def add_package_to_proposal_draft(
+    package_id: Annotated[str, "Exact MDM mdm_packages.package_id, e.g. PKG-AU-..."],
+) -> dict[str, Any]:
+    ctx = get_run_proposal_state()
+    if ctx is None:
+        return {"status": "error", "error": "Proposal context unavailable for this run."}
+    if ctx.draft is None:
+        return {"status": "error", "error": "Proposal draft is not initialized."}
+    try:
+        ctx.draft = add_package_to_draft(ctx.draft, package_id)
+        ctx.mark_draft_dirty()
+        return {"status": "ok", "draft": copy.deepcopy(ctx.draft)}
+    except Exception as exc:
+        logger.exception("add_package_to_proposal_draft failed")
+        return {"status": "error", "error": str(exc) or type(exc).__name__}
+
+
+@tool(
+    name="add_service_to_proposal_draft",
+    description=(
+        "Materialize one confirmed MDM service/SKU into the draft fee section. This looks up "
+        "the service, maps catalog fields into an editable fee row, and appends it to an "
+        "existing or new fee table. Use after the user confirms a SKU. Do not use for editing "
+        "service name, SOW, or price on an existing row; patch the draft."
+    ),
+)
+def add_service_to_proposal_draft(
+    sku: Annotated[str, "Exact MDM mdm_services.sku to add."],
+    table_id: Annotated[str | None, "Optional fee table id. Existing table is reused; otherwise a new table is created."] = None,
+    table_title: Annotated[str, "Title used only when a new fee table is created."] = "Additional services",
+) -> dict[str, Any]:
+    ctx = get_run_proposal_state()
+    if ctx is None:
+        return {"status": "error", "error": "Proposal context unavailable for this run."}
+    if ctx.draft is None:
+        return {"status": "error", "error": "Proposal draft is not initialized."}
+    try:
+        ctx.draft = add_service_to_draft(ctx.draft, sku, table_id=table_id, table_title=table_title)
+        ctx.mark_draft_dirty()
+        return {"status": "ok", "draft": copy.deepcopy(ctx.draft)}
+    except Exception as exc:
+        logger.exception("add_service_to_proposal_draft failed")
+        return {"status": "error", "error": str(exc) or type(exc).__name__}
+
+
+@tool(
+    name="enable_proposal_draft_section",
+    description=(
+        "Enable or disable an optional draft section by section id, e.g. payment_options, "
+        "credentials, or appendix. Use for optional/derived sections that already exist in "
+        "the template. Do not use to create new arbitrary sections; patch or template changes "
+        "are required for that."
+    ),
+)
+def enable_proposal_draft_section(
+    section_id: Annotated[str, "Draft section id, e.g. payment_options."],
+    enabled: Annotated[bool, "Whether the section should be enabled."] = True,
+) -> dict[str, Any]:
+    ctx = get_run_proposal_state()
+    if ctx is None:
+        return {"status": "error", "error": "Proposal context unavailable for this run."}
+    if ctx.draft is None:
+        return {"status": "error", "error": "Proposal draft is not initialized."}
+    try:
+        ctx.draft = enable_draft_section(ctx.draft, section_id, enabled=enabled)
+        ctx.mark_draft_dirty()
+        return {"status": "ok", "draft": copy.deepcopy(ctx.draft)}
+    except DraftPatchError as exc:
+        return {"status": "error", "http_status": 422, "error": exc.message}
+    except Exception as exc:
+        logger.exception("enable_proposal_draft_section failed")
         return {"status": "error", "error": str(exc) or type(exc).__name__}
 
 
@@ -216,37 +351,29 @@ def _queue_artifact(spec: ArtifactSpec) -> dict[str, Any]:
 @tool(
     name="render_preview",
     description=(
-        "Confirm the live proposal panel reflects current state (optional). "
-        "The UI auto-renders from state after patches—do not call repeatedly for side-panel updates. "
-        "Use draft=true when required fields are missing but the user wants to see a draft."
+        "Return a lightweight status for the current proposal draft preview. The UI already "
+        "auto-renders after draft write tools, so call this only when you need to confirm "
+        "preview/readiness status for your response. Do not call repeatedly after every patch."
     ),
 )
 def render_preview(
-    draft: Annotated[bool, "If true, preview even when completeness.ready_to_preview is false."] = False,
+    draft: Annotated[bool, "Deprecated compatibility flag; draft preview is always used."] = False,
 ) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
         return {"status": "error", "message": "Proposal context unavailable for this run."}
 
-    completeness = (ctx.state.get("completeness") or {})
-    if not draft and not completeness.get("ready_to_preview"):
+    if ctx.draft is None:
         return {
-            "status": "blocked",
-            "message": "Proposal is not ready to preview.",
-            "missing_required": completeness.get("missing_required") or [],
+            "status": "empty",
+            "message": "Proposal draft is not initialized.",
+            "missing_required": [],
         }
 
-    try:
-        if rehydrate_proposal_state(ctx.state):
-            ctx.mark_dirty()
-        preview = build_live_preview(ctx.state, draft=True)
-    except ValueError as exc:
-        return {"status": "error", "message": str(exc)}
-
-    ctx.state.setdefault("artifacts", {})["last_preview_at"] = preview.get("state_fingerprint")
+    preview = build_draft_preview(ctx.draft)
     return {
         "status": preview.get("status") or "ok",
-        "message": "Live proposal panel updates automatically after state changes.",
+        "message": "Live proposal panel updates automatically after draft changes.",
         "title": preview.get("title"),
         "state_fingerprint": preview.get("state_fingerprint"),
         "completeness": preview.get("completeness"),
@@ -257,52 +384,42 @@ def render_preview(
 @tool(
     name="generate_document",
     description=(
-        "Create a downloadable proposal file for the client. "
-        "Use when the user asks to export or download; the live Proposal panel already shows the draft. "
-        "Blocked unless force=true when required fields are missing."
+        "Create a downloadable proposal markdown file from the current draft. Use only when "
+        "the user asks to export/download/send/finalize a proposal. The live Proposal panel "
+        "already shows the draft, so do not use this for ordinary preview. If blocked for "
+        "missing required content, ask for the missing business information or use force only "
+        "when the user explicitly accepts an incomplete file."
     ),
 )
 def generate_document(
-    force: Annotated[bool, "If true, generate even when completeness.ready_to_generate is false."] = False,
+    force: Annotated[bool, "If true, generate even when the draft is not ready_to_generate. Use only with user consent."] = False,
 ) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
         return {"status": "error", "message": "Proposal context unavailable for this run."}
 
-    completeness = ctx.state.get("completeness") or {}
+    if ctx.draft is None:
+        return {"status": "empty", "message": "Proposal draft is not initialized."}
+
+    preview = build_draft_preview(ctx.draft)
+    completeness = preview.get("completeness") or {}
     if not force and not completeness.get("ready_to_generate"):
         return {
             "status": "blocked",
-            "message": "Proposal is not ready to generate.",
+            "message": "Proposal draft is not ready to generate.",
             "missing_required": completeness.get("missing_required") or [],
-            "enabled_optional_unfilled": completeness.get("enabled_optional_unfilled") or [],
         }
-
-    try:
-        if rehydrate_proposal_state(ctx.state):
-            ctx.mark_dirty()
-        content = render_proposal_markdown(ctx.state)
-    except ValueError as exc:
-        return {"status": "error", "message": str(exc)}
-
-    company = (ctx.state.get("client") or {}).get("company_name") or "Proposal"
-    doc_title = (
-        (ctx.state.get("resolved_placeholders") or {})
-        .get("document_title", {})
-        .get("value")
-    ) or company
+    content = render_draft_markdown(ctx.draft)
+    title = str((ctx.draft.get("meta") or {}).get("title") or "Proposal")
     spec = _build_artifact_spec(
         kind="proposal_document",
-        title=str(doc_title),
+        title=title,
         content=content,
-        filename=build_filename(ctx.state),
+        filename=preview.get("filename") or "proposal.md",
         chat_id=ctx.chat_id,
         persist=True,
     )
-    meta = ctx.state.setdefault("proposal_meta", {})
-    meta["stage"] = "GENERATE"
-    ctx.state.setdefault("artifacts", {})["last_document_id"] = spec.artifact_id
-    ctx.mark_dirty()
+    ctx.mark_draft_dirty()
     payload = _queue_artifact(spec)
     payload["download_url"] = spec.download_url
     payload["filename"] = spec.filename

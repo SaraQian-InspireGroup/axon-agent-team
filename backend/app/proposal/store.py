@@ -1,51 +1,44 @@
-"""Persist proposal state inside chat session payload."""
+"""Persist proposal draft inside chat session payload."""
 
 from __future__ import annotations
 
-import copy
 import uuid
 from typing import Any
 
-from app.proposal.context import export_proposal_state, get_run_proposal_state
+from app.proposal.context import export_proposal_draft, get_run_proposal_state
 
 
-PROPOSAL_STATE_KEY = "proposal_state"
+PROPOSAL_DRAFT_KEY = "proposal_draft"
 
 
-def load_proposal_state_from_payload(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+def load_proposal_draft_from_payload(payload: dict[str, Any] | None) -> dict[str, Any] | None:
     if not payload:
         return None
-    stored = payload.get(PROPOSAL_STATE_KEY)
+    stored = payload.get(PROPOSAL_DRAFT_KEY)
     if not isinstance(stored, dict) or not stored:
         return None
-    meta = stored.get("proposal_meta") or {}
-    selection = stored.get("selection") or {}
-    if not (
-        meta.get("category_id")
-        or selection.get("selected_packages")
-        or selection.get("selected_skus")
-    ):
+    meta = stored.get("meta") or {}
+    sections = ((stored.get("document") or {}).get("sections") or [])
+    if not (meta.get("category_id") or meta.get("template_id") or sections):
         return None
     return stored
 
 
-def merge_proposal_state_into_payload(payload: dict[str, Any]) -> dict[str, Any]:
+def merge_proposal_draft_into_payload(payload: dict[str, Any]) -> dict[str, Any]:
     ctx = get_run_proposal_state()
-    if ctx is None or not ctx.dirty:
+    if ctx is None or not ctx.draft_dirty:
         return payload
     merged = dict(payload)
-    merged[PROPOSAL_STATE_KEY] = export_proposal_state() or ctx.state
+    if ctx.draft_dirty and ctx.draft is not None:
+        merged[PROPOSAL_DRAFT_KEY] = export_proposal_draft() or ctx.draft
     return merged
 
 
-async def persist_proposal_state_if_dirty(session_store, chat_id: uuid.UUID) -> None:
-    """Persist dirty proposal state into chat session payload."""
+async def persist_proposal_draft_if_dirty(session_store, chat_id: uuid.UUID) -> None:
+    """Persist dirty proposal draft into chat session payload."""
     ctx = get_run_proposal_state()
-    if ctx is None or not ctx.dirty:
+    if ctx is None or not ctx.draft_dirty:
         return
-    await session_store.merge_extension(
-        chat_id,
-        PROPOSAL_STATE_KEY,
-        copy.deepcopy(ctx.state),
-    )
-    ctx.dirty = False
+    if ctx.draft_dirty and ctx.draft is not None:
+        await session_store.merge_extension(chat_id, PROPOSAL_DRAFT_KEY, ctx.draft)
+        ctx.draft_dirty = False

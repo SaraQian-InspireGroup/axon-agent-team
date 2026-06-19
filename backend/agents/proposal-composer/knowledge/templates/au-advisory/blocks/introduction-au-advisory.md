@@ -1,5 +1,3 @@
-## About Incorp Advisory
-
 Incorp Advisory Australia has over 30 years of experience as a leading boutique advisory practice. We are headquartered in **Sydney, Melbourne and Perth** and serve small to medium-sized businesses, ASX-listed companies, subsidiaries of multinational corporations, not-for-profits, and high-net-worth individuals.
 
 Our team of **140+ full-time professionals** brings diverse backgrounds in accounting, finance, science, engineering, and technology to deliver integrated advisory solutions.

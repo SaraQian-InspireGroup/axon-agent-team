@@ -3,27 +3,11 @@
 from __future__ import annotations
 
 import json
-import re
 import uuid
 from pathlib import Path
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS_ROOT = _BACKEND_ROOT / "data" / "proposal-artifacts"
-
-
-def _slugify(value: str, *, max_len: int = 48) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip()).strip("-").lower()
-    return (slug or "proposal")[:max_len]
-
-
-def build_filename(state: dict, *, extension: str = "md", template_id: str | None = None) -> str:
-    from app.proposal.loaders import resolve_document_title, resolve_template_id
-
-    tid = template_id or resolve_template_id(state)
-    title = resolve_document_title(state, tid)
-    safe = re.sub(r'[<>:"/\\|?*]', "-", title.strip())
-    safe = re.sub(r"\s+", " ", safe).strip()
-    return f"{safe}.{extension}" if safe else f"proposal.{extension}"
 
 
 def new_artifact_id() -> str:

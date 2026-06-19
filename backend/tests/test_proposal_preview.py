@@ -1,55 +1,84 @@
 from unittest.mock import patch
+from types import SimpleNamespace
+import json
 
-from app.proposal.preview import build_live_preview, proposal_state_fingerprint
-from app.proposal.state import apply_json_patch, empty_proposal_state
-from tests.proposal_patch_helpers import add, jp, replace
-
-
-SAMPLE_SERVICES = [
-    {
-        "sku": "BVI-incorporation-001",
-        "service_name_on_proposal": "Registered agent fee",
-        "billing_frequency": "ONE_TIME",
-        "recurring": "ONE_OFF",
-        "pricing_type": "FIXED",
-        "price_currency": "USD",
-        "price_amount": 500.0,
-        "price_spec": {},
-    }
-]
+from app.proposal.draft import build_draft_preview
+from app.proposal.preview import proposal_state_fingerprint
 
 
-def _ready_state():
-    return apply_json_patch(
-        empty_proposal_state(),
-        jp(
-            replace("/proposal_meta/category_id", "harneys-bvi"),
-            replace("/selection/selected_skus", ["BVI-incorporation-001"]),
-            replace("/client/company_name", "Demo Ltd"),
-        ),
-    )
-
-
-def test_fingerprint_changes_when_selection_changes():
-    state = _ready_state()
-    fp1 = proposal_state_fingerprint(state)
-    state = apply_json_patch(state, jp(add("/selection/selected_skus/-", "SKU-NEW")))
-    fp2 = proposal_state_fingerprint(state)
+def test_fingerprint_changes_when_draft_changes():
+    draft = {"facts": {"client": {"company_name": "Demo Ltd"}}}
+    fp1 = proposal_state_fingerprint(draft)
+    draft["facts"]["client"]["company_name"] = "Acme Ltd"
+    fp2 = proposal_state_fingerprint(draft)
     assert fp1 != fp2
 
 
-def test_build_live_preview_empty_state():
-    preview = build_live_preview(empty_proposal_state())
+def test_build_draft_preview_empty_draft():
+    preview = build_draft_preview({})
     assert preview["status"] == "empty"
     assert preview["markdown"] == ""
 
 
-def test_build_live_preview_renders_markdown():
-    state = _ready_state()
-    with patch("app.proposal.pipeline.expand_selected_skus", return_value=["BVI-incorporation-001"]):
-        with patch("app.proposal.pipeline.fetch_services_by_skus", return_value=SAMPLE_SERVICES):
-            with patch("app.proposal.pipeline.fetch_packages_by_ids", return_value=[]):
-                preview = build_live_preview(state, draft=True)
-    assert preview["status"] == "ok"
-    assert "Demo Ltd" in preview["markdown"]
-    assert preview["state_fingerprint"]
+def test_get_chat_proposal_draft_returns_persisted_draft():
+    import asyncio
+    import uuid
+
+    from app.services.proposal_preview_service import get_chat_proposal_draft
+
+    draft = {
+        "meta": {"category_id": "au-services", "template_id": "au-advisory"},
+        "facts": {"client": {"company_name": "Demo Ltd"}},
+        "document": {"sections": []},
+    }
+
+    async def _run():
+        with patch(
+            "app.services.proposal_preview_service.load_chat_proposal_draft",
+            return_value=draft,
+        ):
+            return await get_chat_proposal_draft(None, uuid.uuid4())
+
+    payload = asyncio.run(_run())
+    assert payload["draft"]["facts"]["client"]["company_name"] == "Demo Ltd"
+    assert payload["state_fingerprint"]
+
+
+def test_recover_proposal_draft_from_latest_draft_tool_result():
+    import asyncio
+    import uuid
+
+    from app.services.proposal_preview_service import _recover_proposal_draft_from_messages
+
+    old_draft = {"facts": {"client": {"company_name": "Old Ltd"}}}
+    latest_draft = {"facts": {"client": {"company_name": "Latest Ltd"}}}
+    messages = [
+        SimpleNamespace(
+            message_type="tool_result",
+            message_metadata={
+                "tool_name": "initialize_proposal_draft",
+                "result": {"status": "ok", "draft": old_draft},
+            },
+        ),
+        SimpleNamespace(
+            message_type="tool_result",
+            message_metadata={
+                "tool_name": "patch_proposal_draft",
+                "result": json.dumps({"status": "ok", "draft": latest_draft}),
+            },
+        ),
+    ]
+
+    class FakeRepo:
+        def __init__(self, _db):
+            pass
+
+        async def list_by_chat(self, _chat_id):
+            return messages
+
+    async def _run():
+        with patch("app.services.proposal_preview_service.MessageRepository", FakeRepo):
+            return await _recover_proposal_draft_from_messages(None, uuid.uuid4())
+
+    recovered = asyncio.run(_run())
+    assert recovered == latest_draft

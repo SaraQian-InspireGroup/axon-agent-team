@@ -4,7 +4,8 @@ import { AgentIcon } from '../components/AgentIcon'
 import { ChatHistoryPanel } from '../components/ChatHistoryPanel'
 import { MemoryPanel } from '../components/MemoryPanel'
 import { ProposalLivePanel } from '../components/ProposalLivePanel'
-import { ProposalPanelShell, readProposalPanelWidth } from '../components/ProposalPanelShell'
+import { ProposalPanelShell, readProposalPanelWidth, type ProposalPanelTab } from '../components/ProposalPanelShell'
+import { ProposalStatePanel } from '../components/ProposalStatePanel'
 import { ChatHistoryIcon } from '../components/ChatHistoryIcon'
 import { ChatMessageList } from '../components/ChatMessageList'
 import { LoadingSpinner } from '../components/LoadingSpinner'
@@ -12,6 +13,7 @@ import { NewChatIcon } from '../components/NewChatIcon'
 import { SidebarToggleIcon } from '../components/SidebarToggleIcon'
 import { UserIcon } from '../components/UserIcon'
 import { formatAgentSlugLabel } from '../lib/agentLabel'
+import { formatApiError } from '../lib/apiErrorMessage'
 import { getStoredChatId, setStoredChatId } from '../lib/chatStorage'
 import {
   applyStreamingArtifact,
@@ -27,6 +29,7 @@ import {
 import type { ArtifactSpec } from '../types/artifact'
 import type { VizSpec } from '../types/viz'
 import type { ProposalPreview } from '../types/proposalPreview'
+import type { ProposalDraftResponse } from '../types/proposalDraft'
 import type { Agent, ChatSummary, Message } from '../types'
 
 const SIDEBAR_COLLAPSED_KEY = 'agent-platform:sidebar-collapsed'
@@ -65,13 +68,28 @@ function shouldReplaceProposalPreview(
   next: ProposalPreview,
 ): boolean {
   if (!prev) return true
-  if (next.state_fingerprint !== prev.state_fingerprint) return true
-  if (next.markdown !== prev.markdown) return true
-  if (next.markdown && !prev.markdown) return true
   if (prev.markdown && !next.markdown && (next.status === 'empty' || next.status === 'blocked')) {
     return false
   }
+  if (next.state_fingerprint !== prev.state_fingerprint) return true
+  if (next.markdown !== prev.markdown) return true
+  if (next.markdown && !prev.markdown) return true
   return !prev.markdown
+}
+
+function parseToolResultObject(result: unknown): Record<string, unknown> | null {
+  if (result && typeof result === 'object' && !Array.isArray(result)) {
+    return result as Record<string, unknown>
+  }
+  if (typeof result !== 'string') return null
+  try {
+    const parsed: unknown = JSON.parse(result)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
 }
 
 function readSidebarCollapsed(): boolean {
@@ -101,11 +119,19 @@ export function ChatPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [proposalPanelCollapsed, setProposalPanelCollapsed] = useState(true)
+  const [proposalPanelTab, setProposalPanelTab] = useState<ProposalPanelTab>('preview')
   const [proposalPanelWidth, setProposalPanelWidth] = useState(readProposalPanelWidth)
   const [proposalPreview, setProposalPreview] = useState<ProposalPreview | null>(null)
   const [proposalPreviewLoading, setProposalPreviewLoading] = useState(false)
+  const [proposalTurnSyncing, setProposalTurnSyncing] = useState(false)
   const [proposalPreviewError, setProposalPreviewError] = useState<string | null>(null)
+  const [proposalState, setProposalState] = useState<Record<string, unknown> | null>(null)
+  const [proposalStateFingerprint, setProposalStateFingerprint] = useState<string | null>(null)
+  const [proposalStateLoading, setProposalStateLoading] = useState(false)
+  const [proposalStateError, setProposalStateError] = useState<string | null>(null)
   const proposalPreviewFetchGenRef = useRef(0)
+  const proposalStateFetchGenRef = useRef(0)
+  const proposalPanelTabRef = useRef<ProposalPanelTab>('preview')
   const [memoryRefreshKey, setMemoryRefreshKey] = useState(0)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const pinToBottomRef = useRef(true)
@@ -153,9 +179,30 @@ export function ChatPage() {
     }
   }, [])
 
+  const fetchProposalState = useCallback(async (id: string) => {
+    const generation = ++proposalStateFetchGenRef.current
+    setProposalStateLoading(true)
+    setProposalStateError(null)
+    try {
+      const payload: ProposalDraftResponse = await api.getProposalDraft(id)
+      if (generation !== proposalStateFetchGenRef.current) return
+      setProposalState(payload.draft)
+      setProposalStateFingerprint(payload.state_fingerprint)
+    } catch (e) {
+      if (generation !== proposalStateFetchGenRef.current) return
+      setProposalStateError(formatApiError(e, 'Failed to load proposal draft'))
+    } finally {
+      if (generation === proposalStateFetchGenRef.current) {
+        setProposalStateLoading(false)
+      }
+    }
+  }, [])
+
   const applyProposalPreview = useCallback((preview: ProposalPreview) => {
     ++proposalPreviewFetchGenRef.current
-    setProposalPreview(preview)
+    setProposalPreview((prev) =>
+      shouldReplaceProposalPreview(prev, preview) ? preview : prev,
+    )
     setProposalPreviewLoading(false)
     setProposalPreviewError(null)
     if (preview.markdown) {
@@ -163,14 +210,34 @@ export function ChatPage() {
     }
   }, [])
 
+  useEffect(() => {
+    proposalPanelTabRef.current = proposalPanelTab
+  }, [proposalPanelTab])
+
   const collapseProposalPanel = useCallback(() => {
     setProposalPanelCollapsed(true)
   }, [])
 
-  const expandProposalPanel = useCallback(() => {
-    setProposalPanelCollapsed(false)
-    if (chatId) void fetchProposalPreview(chatId)
-  }, [chatId, fetchProposalPreview])
+  const expandProposalPanel = useCallback(
+    (tab: ProposalPanelTab = 'preview') => {
+      setProposalPanelCollapsed(false)
+      setProposalPanelTab(tab)
+      if (!chatId) return
+      if (tab === 'preview') void fetchProposalPreview(chatId)
+      if (tab === 'state') void fetchProposalState(chatId)
+    },
+    [chatId, fetchProposalPreview, fetchProposalState],
+  )
+
+  const handleProposalPanelTabChange = useCallback(
+    (tab: ProposalPanelTab) => {
+      setProposalPanelTab(tab)
+      if (!chatId) return
+      if (tab === 'preview') void fetchProposalPreview(chatId)
+      if (tab === 'state') void fetchProposalState(chatId)
+    },
+    [chatId, fetchProposalPreview, fetchProposalState],
+  )
 
   const handleExpandArtifact = useCallback(
     (_spec: ArtifactSpec) => {
@@ -211,6 +278,9 @@ export function ChatPage() {
     setChatId(id)
     setProposalPreview(null)
     setProposalPreviewError(null)
+    setProposalState(null)
+    setProposalStateFingerprint(null)
+    setProposalStateError(null)
     setStoredChatId(agentId, id)
     setStreamingBlocks([])
     setInput('')
@@ -283,12 +353,17 @@ export function ChatPage() {
   useEffect(() => {
     if (!isProposalComposer) {
       setProposalPanelCollapsed(true)
+      setProposalPanelTab('preview')
       setProposalPreview(null)
       setProposalPreviewError(null)
+      setProposalState(null)
+      setProposalStateFingerprint(null)
+      setProposalStateError(null)
       return
     }
     if (!chatId) return
     setProposalPanelCollapsed(false)
+    setProposalPanelTab('preview')
     void fetchProposalPreview(chatId)
   }, [isProposalComposer, chatId, fetchProposalPreview])
 
@@ -333,6 +408,7 @@ export function ChatPage() {
     }
 
     setLoading(false)
+    setProposalTurnSyncing(false)
     setActiveRunId(null)
     runIdRef.current = null
     streamAbortRef.current?.abort()
@@ -345,6 +421,7 @@ export function ChatPage() {
     const text = input.trim()
     setInput('')
     setLoading(true)
+    setProposalTurnSyncing(false)
     pinToBottomRef.current = true
     setStreamingBlocks([])
     setError(null)
@@ -382,10 +459,25 @@ export function ChatPage() {
       setStreamingBlocks((prev) => finalizeStreamingBlocks(prev))
     }
 
-    const triggerReload = () => {
+    const finishTurnAfterStream = async () => {
       if (generation !== streamGenRef.current || reloadedAfterStream) return
       reloadedAfterStream = true
-      void reloadMessagesAfterStream(chatId)
+      if (isProposalComposer) {
+        setProposalTurnSyncing(true)
+      }
+      try {
+        await reloadMessagesAfterStream(chatId)
+        if (isProposalComposer && chatId) {
+          await fetchProposalPreview(chatId)
+          if (proposalPanelTabRef.current === 'state') {
+            await fetchProposalState(chatId)
+          }
+        }
+      } finally {
+        if (generation === streamGenRef.current) {
+          setProposalTurnSyncing(false)
+        }
+      }
     }
 
     try {
@@ -431,14 +523,34 @@ export function ChatPage() {
             if (preview) {
               applyProposalPreview(preview)
             }
+            if (proposalPanelTabRef.current === 'state' && chatId) {
+              void fetchProposalState(chatId)
+            }
           }
+          const proposalDraftWriteTools = new Set([
+            'initialize_proposal_draft',
+            'patch_proposal_draft',
+            'add_package_to_proposal_draft',
+            'add_service_to_proposal_draft',
+            'enable_proposal_draft_section',
+          ])
           if (
             ev.event === 'tool_result' &&
-            ev.data?.tool_name === 'patch_proposal_state' &&
+            proposalDraftWriteTools.has(String(ev.data?.tool_name || '')) &&
             chatId &&
             isProposalComposer
           ) {
+            const result = parseToolResultObject(ev.data?.result)
+            if (result) {
+              const draft = result.draft
+              if (draft && typeof draft === 'object' && !Array.isArray(draft)) {
+                setProposalState(draft as Record<string, unknown>)
+              }
+            }
             void fetchProposalPreview(chatId)
+            if (proposalPanelTabRef.current === 'state') {
+              void fetchProposalState(chatId)
+            }
           }
           if (
             (ev.event === 'reasoning' ||
@@ -457,12 +569,22 @@ export function ChatPage() {
               setStreamingBlocks((prev) => applyStreamingBlockActivity(prev, entry))
             }
           }
-          if (ev.event === 'done' || ev.event === 'run_cancelled') {
+          if (ev.event === 'stream_idle') {
             finishStreamingUi()
-            triggerReload()
-            if (ev.event === 'done' && isProposalComposer && chatId) {
-              void fetchProposalPreview(chatId)
+            if (isProposalComposer) {
+              setProposalTurnSyncing(true)
             }
+          }
+          if (ev.event === 'run_cancelled') {
+            finishStreamingUi()
+            setProposalTurnSyncing(false)
+            void finishTurnAfterStream()
+          }
+          if (ev.event === 'done') {
+            if (!streamFinished) {
+              finishStreamingUi()
+            }
+            void finishTurnAfterStream()
           }
           if (ev.event === 'error') {
             throw new Error(String(ev.data.error ?? 'stream error'))
@@ -472,13 +594,16 @@ export function ChatPage() {
       )
 
       if (generation !== streamGenRef.current) return
-      finishStreamingUi()
-      triggerReload()
+      if (!streamFinished) {
+        finishStreamingUi()
+      }
+      void finishTurnAfterStream()
     } catch (e) {
       if (generation !== streamGenRef.current) return
       if (e instanceof Error && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : 'Failed to send message')
       setStreamingBlocks([])
+      setProposalTurnSyncing(false)
       finishStreamingUi()
     } finally {
       if (generation === streamGenRef.current) {
@@ -494,6 +619,10 @@ export function ChatPage() {
     if (!selectedId || loading || chatSessionLoading) return
     setHistoryOpen(false)
     setProposalPreview(null)
+    setProposalState(null)
+    setProposalStateFingerprint(null)
+    setProposalStateError(null)
+    setProposalPanelTab('preview')
     setError(null)
     setChatSessionLoading(true)
     setMessages([])
@@ -745,6 +874,9 @@ export function ChatPage() {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => {
+                          if (e.nativeEvent.isComposing || e.keyCode === 229) {
+                            return
+                          }
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault()
                             if (!loading && !chatSessionLoading) void send()
@@ -813,20 +945,40 @@ export function ChatPage() {
               <ProposalPanelShell
                 open={!proposalPanelCollapsed}
                 width={proposalPanelWidth}
+                activeTab={proposalPanelTab}
+                syncing={proposalTurnSyncing}
+                onTabChange={handleProposalPanelTabChange}
                 onWidthChange={setProposalPanelWidth}
                 onExpand={expandProposalPanel}
               >
-                <ProposalLivePanel
-                  open
-                  embedded
-                  preview={proposalPreview}
-                  loading={proposalPreviewLoading}
-                  error={proposalPreviewError}
-                  onCollapse={collapseProposalPanel}
-                  onRefresh={() => {
-                    if (chatId) void fetchProposalPreview(chatId)
-                  }}
-                />
+                {proposalPanelTab === 'preview' ? (
+                  <ProposalLivePanel
+                    open
+                    embedded
+                    preview={proposalPreview}
+                    loading={proposalPreviewLoading}
+                    syncing={proposalTurnSyncing}
+                    error={proposalPreviewError}
+                    onCollapse={collapseProposalPanel}
+                    onRefresh={() => {
+                      if (chatId) void fetchProposalPreview(chatId)
+                    }}
+                  />
+                ) : (
+                  <ProposalStatePanel
+                    open
+                    embedded
+                    state={proposalState}
+                    fingerprint={proposalStateFingerprint}
+                    loading={proposalStateLoading}
+                    syncing={proposalTurnSyncing}
+                    error={proposalStateError}
+                    onCollapse={collapseProposalPanel}
+                    onRefresh={() => {
+                      if (chatId) void fetchProposalState(chatId)
+                    }}
+                  />
+                )}
               </ProposalPanelShell>
             )}
 

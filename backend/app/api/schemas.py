@@ -78,6 +78,12 @@ class ProposalPreviewOut(BaseModel):
     completeness: ProposalCompletenessOut = Field(default_factory=ProposalCompletenessOut)
 
 
+class ProposalDraftOut(BaseModel):
+    chat_id: str
+    draft: dict[str, Any]
+    state_fingerprint: str
+
+
 class MemoryBulletOut(BaseModel):
     prefix: str
     text: str

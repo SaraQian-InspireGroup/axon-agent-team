@@ -1,60 +1,56 @@
-# Proposal state schema
+# Proposal draft schema
 
-Machine-readable contract: **`get_proposal_schema`** returns JSON Schema Draft 2020-12.
+`proposal_draft` is the editable display-layer document. The right-side Proposal Preview is rendered directly from this object.
 
-## Tools
+**Guardrails**: patch only concrete draft nodes that the user can see/edit. For catalog additions, use the add-package/add-service materializer tools.
 
-| Tool | Role |
-|------|------|
-| `get_proposal_schema` | JSON Schema (editable vs `readOnly`) |
-| `get_proposal_state` | Read full state or subtree via JSON Pointer |
-| `patch_proposal_state` | RFC 6902 JSON Patch (`add` / `remove` / `replace` / …) |
+## Template contract
 
-**Guardrails**: only schema paths without `readOnly` accept patches; invalid patches return `http_status: 422` with `errors[]`. After a successful patch the platform recomputes derived fields (`line_items`, `pricing.computed`, `completeness`, …).
+After category/template is known, initialize the draft and read:
+
+```text
+templates/{template_id}/template.yaml
+```
+
+via `read_knowledge`. That file defines section kinds, default enabled flags, editability, materializers, and derivations. Full workflow: **`references/template-contract.md`**.
 
 ## Common paths
 
 | Path | Purpose |
 |------|---------|
-| `/proposal_meta/category_id` | MDM catalog scope |
-| `/proposal_meta/template_id` | Document template |
-| `/client/*` | Company and contact |
-| `/pricing_facts/*` | TIERED/MATRIX inputs (e.g. `share_count`) |
-| `/selection/selected_packages` | Package IDs |
-| `/selection/selected_skus` | Ad-hoc SKUs |
-| `/pricing/overrides/{sku}` | Manual price override |
-| `/enabled_sections` | Optional template sections |
-| `/fee_description` | Intro paragraph above fee tables (not `###` table heading) |
-| `/fee_layout/group_labels/{group_id}` | Fee table heading override |
-| `/fee_layout/custom_groups` | Split/reassign fee tables |
-| `/payment_options/options` | Payment option rows; non-empty → auto-enables Fee summary section |
-| `/payment_options/overrides` | Payment summary tweaks |
-| `/appendix` | Appendix content |
+| `/meta/category_id` | MDM catalog scope |
+| `/meta/template_id` | Document template |
+| `/facts/client/*` | Company and contact |
+| `/document/sections/{index}/enabled` | Section visibility |
+| `/document/sections/{index}/content` | Editable markdown/static block content |
+| `/document/sections/{index}/tables/{index}/title` | Fee table heading |
+| `/document/sections/{index}/tables/{index}/rows/{index}/service_name` | Client-facing service name |
+| `/document/sections/{index}/tables/{index}/rows/{index}/scope_of_work` | Client-facing SOW |
+| `/document/sections/{index}/tables/{index}/rows/{index}/price/amount` | Manual price amount |
+| `/document/sections/{payment_options_index}/options` | Optional derived payment option configurations, e.g. Option A / Option B |
+| `/document/sections/{payment_options_index}/options/{index}/rows` | Payment option rows keyed by fee table `group_id`; each row is a fee-table summary, not a service row |
 
 ## JSON Patch examples
 
 ```json
 [
-  {"op": "replace", "path": "/proposal_meta/category_id", "value": "au-services"},
-  {"op": "replace", "path": "/client/company_name", "value": "Acme Ltd"},
-  {"op": "add", "path": "/selection/selected_skus/-", "value": "AU-TAX"},
-  {"op": "replace", "path": "/fee_layout/group_labels/additional_services", "value": "Corporate Advisory"}
+  {"op": "replace", "path": "/facts/client/company_name", "value": "Acme Ltd"},
+  {"op": "replace", "path": "/document/sections/1/tables/0/title", "value": "Corporate Advisory"},
+  {"op": "replace", "path": "/document/sections/1/tables/0/rows/0/service_name", "value": "Application - Substituted Accounting Period"},
+  {"op": "replace", "path": "/document/sections/1/tables/0/rows/0/price/amount", "value": 1200},
+  {"op": "add", "path": "/document/sections/2/options", "value": [
+    {"option_id": "option_a", "label": "Payment Option A - One-off Payment", "rows": [
+      {"group_id": "table_css", "label": "CSS Package 2", "once_off": 4500, "monthly": 0, "quarterly": 0, "annual": 0}
+    ]},
+    {"option_id": "option_b", "label": "Payment Option B - Monthly Recurring", "rows": [
+      {"group_id": "table_css", "label": "CSS Package 2", "once_off": 0, "monthly": 360, "quarterly": 0, "annual": 0}
+    ]}
+  ]}
 ]
 ```
 
-Append SKU (keep existing): `add` to `/selection/selected_skus/-`. Replace entire list: `replace` on `/selection/selected_skus`.
+Prefer `add_package_to_proposal_draft` / `add_service_to_proposal_draft` for MDM catalog additions instead of manually constructing rows.
 
-## Read-only (derived)
+## Readiness
 
-`readOnly` in schema — do not patch; platform fills after write:
-
-- `/selection/expanded_skus`
-- `/pricing/computed`, `/pricing/explanations`, `/pricing/recurring_schedule`
-- `/line_items`
-- `/payment_options/resolved` — empty until Fee summary optional section is active
-- `/resolved_placeholders`, `/peripheral`, `/completeness`, `/active_optional_sections`
-- `/proposal_meta/stage`, `/artifacts`
-
-## Completeness
-
-Read `/completeness` after patch. `generate_document` respects `ready_to_generate` unless `force=true`. Live panel renders draft even when incomplete.
+`render_preview` and `generate_document` compute readiness from the draft. Live panel renders the draft even when incomplete.

@@ -1,4 +1,4 @@
-"""Persist proposal_state after write tools complete (same request transaction)."""
+"""Persist proposal_draft after write tools complete (same request transaction)."""
 
 from __future__ import annotations
 
@@ -11,15 +11,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.platform.session_store import SessionStore
 from app.proposal.context import get_run_proposal_state
-from app.proposal.store import persist_proposal_state_if_dirty
+from app.proposal.store import persist_proposal_draft_if_dirty
 
 logger = logging.getLogger(__name__)
 
-_WRITE_TOOLS = frozenset({"patch_proposal_state", "render_preview", "generate_document"})
+_WRITE_TOOLS = frozenset(
+    {
+        "initialize_proposal_draft",
+        "patch_proposal_draft",
+        "add_package_to_proposal_draft",
+        "add_service_to_proposal_draft",
+        "enable_proposal_draft_section",
+        "render_preview",
+        "generate_document",
+    }
+)
 
 
 class ProposalPersistMiddleware(FunctionMiddleware):
-    """Flush proposal_state to chat.session_state after each successful write tool."""
+    """Flush proposal_draft to chat.session_state after each successful write tool."""
 
     def __init__(
         self,
@@ -45,15 +55,15 @@ class ProposalPersistMiddleware(FunctionMiddleware):
                 self._chat_id,
             )
             return
-        if not ctx.dirty:
+        if not ctx.draft_dirty:
             return
 
         try:
-            await persist_proposal_state_if_dirty(self._store, self._chat_id)
+            await persist_proposal_draft_if_dirty(self._store, self._chat_id)
             await self._db.commit()
         except Exception:
             logger.exception(
-                "Failed to persist proposal state after %s for chat %s",
+                "Failed to persist proposal draft after %s for chat %s",
                 context.function.name,
                 self._chat_id,
             )

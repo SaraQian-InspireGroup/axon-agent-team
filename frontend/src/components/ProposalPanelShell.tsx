@@ -11,6 +11,13 @@ const MAX_PANEL_RATIO = 0.72
 const RESIZE_HANDLE_WIDTH = 6
 const STORAGE_KEY = 'proposal-panel-width'
 
+export type ProposalPanelTab = 'preview' | 'state'
+
+const TAB_LABELS: Record<ProposalPanelTab, string> = {
+  preview: 'Proposal Preview',
+  state: 'Draft',
+}
+
 function readStoredWidth(): number {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -25,14 +32,20 @@ function readStoredWidth(): number {
 type Props = {
   open: boolean
   width: number
+  activeTab: ProposalPanelTab
+  syncing?: boolean
+  onTabChange: (tab: ProposalPanelTab) => void
   onWidthChange: (width: number) => void
-  onExpand: () => void
+  onExpand: (tab?: ProposalPanelTab) => void
   children: ReactNode
 }
 
 export function ProposalPanelShell({
   open,
   width,
+  activeTab,
+  syncing = false,
+  onTabChange,
   onWidthChange,
   onExpand,
   children,
@@ -75,11 +88,18 @@ export function ProposalPanelShell({
     event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
-  const onTabClick = () => {
-    if (!open) onExpand()
+  const onTabClick = (tab: ProposalPanelTab) => {
+    if (!open) {
+      onExpand(tab)
+      return
+    }
+    if (tab !== activeTab) {
+      onTabChange(tab)
+    }
   }
 
   const shellWidth = open ? width + RESIZE_HANDLE_WIDTH : 0
+  const activeTabId = `proposal-tab-${activeTab}`
 
   return (
     <div
@@ -87,19 +107,30 @@ export function ProposalPanelShell({
       className={`proposal-preview-shell${open ? ' proposal-preview-shell-open' : ''}`}
       style={{ width: shellWidth }}
     >
-      <button
-        type="button"
-        role="tab"
-        id="proposal-tab-proposal"
-        aria-selected={open}
-        aria-controls={open ? 'proposal-panel-content' : undefined}
-        className={`proposal-panel-tab${open ? ' proposal-panel-tab-active' : ''}`}
-        onClick={onTabClick}
-        aria-label={open ? 'Proposal preview' : 'Show proposal preview'}
-        title={open ? 'Proposal preview' : 'Show proposal preview'}
-      >
-        Proposal
-      </button>
+      <div className="proposal-panel-tabs" role="tablist" aria-label="Proposal side panel">
+        {(Object.keys(TAB_LABELS) as ProposalPanelTab[]).map((tab) => {
+          const selected = open && activeTab === tab
+          const showSync = syncing && tab === 'preview'
+          return (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              id={`proposal-tab-${tab}`}
+              aria-selected={selected}
+              aria-controls={open ? 'proposal-panel-content' : undefined}
+              className={`proposal-panel-tab${selected ? ' proposal-panel-tab-active' : ''}${
+                showSync ? ' proposal-panel-tab-syncing' : ''
+              }`}
+              onClick={() => onTabClick(tab)}
+              aria-label={TAB_LABELS[tab]}
+              title={TAB_LABELS[tab]}
+            >
+              {TAB_LABELS[tab]}
+            </button>
+          )
+        })}
+      </div>
 
       {open && (
         <>
@@ -107,7 +138,7 @@ export function ProposalPanelShell({
             className="proposal-resize-handle"
             role="separator"
             aria-orientation="vertical"
-            aria-label="Resize proposal preview"
+            aria-label="Resize proposal panel"
             style={{ width: RESIZE_HANDLE_WIDTH }}
             onPointerDown={onResizePointerDown}
             onPointerMove={onResizePointerMove}
@@ -117,7 +148,7 @@ export function ProposalPanelShell({
           <div
             id="proposal-panel-content"
             role="tabpanel"
-            aria-labelledby="proposal-tab-proposal"
+            aria-labelledby={activeTabId}
             className="proposal-panel-content"
             style={{ width }}
           >

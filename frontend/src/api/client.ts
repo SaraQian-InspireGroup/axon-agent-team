@@ -8,6 +8,7 @@ import type {
   User,
 } from '../types'
 import type { ProposalPreview } from '../types/proposalPreview'
+import type { ProposalDraftResponse } from '../types/proposalDraft'
 
 const API = '/api/v1'
 
@@ -42,6 +43,9 @@ export const api = {
     request<ProposalPreview>(
       `/chats/${chatId}/proposal/preview?draft=${draft ? 'true' : 'false'}`,
     ),
+
+  getProposalDraft: (chatId: string) =>
+    request<ProposalDraftResponse>(`/chats/${chatId}/proposal/draft`),
 
   cancelRun: (runId: string) =>
     request<{ run_id: string; chat_id: string; status: string }>(`/runs/${runId}/cancel`, {

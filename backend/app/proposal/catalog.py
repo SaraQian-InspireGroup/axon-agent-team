@@ -6,6 +6,7 @@ import asyncio
 import concurrent.futures
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any, Coroutine, TypeVar
 
 from sqlalchemy import select
@@ -15,6 +16,25 @@ from app.config import get_settings
 from app.db.mdm_models import MdmPackage, MdmPackageService, MdmService
 
 T = TypeVar("T")
+
+
+def looks_like_display_name(value: str) -> bool:
+    """Heuristic: proposal display titles vs compact SKU codes."""
+    s = value.strip()
+    if not s:
+        return False
+    if len(s) > 32 and " " in s:
+        return True
+    if " & " in s or " — " in s or " – " in s:
+        return True
+    return False
+
+
+@dataclass(frozen=True)
+class SelectionResolveResult:
+    services: list[dict[str, Any]]
+    unresolved: list[str]
+    resolved_by_name: list[str]
 
 
 @asynccontextmanager
@@ -45,20 +65,75 @@ def _run_async(coro: Coroutine[Any, Any, T]) -> T:
         return pool.submit(asyncio.run, coro).result()
 
 
-async def _fetch_services_by_skus(category_id: str, skus: list[str]) -> list[dict[str, Any]]:
-    if not skus:
-        return []
+def _norm_label(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
+async def _resolve_services_for_selection(
+    category_id: str, identifiers: list[str]
+) -> SelectionResolveResult:
+    if not identifiers:
+        return SelectionResolveResult(services=[], unresolved=[], resolved_by_name=[])
+
     async with _ephemeral_session() as session:
-        rows = (
+        by_sku_rows = (
             await session.scalars(
                 select(MdmService).where(
                     MdmService.category_id == category_id,
-                    MdmService.sku.in_(skus),
+                    MdmService.sku.in_(identifiers),
                     MdmService.status == "ACTIVE",
                 )
             )
         ).all()
-        return [_service_to_dict(row) for row in rows]
+        sku_map = {row.sku: row for row in by_sku_rows}
+
+        missing = [ident for ident in identifiers if ident not in sku_map]
+        name_map: dict[str, MdmService] = {}
+        if missing:
+            active_rows = (
+                await session.scalars(
+                    select(MdmService).where(
+                        MdmService.category_id == category_id,
+                        MdmService.status == "ACTIVE",
+                    )
+                )
+            ).all()
+            for row in active_rows:
+                label = row.service_name_on_proposal or row.product_name or ""
+                key = _norm_label(label)
+                if key and key not in name_map:
+                    name_map[key] = row
+
+        ordered: list[dict[str, Any]] = []
+        unresolved: list[str] = []
+        resolved_by_name: list[str] = []
+        seen_skus: set[str] = set()
+
+        for ident in identifiers:
+            row = sku_map.get(ident)
+            via_name = False
+            if row is None:
+                row = name_map.get(_norm_label(ident))
+                via_name = row is not None
+            if row is None:
+                unresolved.append(ident)
+                continue
+            if row.sku in seen_skus:
+                continue
+            seen_skus.add(row.sku)
+            ordered.append(_service_to_dict(row))
+            if via_name:
+                resolved_by_name.append(ident)
+
+        return SelectionResolveResult(
+            services=ordered,
+            unresolved=unresolved,
+            resolved_by_name=resolved_by_name,
+        )
+
+
+async def _fetch_services_by_skus(category_id: str, skus: list[str]) -> list[dict[str, Any]]:
+    return (await _resolve_services_for_selection(category_id, skus)).services
 
 
 async def _fetch_packages_by_ids(
@@ -123,6 +198,10 @@ async def _fetch_package_skus(category_id: str, package_ids: list[str]) -> list[
 
 def fetch_services_by_skus(category_id: str, skus: list[str]) -> list[dict[str, Any]]:
     return _run_async(_fetch_services_by_skus(category_id, skus))
+
+
+def resolve_services_for_selection(category_id: str, identifiers: list[str]) -> SelectionResolveResult:
+    return _run_async(_resolve_services_for_selection(category_id, identifiers))
 
 
 def fetch_package_skus(category_id: str, package_ids: list[str]) -> list[str]:

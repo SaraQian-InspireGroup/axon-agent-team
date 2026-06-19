@@ -1,10 +1,13 @@
 from app.tools.builtin import platform_time
 from app.tools.proposal import (
+    add_package_to_proposal_draft,
+    add_service_to_proposal_draft,
+    enable_proposal_draft_section,
     generate_document,
-    get_proposal_schema,
-    get_proposal_state,
+    get_proposal_draft,
+    initialize_proposal_draft,
     list_categories,
-    patch_proposal_state,
+    patch_proposal_draft,
     read_knowledge,
     render_preview,
 )
@@ -16,9 +19,12 @@ BUILTIN_TOOLS = {
     "suggest_visualization": suggest_visualization,
     "list_categories": list_categories,
     "read_knowledge": read_knowledge,
-    "get_proposal_schema": get_proposal_schema,
-    "get_proposal_state": get_proposal_state,
-    "patch_proposal_state": patch_proposal_state,
+    "initialize_proposal_draft": initialize_proposal_draft,
+    "get_proposal_draft": get_proposal_draft,
+    "patch_proposal_draft": patch_proposal_draft,
+    "add_package_to_proposal_draft": add_package_to_proposal_draft,
+    "add_service_to_proposal_draft": add_service_to_proposal_draft,
+    "enable_proposal_draft_section": enable_proposal_draft_section,
     "render_preview": render_preview,
     "generate_document": generate_document,
 }

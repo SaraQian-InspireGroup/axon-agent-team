@@ -17,17 +17,19 @@ def test_category_default_template():
 
 def test_harneys_template_has_solution_and_price():
     tpl = load_template_yaml("harneys-bvi")
-    placeholders = tpl.get("placeholders") or {}
-    assert "solution_and_price" in placeholders
-    assert placeholders["solution_and_price"]["fee_layout"]["group_by"] == "service_group"
+    sections = {section["id"]: section for section in tpl.get("sections") or []}
+    assert "solution_and_fees" in sections
+    assert sections["solution_and_fees"]["kind"] == "fee_section"
+    assert sections["solution_and_fees"]["fee_layout"]["group_by"] == "service_group"
 
 
 def test_au_template_fee_layout():
     tpl = load_template_yaml("au-advisory")
-    sap = (tpl.get("placeholders") or {}).get("solution_and_price") or {}
-    layout = sap.get("fee_layout") or {}
+    sections = {section["id"]: section for section in tpl.get("sections") or []}
+    layout = sections["solution_and_fees"]["fee_layout"]
     assert layout.get("group_by") == "package"
     assert layout.get("table_style") == "frequency_columns"
+    assert "body" not in tpl
     assert tpl.get("document_title", {}).get("prefix") == "INCORP ADVISORY PROPOSAL"
 
 

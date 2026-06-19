@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
 from pathlib import Path
-import re
+from functools import lru_cache
 from typing import Any
 
 import yaml
@@ -15,7 +14,6 @@ from app.proposal.paths import (
     KNOWLEDGE_ROOT,
     TEMPLATES_ROOT,
 )
-from app.proposal.state import get_path
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -37,20 +35,6 @@ def get_category(category_id: str) -> dict[str, Any] | None:
     return None
 
 
-def resolve_template_id(state: dict[str, Any]) -> str | None:
-    meta = state.get("proposal_meta") or {}
-    template_id = meta.get("template_id")
-    if template_id:
-        return str(template_id)
-    category_id = meta.get("category_id")
-    if not category_id:
-        return None
-    cat = get_category(str(category_id))
-    if cat and cat.get("default_template_id"):
-        return str(cat["default_template_id"])
-    return None
-
-
 def template_dir(template_id: str) -> Path:
     return TEMPLATES_ROOT / template_id
 
@@ -59,16 +43,6 @@ def template_dir(template_id: str) -> Path:
 def load_template_yaml(template_id: str) -> dict[str, Any]:
     path = template_dir(template_id) / "template.yaml"
     return _load_yaml(path)
-
-
-@lru_cache(maxsize=8)
-def load_proposal_body(template_id: str) -> str:
-    tpl = load_template_yaml(template_id)
-    body_name = tpl.get("body") or "proposal.md"
-    path = template_dir(template_id) / str(body_name)
-    if path.exists():
-        return path.read_text(encoding="utf-8")
-    return ""
 
 
 @lru_cache(maxsize=1)
@@ -87,52 +61,6 @@ def read_knowledge_file(relative_path: str) -> str:
     if not full.is_file():
         raise FileNotFoundError(f"Knowledge file not found: {relative_path}")
     return full.read_text(encoding="utf-8")
-
-
-def resolve_document_title(state: dict[str, Any], template_id: str | None) -> str:
-    client = state.get("client") or {}
-    if not template_id:
-        return str(
-            client.get("company_name") or client.get("contract_name") or "Proposal"
-        )
-
-    tpl = load_template_yaml(template_id)
-    cfg = tpl.get("document_title")
-    if isinstance(cfg, str) and cfg.strip():
-        return _render_title_pattern(cfg.strip(), state)
-    if isinstance(cfg, dict):
-        prefix = str(cfg.get("prefix") or "Proposal").strip()
-        name_fields = cfg.get("name_from") or ["client.company_name", "client.contract_name"]
-        for field in name_fields:
-            value = get_path(state, str(field)) if "." in str(field) else client.get(field)
-            if value:
-                return f"{prefix} - {value}" if prefix else str(value)
-        fallback = cfg.get("fallback")
-        if fallback:
-            return str(fallback)
-        return prefix
-    return str(client.get("company_name") or client.get("contract_name") or "Proposal")
-
-
-def _render_title_pattern(pattern: str, state: dict[str, Any]) -> str:
-    def replace(match: re.Match[str]) -> str:
-        expr = match.group(1).strip()
-        parts = [part.strip() for part in expr.split("|")]
-        for part in parts:
-            if part.startswith("default:"):
-                continue
-            if part.startswith("client."):
-                value = get_path(state, part)
-            else:
-                value = None
-            if value:
-                return str(value)
-        for part in parts:
-            if part.startswith("default:"):
-                return part.split(":", 1)[1]
-        return ""
-
-    return re.sub(r"\{\{([^}]+)\}\}", replace, pattern)
 
 
 def read_static_block(template_id: str, file_ref: str) -> str:

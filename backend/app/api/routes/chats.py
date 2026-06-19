@@ -6,12 +6,12 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.schemas import ChatCreate, ChatListOut, ChatOut, MessageCreate, MessageOut, ProposalPreviewOut
+from app.api.schemas import ChatCreate, ChatListOut, ChatOut, MessageCreate, MessageOut, ProposalDraftOut, ProposalPreviewOut
 from app.db.models import AgentModel, Chat
 from app.platform.current_user import get_current_user_id
 from app.db.session import get_db
 from app.services.chat_run import ChatRunService, list_chat_messages
-from app.services.proposal_preview_service import get_chat_proposal_preview
+from app.services.proposal_preview_service import get_chat_proposal_draft, get_chat_proposal_preview
 from app.proposal.storage import artifact_download_filename, resolve_artifact_path
 
 router = APIRouter(prefix="/chats", tags=["chats"])
@@ -83,6 +83,21 @@ async def get_proposal_preview(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ProposalPreviewOut(**payload)
+
+
+@router.get("/{chat_id}/proposal/draft", response_model=ProposalDraftOut)
+async def get_proposal_draft(
+    chat_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> ProposalDraftOut:
+    chat = await db.get(Chat, chat_id)
+    if chat is None:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    try:
+        payload = await get_chat_proposal_draft(db, chat_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ProposalDraftOut(**payload)
 
 
 @router.get("/{chat_id}/artifacts/{artifact_id}")
