@@ -6,26 +6,26 @@ entries:
     kind: required_doc
     title: Certified passport copy
     path: peripheral/required-docs/BVI/passport.md
-    region: BVI
+    jurisdiction: BVI
 
   utility-bill-bvi:
     kind: required_doc
     title: Proof of address (utility bill or bank statement)
     path: peripheral/required-docs/BVI/utility-bill.md
-    region: BVI
+    jurisdiction: BVI
 
 triggers:
-  # required docs：由已选 SKU 的 service_group 决定（非 template 写死 incorporation 章节）
+  # required docs：按 MDM service_name 匹配（非 template 写死 incorporation 章节）
   - match:
-      region: BVI
+      jurisdiction: BVI
       bu: Harneys
-      service_group: incorporation
+      service_name: Incorporation
     add: [passport-bvi, utility-bill-bvi]
 
   - match:
-      region: BVI
+      jurisdiction: BVI
       bu: Harneys
-      service_group: transfer_in
+      service_name: Transfer in
     add: [passport-bvi, utility-bill-bvi]
 
   # additional_info 是 draft optional section；是否启用由对话意图或后续规则决定

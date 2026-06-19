@@ -1,6 +1,6 @@
 id: proposal-composer
 name: "Proposal Composer"
-description: "Cross-region proposal drafting with MDM catalog, templates, and deterministic pricing."
+description: "Cross-jurisdiction proposal drafting with MDM catalog, templates, and deterministic pricing."
 
 model_provider: azure_anthropic
 model: ${CLAUDE_AZURE_FOUNDRY_MODEL}
@@ -20,7 +20,7 @@ allowed_tools:
   - get_proposal_draft
   - patch_proposal_draft
   - add_package_to_proposal_draft
-  - add_service_to_proposal_draft
+  - add_services_to_proposal_draft
   - enable_proposal_draft_section
   - render_preview
   - generate_document

@@ -1,5 +1,6 @@
 from app.proposal.draft import (
     add_package_to_draft,
+    add_services_to_draft,
     build_draft_preview,
     enable_draft_section,
     materialize_draft,
@@ -9,8 +10,7 @@ from app.proposal.draft import (
 
 AU_SERVICE = {
     "sku": "TA01",
-    "service_name_on_proposal": "Application - Substituted Accounting Period (Standard offer $600 one-off)",
-    "product_name": "Application - Substituted Accounting Period",
+    "service_name": "Application - Substituted Accounting Period (Standard offer $600 one-off)",
     "scope_of_work": "Application for Substituted Accounting Period.",
     "billing_frequency": "ONE_TIME",
     "recurring": "ONE_OFF",
@@ -31,6 +31,19 @@ def test_materialize_au_draft_from_template_sections():
     assert "introduction" in ids
     assert "solution_and_fees" in ids
     assert "terms" in ids
+
+
+def test_materialize_draft_includes_optional_client_facts():
+    draft = materialize_draft(template_id="au-advisory", client={"company_name": "Walking Limited"})
+
+    assert draft["facts"]["client"] == {
+        "company_name": "Walking Limited",
+        "short_name": None,
+        "address": None,
+        "contract_name": None,
+        "contract_title": None,
+        "contract_email": None,
+    }
 
 
 def test_materialize_bvi_draft_from_template_sections():
@@ -60,6 +73,23 @@ def test_add_package_materializes_editable_fee_rows():
     assert fee["tables"][0]["title"] == "Tax Package 2"
     assert row["service_name"] == "Application - Substituted Accounting Period"
     assert row["price"]["amount"] == 600.0
+
+
+def test_add_services_materializes_multiple_rows_atomically():
+    draft = materialize_draft(template_id="au-advisory")
+    second_service = {
+        **AU_SERVICE,
+        "sku": "CSS23",
+        "service_name": "Company Incorporation",
+        "price_amount": 1500.0,
+    }
+
+    updated = add_services_to_draft(draft, [AU_SERVICE, second_service])
+
+    fee = next(s for s in updated["document"]["sections"] if s["kind"] == "fee_section")
+    rows = fee["tables"][0]["rows"]
+    assert [row["source"]["sku"] for row in rows] == ["TA01", "CSS23"]
+    assert rows[1]["price"]["amount"] == 1500.0
 
 
 def test_patch_draft_updates_display_row_and_preview():
@@ -315,6 +345,91 @@ def test_payment_options_render_override_only_options():
     assert "Application for Audit Relief" not in payment_markdown
     assert "AUD $3,400.00" in payment_markdown
     assert "AUD $3,240.00" in payment_markdown
+
+
+def test_payment_options_annualizes_mixed_unit_rate_and_monthly_services() -> None:
+    draft = materialize_draft(template_id="au-advisory")
+    fee = next(s for s in draft["document"]["sections"] if s["kind"] == "fee_section")
+    fee["tables"] = [
+        {
+            "id": "table_additional_services",
+            "title": "Additional Services",
+            "rows": [
+                {
+                    "id": "fee_PEN01",
+                    "kind": "fee_row",
+                    "source": {"type": "mdm_service", "sku": "PEN01"},
+                    "service_name": "Pension Paperwork",
+                    "scope_of_work": "",
+                    "price": {
+                        "amount": 400.0,
+                        "fee_raw": "400 per pension stream",
+                        "currency": "AUD",
+                        "frequency": "ANNUALLY",
+                        "recurring": "RECURRING",
+                        "pricing_type": "UNIT_RATE",
+                    },
+                    "edit_state": {},
+                },
+                {
+                    "id": "fee_FF09",
+                    "kind": "fee_row",
+                    "source": {"type": "mdm_service", "sku": "FF09"},
+                    "service_name": "Monthly Payroll Processing",
+                    "scope_of_work": "",
+                    "price": {
+                        "amount": 1000.0,
+                        "fee_raw": "1000",
+                        "currency": "AUD",
+                        "frequency": "MONTHLY",
+                        "recurring": "RECURRING",
+                        "pricing_type": "FIXED",
+                    },
+                    "edit_state": {},
+                },
+            ],
+        }
+    ]
+    enabled = enable_draft_section(draft, "payment_options")
+    preview = build_draft_preview(enabled)
+
+    fee_section = preview["markdown"].split("# Solution and professional fees", 1)[1].split("# Fee summary", 1)[0]
+    payment_section = preview["markdown"].split("# Fee summary", 1)[1]
+
+    assert "400 per pension stream" in fee_section
+    assert "AUD $12,000.00" in fee_section
+    assert "AUD $12,400.00" in payment_section
+
+
+def test_au_frequency_table_includes_scope_of_work_from_layout() -> None:
+    draft = materialize_draft(template_id="au-advisory")
+    fee = next(s for s in draft["document"]["sections"] if s["kind"] == "fee_section")
+    assert fee["fee_layout"].get("include_scope_of_work") is True
+    fee["tables"] = [
+        {
+            "id": "table_smsf",
+            "title": "SMSF Services",
+            "rows": [
+                {
+                    "id": "fee_SETUP",
+                    "kind": "fee_row",
+                    "source": {"type": "mdm_service", "sku": "SETUP"},
+                    "service_name": "Setup - SMSF",
+                    "scope_of_work": "Establish SMSF deed and register with the ATO.",
+                    "price": {
+                        "amount": 3500.0,
+                        "currency": "AUD",
+                        "frequency": "ONE_TIME",
+                        "recurring": "ONE_OFF",
+                        "pricing_type": "FIXED",
+                    },
+                    "edit_state": {},
+                }
+            ],
+        }
+    ]
+    preview = build_draft_preview(draft)
+    assert "Establish SMSF deed and register with the ATO." in preview["markdown"]
 
 
 def test_static_sections_render_template_titles_once():

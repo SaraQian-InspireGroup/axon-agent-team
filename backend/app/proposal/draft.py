@@ -28,6 +28,16 @@ from app.proposal.preview import proposal_state_fingerprint
 PROPOSAL_DRAFT_KEY = "proposal_draft"
 
 
+DEFAULT_CLIENT_FACTS = {
+    "company_name": None,
+    "short_name": None,
+    "address": None,
+    "contract_name": None,
+    "contract_title": None,
+    "contract_email": None,
+}
+
+
 class DraftPatchError(Exception):
     def __init__(self, message: str) -> None:
         super().__init__(message)
@@ -38,7 +48,7 @@ def empty_proposal_draft() -> dict[str, Any]:
     return {
         "version": 1,
         "meta": {"template_id": None, "title": None},
-        "facts": {"client": {}, "inputs": {}},
+        "facts": {"client": copy.deepcopy(DEFAULT_CLIENT_FACTS), "inputs": {}},
         "document": {"sections": []},
     }
 
@@ -242,7 +252,7 @@ def materialize_draft(
 
     draft = empty_proposal_draft()
     draft["meta"]["template_id"] = template_id
-    draft["facts"]["client"] = copy.deepcopy(client or {})
+    draft["facts"]["client"] = {**copy.deepcopy(DEFAULT_CLIENT_FACTS), **copy.deepcopy(client or {})}
     draft["meta"]["title"] = _render_draft_title(tpl, draft["facts"]["client"])
 
     materialized: list[dict[str, Any]] = []
@@ -298,12 +308,15 @@ _STANDARD_OFFER_RE = re.compile(r"\s*\((?:standard offer|standard fee|pricing)[^
 
 
 def _display_service_name(service: dict[str, Any]) -> str:
-    raw = str(service.get("service_name_on_proposal") or service.get("product_name") or service["sku"])
+    raw = str(service.get("service_name") or service["sku"])
     return _STANDARD_OFFER_RE.sub("", raw).strip() or raw
 
 
 def _draft_fee_row(service: dict[str, Any], *, package_id: str | None = None) -> dict[str, Any]:
-    amount = service.get("price_amount")
+    from app.proposal.pricing_rules import coerce_price_amount, normalize_pricing_type
+
+    amount = coerce_price_amount(service.get("price_amount"))
+    pricing_type = normalize_pricing_type(service.get("pricing_type"))
     return {
         "id": f"fee_{service['sku']}",
         "kind": "fee_row",
@@ -316,12 +329,13 @@ def _draft_fee_row(service: dict[str, Any], *, package_id: str | None = None) ->
         "scope_of_work": service.get("scope_of_work") or service.get("description") or "",
         "price": {
             "amount": amount,
+            "fee_raw": service.get("fee_raw"),
             "currency": service.get("price_currency"),
             "frequency": service.get("billing_frequency"),
             "recurring": service.get("recurring"),
             "source_amount": amount,
             "source": "mdm",
-            "pricing_type": service.get("pricing_type"),
+            "pricing_type": pricing_type,
         },
         "edit_state": {
             "service_name": "source",
@@ -366,17 +380,21 @@ def add_package_to_draft(draft: dict[str, Any], package: dict[str, Any], service
     return updated
 
 
-def add_service_to_draft(
+def add_services_to_draft(
     draft: dict[str, Any],
-    service: dict[str, Any],
+    services: list[dict[str, Any]],
     *,
     table_id: str | None = None,
     table_title: str = "Additional services",
 ) -> dict[str, Any]:
     updated = copy.deepcopy(draft)
-    if not service.get("sku"):
-        raise ValueError("service.sku is required")
-    row = _draft_fee_row(service)
+    if not services:
+        raise ValueError("services are required")
+    rows = []
+    for service in services:
+        if not service.get("sku"):
+            raise ValueError("service.sku is required")
+        rows.append(_draft_fee_row(service))
     fee_section = _first_fee_section(updated)
     tables = fee_section.setdefault("tables", [])
     target = None
@@ -398,8 +416,11 @@ def add_service_to_draft(
             "rows": [],
         }
         tables.append(target)
-    if not any(existing.get("id") == row["id"] for existing in target.setdefault("rows", [])):
-        target["rows"].append(row)
+    existing_ids = {existing.get("id") for existing in target.setdefault("rows", [])}
+    for row in rows:
+        if row["id"] not in existing_ids:
+            target["rows"].append(row)
+            existing_ids.add(row["id"])
     return updated
 
 
@@ -435,16 +456,22 @@ def _validate_draft_policy(draft: dict[str, Any]) -> None:
 
 
 def _row_for_fee_table(row: dict[str, Any]) -> dict[str, Any]:
+    from app.proposal.fee_table import format_money
+    from app.proposal.pricing_rules import coerce_price_amount, fee_table_amount_display
+
     price = row.get("price") or {}
+    amount = coerce_price_amount(price.get("amount"))
     converted = {
         "sku": (row.get("source") or {}).get("sku") or row.get("id"),
         "label": row.get("service_name"),
-        "amount": price.get("amount"),
+        "amount": amount,
         "currency": price.get("currency"),
-        "status": "computed" if price.get("amount") is not None else "missing_facts",
+        "pricing_type": price.get("pricing_type"),
+        "status": "computed" if amount is not None else "missing_facts",
         "recurring": price.get("recurring"),
         "billing_frequency": price.get("frequency"),
         "scope_of_work": row.get("scope_of_work"),
+        "amount_display": fee_table_amount_display(price, format_money=format_money),
     }
     converted["frequency_columns"] = row_frequency_columns(converted)
     return converted
@@ -508,15 +535,24 @@ def _render_fee_section(section: dict[str, Any]) -> str:
         return ""
     layout = section.get("fee_layout") or {}
     currency = layout.get("currency")
+    include_scope = bool(layout.get("include_scope_of_work"))
     title = str(section.get("title") or "Solution and professional fees")
     parts = [f"# {title}"]
     intro = ((section.get("intro") or {}).get("content") or "").strip()
     if intro:
         parts.extend([intro, ""])
     if layout.get("table_style") == "frequency_columns":
-        parts.append(render_frequency_table(groups, currency=currency))
+        parts.append(
+            render_frequency_table(groups, currency=currency, include_scope=include_scope)
+        )
     else:
-        parts.append(render_simple_table(groups, show_recurring=layout.get("show_recurring", True)))
+        parts.append(
+            render_simple_table(
+                groups,
+                show_recurring=layout.get("show_recurring", True),
+                include_scope=include_scope,
+            )
+        )
     return "\n\n".join(part for part in parts if part != "")
 
 

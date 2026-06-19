@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import logging
 from pathlib import Path
 from typing import Annotated, Any
@@ -14,7 +15,7 @@ from app.proposal.context import get_run_proposal_state
 from app.proposal.draft import (
     DraftPatchError,
     add_package_to_draft,
-    add_service_to_draft,
+    add_services_to_draft,
     build_draft_preview,
     enable_draft_section,
     materialize_draft,
@@ -44,6 +45,34 @@ def _resolve_pointer(state: dict[str, Any], pointer: str) -> Any:
         else:
             raise ValueError(f"Cannot resolve through non-container at {part!r}.")
     return value
+
+
+def _decode_json_string(value: Any, field_name: str) -> Any:
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{field_name} must be JSON object/array data, not an invalid JSON string") from exc
+
+
+def _coerce_object(value: Any, field_name: str) -> dict[str, Any]:
+    decoded = _decode_json_string(value, field_name)
+    if not isinstance(decoded, dict):
+        raise ValueError(f"{field_name} must be an object")
+    return decoded
+
+
+def _coerce_object_list(value: Any, field_name: str) -> list[dict[str, Any]]:
+    decoded = _decode_json_string(value, field_name)
+    if isinstance(decoded, dict):
+        return [decoded]
+    if not isinstance(decoded, list):
+        raise ValueError(f"{field_name} must be an array of objects")
+    bad_index = next((idx for idx, item in enumerate(decoded) if not isinstance(item, dict)), None)
+    if bad_index is not None:
+        raise ValueError(f"{field_name}[{bad_index}] must be an object")
+    return decoded
 
 
 def _is_allowed_knowledge_path(rel: str, full: Path) -> bool:
@@ -193,9 +222,12 @@ def get_proposal_draft(
     description=(
         "Apply RFC 6902 JSON Patch to existing proposal draft nodes. Use for visible "
         "display edits: client facts, section content, table titles, fee row service_name, "
-        "scope_of_work, price.amount, or row/table ordering. If adding an MDM package or "
-        "service, use add_package_to_proposal_draft/add_service_to_proposal_draft instead "
-        "so catalog fields and provenance are materialized correctly."
+        "scope_of_work, price.amount (numeric total), price.fee_raw (non-FIXED display text), "
+        "or row/table ordering. If adding an MDM package or "
+        "service, use add_package_to_proposal_draft/add_services_to_proposal_draft instead "
+        "so catalog fields and provenance are materialized correctly. JSON Patch replace "
+        "requires the target path to already exist; use add for new fields, and read the "
+        "draft first with get_proposal_draft when unsure."
     ),
 )
 def patch_proposal_draft(
@@ -224,13 +256,14 @@ def patch_proposal_draft(
     name="add_package_to_proposal_draft",
     description=(
         "Materialize a confirmed MDM package into the draft fee section from rows already "
-        "queried via MCP SQL. Pass the package row and its service rows; this tool does not "
-        "query MDM. Do not use for renaming/editing an existing package table; patch the draft."
+        "queried via MCP SQL. Pass the package row and its service rows, including pricing_type, "
+        "price_amount, and fee_raw; this tool does not query MDM. Do not use for renaming/editing "
+        "an existing package table; patch the draft."
     ),
 )
 def add_package_to_proposal_draft(
-    package: Annotated[dict[str, Any], "MDM package row, including package_id and package_name."],
-    services: Annotated[list[dict[str, Any]], "MDM service rows returned for this package."],
+    package: Annotated[Any, "MDM package row object, including package_id and package_name."],
+    services: Annotated[Any, "Array of MDM service row objects returned for this package."],
 ) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
@@ -238,7 +271,9 @@ def add_package_to_proposal_draft(
     if ctx.draft is None:
         return {"status": "error", "error": "Proposal draft is not initialized."}
     try:
-        ctx.draft = add_package_to_draft(ctx.draft, package, services)
+        package_row = _coerce_object(package, "package")
+        service_rows = _coerce_object_list(services, "services")
+        ctx.draft = add_package_to_draft(ctx.draft, package_row, service_rows)
         ctx.mark_draft_dirty()
         return {"status": "ok", "draft": copy.deepcopy(ctx.draft)}
     except Exception as exc:
@@ -247,15 +282,17 @@ def add_package_to_proposal_draft(
 
 
 @tool(
-    name="add_service_to_proposal_draft",
+    name="add_services_to_proposal_draft",
     description=(
-        "Materialize one confirmed MDM service/SKU into the draft fee section from a row "
-        "already queried via MCP SQL. This tool does not query MDM. Do not use for editing "
-        "service name, SOW, or price on an existing row; patch the draft."
+        "Materialize one or more confirmed MDM services/SKUs into the draft fee section from "
+        "rows already queried via MCP SQL. Pass services as an array of row objects with "
+        "pricing_type, price_amount, and fee_raw; a single service is represented as a one-item "
+        "array. This tool does not query MDM. Do not use for editing service name, SOW, or price "
+        "on existing rows; patch the draft."
     ),
 )
-def add_service_to_proposal_draft(
-    service: Annotated[dict[str, Any], "MDM service row, including sku, pricing fields, and display fields."],
+def add_services_to_proposal_draft(
+    services: Annotated[Any, "Array of MDM service row objects, each including sku, pricing fields, and display fields."],
     table_id: Annotated[str | None, "Optional fee table id. Existing table is reused; otherwise a new table is created."] = None,
     table_title: Annotated[str, "Title used only when a new fee table is created."] = "Additional services",
 ) -> dict[str, Any]:
@@ -265,11 +302,12 @@ def add_service_to_proposal_draft(
     if ctx.draft is None:
         return {"status": "error", "error": "Proposal draft is not initialized."}
     try:
-        ctx.draft = add_service_to_draft(ctx.draft, service, table_id=table_id, table_title=table_title)
+        service_rows = _coerce_object_list(services, "services")
+        ctx.draft = add_services_to_draft(ctx.draft, service_rows, table_id=table_id, table_title=table_title)
         ctx.mark_draft_dirty()
         return {"status": "ok", "draft": copy.deepcopy(ctx.draft)}
     except Exception as exc:
-        logger.exception("add_service_to_proposal_draft failed")
+        logger.exception("add_services_to_proposal_draft failed")
         return {"status": "error", "error": str(exc) or type(exc).__name__}
 
 

@@ -7,7 +7,7 @@
 
 | 表 | 说明 |
 |----|------|
-| `mdm_services` | SKU / 定价 / `price_spec` |
+| `mdm_services` | SKU、`pricing_type`、`price_amount`（汇总）、`fee_raw`（非 FIXED 展示）、`service_name` / `department_team` |
 | `mdm_packages` | Solution Package（AU：`package_name` = `内部名*外部名`） |
 | `mdm_package_services` | package ↔ SKU |
 

@@ -1,6 +1,7 @@
 from app.platform.profile_loader import load_agent_profile
 from app.proposal.paths import AGENT_ROOT
 from app.tools import BUILTIN_TOOLS
+from app.tools.proposal import _coerce_object_list
 
 
 def test_proposal_composer_profile_loads():
@@ -19,9 +20,14 @@ def test_proposal_builtin_tools_registered():
         "get_proposal_draft",
         "patch_proposal_draft",
         "add_package_to_proposal_draft",
-        "add_service_to_proposal_draft",
+        "add_services_to_proposal_draft",
         "enable_proposal_draft_section",
         "render_preview",
         "generate_document",
     ):
         assert name in BUILTIN_TOOLS
+
+
+def test_proposal_service_payload_accepts_json_string():
+    rows = _coerce_object_list('[{"sku":"CSS23","service_name":"Company Incorporation"}]', "services")
+    assert rows == [{"sku": "CSS23", "service_name": "Company Incorporation"}]

@@ -1,8 +1,8 @@
 template_id: au-advisory
 display_name: Australia Advisory
 catalog_filter:
-  region: AU
-  bu: Incorp
+  jurisdiction: AU
+  bu: Incorp AU
 
 sections:
   - id: introduction

@@ -106,6 +106,20 @@ def row_total_amount(row: dict[str, Any]) -> float | None:
     return sum(present)
 
 
+def row_annualized_total_amount(row: dict[str, Any]) -> float | None:
+    """Annualised total for one service row from price.amount and billing frequency."""
+    amount = row.get("amount")
+    if amount is None:
+        return None
+    value = float(amount)
+    freq = str(row.get("billing_frequency") or "ONE_TIME").upper()
+    if freq == "MONTHLY":
+        return value * 12
+    if freq == "QUARTERLY":
+        return value * 4
+    return value
+
+
 def sum_group_columns(rows: list[dict[str, Any]]) -> dict[str, float]:
     totals = {"monthly": 0.0, "quarterly": 0.0, "annual": 0.0, "once_off": 0.0}
     for row in rows:
@@ -153,6 +167,42 @@ def _amount_cell(
             f"{escape_html(text) if text else '&nbsp;'}</td>"
         )
     return f"<td class=\"proposal-fee-amount\">{escape_html(text) if text else '&nbsp;'}</td>"
+
+
+def _text_amount_cell(text: str | None, *, compact_layout: bool = False) -> str:
+    value = str(text or "").strip()
+    if compact_layout:
+        return (
+            f"<td width=\"{_AMOUNT_COL_WIDTH}\" class=\"proposal-fee-amount\" "
+            f"style=\"width:{_AMOUNT_COL_WIDTH}\">"
+            f"{escape_html(value) if value else '&nbsp;'}</td>"
+        )
+    return f"<td class=\"proposal-fee-amount\">{escape_html(value) if value else '&nbsp;'}</td>"
+
+
+def _active_frequency_column(billing_frequency: str | None) -> str:
+    freq = str(billing_frequency or "ONE_TIME").upper()
+    if freq == "MONTHLY":
+        return "monthly"
+    if freq == "QUARTERLY":
+        return "quarterly"
+    if freq == "ANNUALLY":
+        return "annual"
+    return "once_off"
+
+
+def _frequency_row_display(row: dict[str, Any]) -> tuple[dict[str, float | None], str | None, float | None]:
+    """Return numeric frequency columns, optional fee_raw text for the active column, and annualised total."""
+    from app.proposal.pricing_rules import normalize_pricing_type, uses_fee_raw_display
+
+    cols = row.get("frequency_columns") or row_frequency_columns(row)
+    annualized_total = row_annualized_total_amount(row)
+    fee_raw_text = None
+    if uses_fee_raw_display(normalize_pricing_type(row.get("pricing_type"))):
+        display = str(row.get("amount_display") or "").strip()
+        if display:
+            fee_raw_text = display
+    return cols, fee_raw_text, annualized_total
 
 
 def _fee_table_colgroup() -> str:
@@ -219,8 +269,9 @@ def render_frequency_table(
         parts.append(_fee_table_head("Service"))
         sub = 1
         for row in group.get("rows") or []:
-            cols = row.get("frequency_columns") or row_frequency_columns(row)
-            total = row_total_amount({**row, "frequency_columns": cols})
+            cols, fee_raw_text, annualized_total = _frequency_row_display(row)
+            active_col = _active_frequency_column(row.get("billing_frequency"))
+            row_currency = str(row.get("currency") or currency)
             label = str(row.get("label") or row.get("sku"))
             service_html = build_service_cell_html(
                 index,
@@ -229,15 +280,33 @@ def render_frequency_table(
                 scope=str(row["scope_of_work"]) if include_scope and row.get("scope_of_work") else None,
                 note=str(row["note"]) if row.get("note") else None,
             )
+
+            def _frequency_cell(column: str) -> str:
+                if fee_raw_text and column == active_col:
+                    return _text_amount_cell(fee_raw_text, compact_layout=True)
+                if fee_raw_text:
+                    return _text_amount_cell(None, compact_layout=True)
+                return _amount_cell(
+                    cols.get(column),
+                    row_currency,
+                    include_currency=bool(row_currency),
+                    compact_layout=True,
+                )
+
             parts.append(
                 "<tr>"
                 f"<td width=\"{_LABEL_COL_WIDTH}\" class=\"proposal-fee-service\" "
                 f"style=\"width:{_LABEL_COL_WIDTH}\">{service_html}</td>"
-                + _amount_cell(cols.get("monthly"), currency, include_currency=bool(currency), compact_layout=True)
-                + _amount_cell(cols.get("quarterly"), currency, include_currency=bool(currency), compact_layout=True)
-                + _amount_cell(cols.get("annual"), currency, include_currency=bool(currency), compact_layout=True)
-                + _amount_cell(cols.get("once_off"), currency, include_currency=bool(currency), compact_layout=True)
-                + _amount_cell(total, currency, include_currency=bool(currency), compact_layout=True)
+                + _frequency_cell("monthly")
+                + _frequency_cell("quarterly")
+                + _frequency_cell("annual")
+                + _frequency_cell("once_off")
+                + _amount_cell(
+                    annualized_total,
+                    row_currency,
+                    include_currency=bool(row_currency),
+                    compact_layout=True,
+                )
                 + "</tr>"
             )
             sub += 1
@@ -259,8 +328,11 @@ def render_simple_table(
         parts.append("<table class=\"proposal-fee-table proposal-fee-table-simple\">")
         parts.append("<thead><tr><th>Service</th><th>Amount</th></tr></thead><tbody>")
         for row in group.get("rows") or []:
+            amount_display = row.get("amount_display")
             amount = row.get("amount")
-            if amount is None:
+            if amount_display:
+                amount_text = str(amount_display)
+            elif amount is None:
                 amount_text = str(row.get("status") or "TBD")
             else:
                 row_currency = row.get("currency") or ""

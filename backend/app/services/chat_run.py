@@ -870,7 +870,7 @@ class _StreamSseEmitter:
                     "initialize_proposal_draft",
                     "patch_proposal_draft",
                     "add_package_to_proposal_draft",
-                    "add_service_to_proposal_draft",
+                    "add_services_to_proposal_draft",
                     "enable_proposal_draft_section",
                 }:
                     preview_event = _proposal_updated_event(self._chat_id)
