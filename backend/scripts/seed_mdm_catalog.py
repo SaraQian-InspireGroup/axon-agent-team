@@ -13,12 +13,12 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.db.session import get_async_session_factory, init_db_engine
-from app.mdm.excel_import import load_mdm_snapshot
+from app.mdm.excel_import import default_bvi_xlsx_path, load_mdm_snapshot
 from app.mdm.seed import count_mdm_rows, seed_mdm_catalog
 
 
 def default_bvi_xlsx() -> Path:
-    return Path.home() / "Downloads/BVI products and pricing - dummy2 (sanitized).xlsx"
+    return default_bvi_xlsx_path()
 
 
 def default_au_xlsx() -> Path:

@@ -37,4 +37,4 @@ knowledge/
 | template_id | category | 说明 |
 |-------------|----------|------|
 | `harneys-bvi` | `harneys-bvi` | draft `fee_section`；`fee_layout.group_by: service_group` |
-| `au-advisory` | `au-services` | draft `fee_section` + optional `payment_options` derived section |
+| `au-advisory` | `au-advisory` | draft `fee_section` + optional `payment_options` derived section |

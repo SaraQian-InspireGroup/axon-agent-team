@@ -174,7 +174,6 @@ async def _fetch_packages_by_ids(
                 {
                     "package_id": pkg.package_id,
                     "package_name": pkg.package_name,
-                    "package_detail": pkg.package_detail,
                     "linked_skus": skus_by_package.get(package_id, []),
                 }
             )

@@ -20,7 +20,7 @@ async def test_catalog_fetch_from_running_loop_does_not_break_app_pool():
     ):
         from app.proposal.catalog import fetch_services_by_skus
 
-        rows = fetch_services_by_skus("au-services", ["SKU-1"])
+        rows = fetch_services_by_skus("au-advisory", ["SKU-1"])
         assert rows[0]["sku"] == "SKU-1"
 
     await check_db_connection()

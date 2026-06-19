@@ -8,8 +8,8 @@ categories:
     display_name: "Harneys BVI Corporate Services"
     default_template_id: harneys-bvi
 
-  - category_id: au-services
+  - category_id: au-advisory
     region: AU
-    bu: "Tax and Advisory"
-    display_name: "Australia Tax and Advisory Services"
+    bu: Incorp
+    display_name: "Australia Advisory Services"
     default_template_id: au-advisory

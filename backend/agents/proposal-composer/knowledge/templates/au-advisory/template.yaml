@@ -1,6 +1,6 @@
 template_id: au-advisory
-category_id: au-services
-display_name: Australia Tax and Advisory
+category_id: au-advisory
+display_name: Australia Advisory
 
 sections:
   - id: introduction

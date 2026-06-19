@@ -63,7 +63,7 @@ SELECT ps.package_id, ps.sku,
 FROM mdm_package_services ps
 JOIN mdm_services s
   ON ps.sku = s.sku AND ps.category_id = s.category_id
-WHERE ps.category_id = 'au-services'
+WHERE ps.category_id = 'au-advisory'
   AND ps.package_id = 'PKG-AU-EXAMPLE'
   AND s.status = 'ACTIVE'
 ORDER BY ps.sku;
@@ -75,7 +75,7 @@ ORDER BY ps.sku;
 SELECT sku, department_team, service_name_on_proposal,
        pricing_type, price_amount, price_spec
 FROM mdm_services
-WHERE category_id = 'au-services'
+WHERE category_id = 'au-advisory'
   AND status = 'ACTIVE'
   AND sku NOT LIKE 'ADT%'
   AND (
@@ -91,7 +91,7 @@ ORDER BY department_team, sku;
 SELECT sku, service_name_on_proposal, pricing_type,
        price_amount, scope_of_work, fee_raw
 FROM mdm_services
-WHERE category_id = 'au-services'
+WHERE category_id = 'au-advisory'
   AND status = 'ACTIVE'
   AND sku IN ('TA01', 'TA05', 'CSS030')
 ORDER BY sku;
@@ -125,7 +125,7 @@ SELECT sku, price_amount, price_note FROM mdm_services WHERE ...
 JOIN mdm_services s ON s.sku = ps.sku
 
 -- BAD: 未 filter status
-WHERE category_id = 'au-services'
+WHERE category_id = 'au-advisory'
 ```
 
 ## 表

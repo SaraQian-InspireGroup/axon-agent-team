@@ -68,7 +68,6 @@ class MdmPackage(Base):
     region: Mapped[str] = mapped_column(String(16), nullable=False)
     bu: Mapped[str] = mapped_column(String(64), nullable=False)
     package_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    package_detail: Mapped[str | None] = mapped_column(Text)
     package_semantic_for_ai: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="ACTIVE")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -95,13 +94,3 @@ class MdmPackageService(Base):
 
     package: Mapped["MdmPackage"] = relationship(back_populates="service_links")
     service: Mapped["MdmService | None"] = relationship(back_populates="package_links")
-
-
-class MdmPackageNameAlias(Base):
-    __tablename__ = "mdm_package_name_aliases"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    region: Mapped[str] = mapped_column(String(16), nullable=False, server_default="AU")
-    legacy_name: Mapped[str] = mapped_column(Text, nullable=False)
-    canonical_name: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

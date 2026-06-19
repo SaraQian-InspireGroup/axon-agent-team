@@ -8,18 +8,22 @@
 | 表 | 说明 |
 |----|------|
 | `mdm_services` | SKU / 定价 / `price_spec` |
-| `mdm_packages` | Solution Package |
+| `mdm_packages` | Solution Package（AU：`package_name` = `内部名*外部名`） |
 | `mdm_package_services` | package ↔ SKU |
-| `mdm_package_name_aliases` | AU legacy 名称 |
 
 ## 初始化
 
 ```bash
 cd backend
-alembic upgrade head
+alembic upgrade head          # includes 008_seed_bvi_mdm_catalog
 pip install -e ".[mdm]"
-python scripts/seed_mdm_catalog.py
+python scripts/seed_bvi_catalog.py   # re-seed BVI only from JSON snapshot
+python scripts/export_bvi_catalog_json.py  # regenerate JSON from bundled xlsx
+python scripts/seed_mdm_catalog.py   # full re-seed (BVI + AU workbooks)
 ```
+
+Bundled BVI source workbook: `app/mdm/data/bvi-products-pricing-mock0618.xlsx`  
+Migration snapshot: `app/mdm/data/bvi_catalog.json`
 
 ## Agent 如何读
 

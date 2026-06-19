@@ -34,7 +34,7 @@ FROM mdm_package_services ps
 JOIN mdm_services s
   ON s.sku = ps.sku AND s.category_id = ps.category_id
 WHERE ps.category_id = 'harneys-bvi'
-  AND ps.package_id = 'PKG-BVI-INCORP-STD'
+  AND ps.package_id = 'PKG001'
   AND s.status = 'ACTIVE';
 ```
 

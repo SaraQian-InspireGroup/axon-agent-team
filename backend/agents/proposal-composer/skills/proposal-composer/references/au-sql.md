@@ -1,6 +1,6 @@
 # AU catalog SQL
 
-Category: `au-services`  
+Category: `au-advisory`  
 Templates: `au-advisory` (default), future `au-audit` (ADT% SKUs)
 
 ## Schema-first（必做）
@@ -15,21 +15,25 @@ Templates: `au-advisory` (default), future `au-audit` (ADT% SKUs)
 
 ## Few-shot 1 — 列出 AU packages
 
+AU canonical 名称整串存在 `package_name`，格式为 `内部名*外部名`（Excel `After` 列同款）。
+
 ```sql
 SELECT package_id, package_name, package_semantic_for_ai
 FROM mdm_packages
-WHERE category_id = 'au-services'
+WHERE category_id = 'au-advisory'
   AND status = 'ACTIVE'
 ORDER BY package_name;
 ```
 
 ## Few-shot 2 — Advisory SKU 浏览（排除 audit ADT 前缀）
 
+`department_team` 为完整部门名（如 `Tax and Advisory`），不是 SKU 前缀缩写。
+
 ```sql
 SELECT sku, department_team, service_name_on_proposal, pricing_type,
        price_amount, scope_of_work
 FROM mdm_services
-WHERE category_id = 'au-services'
+WHERE category_id = 'au-advisory'
   AND status = 'ACTIVE'
   AND sku NOT LIKE 'ADT%'
 ORDER BY department_team, sku;
@@ -44,7 +48,7 @@ SELECT ps.package_id, ps.sku,
 FROM mdm_package_services ps
 JOIN mdm_services s
   ON ps.sku = s.sku AND ps.category_id = s.category_id
-WHERE ps.category_id = 'au-services'
+WHERE ps.category_id = 'au-advisory'
   AND ps.package_id = 'PKG-AU-REPLACE-ME'
   AND s.status = 'ACTIVE'
 ORDER BY ps.sku;
@@ -56,7 +60,7 @@ ORDER BY ps.sku;
 SELECT sku, service_name_on_proposal, pricing_type,
        price_amount, billing_frequency, scope_of_work
 FROM mdm_services
-WHERE category_id = 'au-services'
+WHERE category_id = 'au-advisory'
   AND status = 'ACTIVE'
   AND sku IN ('TA01', 'TA05', 'CSS030')
 ORDER BY sku;
@@ -68,7 +72,7 @@ ORDER BY sku;
 SELECT sku, department_team, service_name_on_proposal,
        pricing_type, price_amount, price_spec
 FROM mdm_services
-WHERE category_id = 'au-services'
+WHERE category_id = 'au-advisory'
   AND status = 'ACTIVE'
   AND sku NOT LIKE 'ADT%'
   AND (

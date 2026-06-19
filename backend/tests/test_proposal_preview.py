@@ -27,7 +27,7 @@ def test_get_chat_proposal_draft_returns_persisted_draft():
     from app.services.proposal_preview_service import get_chat_proposal_draft
 
     draft = {
-        "meta": {"category_id": "au-services", "template_id": "au-advisory"},
+        "meta": {"category_id": "au-advisory", "template_id": "au-advisory"},
         "facts": {"client": {"company_name": "Demo Ltd"}},
         "document": {"sections": []},
     }

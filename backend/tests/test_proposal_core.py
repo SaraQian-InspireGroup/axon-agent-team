@@ -6,7 +6,7 @@ def test_load_categories():
     categories = load_categories()
     ids = {row["category_id"] for row in categories}
     assert "harneys-bvi" in ids
-    assert "au-services" in ids
+    assert "au-advisory" in ids
 
 
 def test_category_default_template():

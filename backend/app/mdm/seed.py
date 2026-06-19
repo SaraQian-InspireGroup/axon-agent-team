@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import delete, select
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.db.mdm_models import (
     MdmPackage,
-    MdmPackageNameAlias,
     MdmPackageService,
     MdmService,
 )
-from app.mdm.excel_import import MdmCatalogSnapshot, PackageRecord, ServiceRecord
+from app.mdm.excel_import import BVI_CATEGORY_ID, MdmCatalogSnapshot, PackageRecord, ServiceRecord
 
 
 def _service_model(record: ServiceRecord) -> MdmService:
@@ -54,14 +57,103 @@ def _package_model(record: PackageRecord) -> MdmPackage:
         region=record.region,
         bu=record.bu,
         package_name=record.package_name,
-        package_detail=record.package_detail,
         package_semantic_for_ai=record.package_semantic_for_ai,
         status=record.status,
     )
 
 
+async def clear_bvi_catalog(session: AsyncSession) -> None:
+    await session.execute(delete(MdmPackageService).where(MdmPackageService.category_id == BVI_CATEGORY_ID))
+    await session.execute(delete(MdmPackage).where(MdmPackage.category_id == BVI_CATEGORY_ID))
+    await session.execute(delete(MdmService).where(MdmService.category_id == BVI_CATEGORY_ID))
+
+
+def _clear_bvi_catalog_sync(session: Session) -> None:
+    session.execute(delete(MdmPackageService).where(MdmPackageService.category_id == BVI_CATEGORY_ID))
+    session.execute(delete(MdmPackage).where(MdmPackage.category_id == BVI_CATEGORY_ID))
+    session.execute(delete(MdmService).where(MdmService.category_id == BVI_CATEGORY_ID))
+
+
+def _insert_catalog(session: Session, snapshot: MdmCatalogSnapshot) -> dict[str, uuid.UUID]:
+    sku_index: dict[tuple[str, str], uuid.UUID] = {}
+    for service in snapshot.services:
+        model = _service_model(service)
+        session.add(model)
+        session.flush()
+        sku_index[(service.category_id, service.sku)] = model.id
+
+    for package in snapshot.packages:
+        session.add(_package_model(package))
+        for sku in package.linked_skus:
+            service_id = sku_index.get((package.category_id, sku))
+            if service_id is None:
+                continue
+            session.add(
+                MdmPackageService(
+                    package_id=package.package_id,
+                    category_id=package.category_id,
+                    sku=sku,
+                    service_id=service_id,
+                )
+            )
+
+    return sku_index
+
+
+async def seed_bvi_catalog(session: AsyncSession, snapshot: MdmCatalogSnapshot) -> dict[str, int]:
+    await clear_bvi_catalog(session)
+
+    sku_index: dict[tuple[str, str], MdmService] = {}
+    for service in snapshot.services:
+        model = _service_model(service)
+        session.add(model)
+        sku_index[(service.category_id, service.sku)] = model
+
+    await session.flush()
+
+    for row in sku_index.values():
+        await session.refresh(row)
+
+    for package in snapshot.packages:
+        session.add(_package_model(package))
+        for sku in package.linked_skus:
+            service = sku_index.get((package.category_id, sku))
+            if service is None:
+                continue
+            session.add(
+                MdmPackageService(
+                    package_id=package.package_id,
+                    category_id=package.category_id,
+                    sku=sku,
+                    service_id=service.id,
+                )
+            )
+
+    await session.commit()
+    return {
+        "services": len(snapshot.services),
+        "packages": len(snapshot.packages),
+    }
+
+
+def seed_bvi_catalog_sync(connection: Connection, snapshot: MdmCatalogSnapshot) -> dict[str, int]:
+    session = Session(bind=connection)
+    try:
+        _clear_bvi_catalog_sync(session)
+        _insert_catalog(session, snapshot)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+    return {
+        "services": len(snapshot.services),
+        "packages": len(snapshot.packages),
+    }
+
+
 async def clear_mdm_catalog(session: AsyncSession) -> None:
-    await session.execute(delete(MdmPackageNameAlias))
     await session.execute(delete(MdmPackageService))
     await session.execute(delete(MdmPackage))
     await session.execute(delete(MdmService))
@@ -96,20 +188,10 @@ async def seed_mdm_catalog(session: AsyncSession, snapshot: MdmCatalogSnapshot) 
                 )
             )
 
-    for alias in snapshot.package_aliases:
-        session.add(
-            MdmPackageNameAlias(
-                region=alias.region,
-                legacy_name=alias.legacy_name,
-                canonical_name=alias.canonical_name,
-            )
-        )
-
     await session.commit()
     return {
         "services": len(snapshot.services),
         "packages": len(snapshot.packages),
-        "package_aliases": len(snapshot.package_aliases),
     }
 
 
@@ -117,5 +199,4 @@ async def count_mdm_rows(session: AsyncSession) -> dict[str, int]:
     return {
         "services": len((await session.scalars(select(MdmService.id))).all()),
         "packages": len((await session.scalars(select(MdmPackage.package_id))).all()),
-        "package_aliases": len((await session.scalars(select(MdmPackageNameAlias.id))).all()),
     }

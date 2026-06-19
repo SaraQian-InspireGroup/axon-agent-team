@@ -11,9 +11,30 @@ from typing import Any
 
 import pandas as pd
 
+BVI_CATEGORY_ID = "harneys-bvi"
+BVI_REGION = "BVI"
+BVI_BU = "Harneys"
+AU_CATEGORY_ID = "au-advisory"
+AU_REGION = "AU"
+AU_BU = "Incorp"
+AU_SKU_DEPARTMENT_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("SMSF", "SMSF"),
+    ("CSS NEW ITEM NUMBER", "Corporate Secretarial Services"),
+    ("FF NEW ITEM NUMBER", "Finance Function"),
+    ("TA NEW ITEM NUMBER", "Tax and Advisory"),
+    ("CSS", "Corporate Secretarial Services"),
+    ("FF", "Finance Function"),
+    ("TA", "Tax and Advisory"),
+    ("GI", "Global Incentive"),
+    ("SP", "Specialist Projects"),
+)
+BVI_SERVICES_SHEET = "BVI"
+BVI_PACKAGES_SHEET = "Mockpackage"
+
 GROUP_SLUG = {
     "Incorporation": "incorporation",
     "Annual maintenance": "annual_maintenance",
+    "Transfer in": "transfer_in",
     "Transfer in ": "transfer_in",
     "FAR": "far",
 }
@@ -57,24 +78,15 @@ class PackageRecord:
     region: str
     bu: str
     package_name: str
-    package_detail: str | None
     package_semantic_for_ai: str | None
     linked_skus: list[str]
     status: str = "ACTIVE"
 
 
 @dataclass
-class PackageNameAlias:
-    legacy_name: str
-    canonical_name: str
-    region: str = "AU"
-
-
-@dataclass
 class MdmCatalogSnapshot:
     services: list[ServiceRecord]
     packages: list[PackageRecord]
-    package_aliases: list[PackageNameAlias]
 
 
 def slugify_group(name: str) -> str:
@@ -102,75 +114,207 @@ def _to_decimal(value: Any) -> Decimal | None:
     return Decimal(str(value))
 
 
-def parse_bvi_fee(fee_raw: Any) -> tuple[str, dict[str, Any], Decimal | None, Decimal | None, Decimal | None, str]:
+def _fee_text(fee_raw: Any) -> str:
     s = str(fee_raw).strip() if pd.notna(fee_raw) else ""
-    if not s or s.lower() == "nan":
-        return "FIXED", {}, None, None, None, s
-    m = re.match(r"^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$", s.replace("$", ""))
+    return "" if not s or s.lower() == "nan" else s
+
+
+def parse_bvi_fee(fee_raw: Any) -> tuple[str, dict[str, Any], Decimal | None, Decimal | None, Decimal | None, str]:
+    raw = _fee_text(fee_raw)
+    if not raw:
+        return "FIXED", {}, None, None, None, raw
+    normalized = re.sub(r"\s+", " ", raw.replace("$", "").replace(",", " ")).strip()
+    normalized = re.sub(r"(?<=\d) (?=\d)", "", normalized)
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$", normalized)
     if m:
-        return "RANGE", {}, Decimal(m.group(1)), Decimal(m.group(2)), None, s
-    m = re.match(r"^(\d+(?:\.\d+)?)\s*\+\s*(\d+(?:\.\d+)?)\s+(.+)$", s, re.I)
+        return "RANGE", {}, None, Decimal(m.group(1)), Decimal(m.group(2)), raw
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*\+\s*(\d+(?:\.\d+)?)\s+(.+)$", normalized, re.I)
     if m:
         addon = {"type": "DISBURSEMENT", "label": m.group(3).strip(), "amount": float(m.group(2))}
-        return "BASE_PLUS", {"addons": [addon]}, Decimal(m.group(1)), None, None, s
-    m = re.match(r"^(\d+(?:\.\d+)?)\s*\+\s*(.+)$", s)
+        return "BASE_PLUS", {"addons": [addon]}, Decimal(m.group(1)), None, None, raw
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*\+\s*(.+)$", normalized)
     if m and not re.search(r"^\d", m.group(2).strip()):
-        return "BASE_PLUS_VARIABLE", {"variable_label": m.group(2).strip()}, Decimal(m.group(1)), None, None, s
-    if "(" in s and "+" in s:
-        nums = re.findall(r"(\d+(?:\.\d+)?)", s)
+        return "BASE_PLUS_VARIABLE", {"variable_label": m.group(2).strip()}, Decimal(m.group(1)), None, None, raw
+    if "(" in normalized and "+" in normalized:
+        nums = re.findall(r"(\d+(?:\.\d+)?)", normalized)
         if nums:
-            return "FIXED", {"note": s}, Decimal(nums[0]), None, None, s
-    m = re.match(r"^(\d+(?:\.\d+)?)$", s.replace(",", ""))
+            return "FIXED", {"note": raw}, Decimal(nums[0]), None, None, raw
+    m = re.match(r"^(\d+(?:\.\d+)?)(?:\s+(?:per annum|one[- ]time fee|per .+))?$", normalized, re.I)
     if m:
-        return "FIXED", {}, Decimal(m.group(1)), None, None, s
-    return "FIXED", {"note": s}, None, None, None, s
+        note = raw.lower()
+        pextra: dict[str, Any] = {}
+        if "per annum" in note:
+            pextra["billing_note"] = "per annum"
+        if "one-time" in note or "one time" in note:
+            pextra["billing_note"] = "one_time"
+        return "FIXED", pextra, Decimal(m.group(1)), None, None, raw
+    m = re.match(r"^(\d+(?:\.\d+)?)$", normalized.replace(" ", ""))
+    if m:
+        return "FIXED", {}, Decimal(m.group(1)), None, None, raw
+    return "FIXED", {"note": raw}, None, None, None, raw
 
 
-def parse_bvi_catalog(bvi_xlsx: Path) -> tuple[list[ServiceRecord], list[PackageRecord]]:
-    df = pd.read_excel(bvi_xlsx, sheet_name="BVI", header=1)
+def _infer_bvi_billing(service_group_display: str, fee_raw: str) -> tuple[str, str]:
+    group = str(service_group_display or "").strip().lower()
+    fee = fee_raw.lower()
+    if group == "incorporation" or "one-time" in fee or "one time" in fee:
+        return "ONE_TIME", "ONE_OFF"
+    if group == "annual maintenance" or "per annum" in fee:
+        return "ANNUALLY", "RECURRING"
+    if "per annum" in fee:
+        return "ANNUALLY", "RECURRING"
+    return "ONE_TIME", "ONE_OFF"
+
+
+def _apply_tiered_pricing(
+    description: str,
+    ptype: str,
+    pextra: dict[str, Any],
+    amount: Decimal | None,
+) -> tuple[str, dict[str, Any]]:
+    dl = description.lower()
+    if "government fee" in dl and "50,000" in description:
+        tier = "gt_50000" if "more than" in dl else "le_50000"
+        return (
+            "TIERED",
+            {
+                **pextra,
+                "dimension": "share_count",
+                "tier_label": tier,
+                "amount": float(amount) if amount is not None else None,
+            },
+        )
+    return ptype, pextra
+
+
+def _split_package_skus(raw: Any) -> list[str]:
+    text = str(raw or "")
+    for sep in (";", "；", "，", ","):
+        text = text.replace(sep, ";")
+    return [part.strip().upper() for part in text.split(";") if part.strip()]
+
+
+def au_department_team_from_sku(sku: str) -> str | None:
+    normalized = sku.strip().upper()
+    for prefix, department in AU_SKU_DEPARTMENT_PREFIXES:
+        if normalized.startswith(prefix):
+            return department
+    return None
+
+
+def canonical_au_package_label(label: str) -> str:
+    text = str(label or "").strip()
+    if not text:
+        return ""
+    if "*" in text:
+        name, detail = text.split("*", 1)
+        name = name.strip()
+        detail = detail.strip()
+        return f"{name}*{detail}" if detail else name
+    if " - " in text:
+        name, detail = text.split(" - ", 1)
+        name = name.strip()
+        detail = detail.strip()
+        return f"{name}*{detail}" if detail else name
+    return text
+
+
+def au_package_internal_name(canonical_name: str) -> str:
+    if "*" in canonical_name:
+        return canonical_name.split("*", 1)[0].strip()
+    return canonical_name.strip()
+
+
+def load_au_package_name_map(au_xlsx: Path) -> dict[str, str]:
+    try:
+        aliases_df = pd.read_excel(au_xlsx, sheet_name="package").rename(
+            columns={"Before": "legacy_name", "After": "canonical_name"}
+        )
+    except ValueError:
+        return {}
+
+    mapping: dict[str, str] = {}
+    for _, row in aliases_df.iterrows():
+        legacy = str(row.get("legacy_name") or "").strip()
+        canonical = canonical_au_package_label(str(row.get("canonical_name") or ""))
+        if legacy and canonical:
+            mapping[legacy] = canonical
+    return mapping
+
+
+def normalize_package_sku_ref(ref: str, known_skus: set[str]) -> str | None:
+    sku = ref.strip().upper()
+    if sku in known_skus:
+        return sku
+    match = re.match(r"^(COM|AM|CSS|TRU|PW|ACC|OM)(\d+)$", sku)
+    if not match:
+        return None
+    prefix = "COM" if match.group(1) == "OM" else match.group(1)
+    candidate = f"{prefix}{int(match.group(2)):03d}"
+    return candidate if candidate in known_skus else None
+
+
+def default_bvi_xlsx_path() -> Path:
+    return Path(__file__).resolve().parent / "data" / "bvi-products-pricing-mock0618.xlsx"
+
+
+def _read_bvi_services_df(bvi_xlsx: Path) -> pd.DataFrame:
+    df = pd.read_excel(bvi_xlsx, sheet_name=BVI_SERVICES_SHEET, header=1)
     df = df.rename(
         columns={
             "Department": "department",
-            "Service": "service_group_display",
+            "SKU code": "sku",
+            "Service Name on Proposal": "service_group_display",
             "Description": "description",
             "Fee (USD$)": "fee_usd_raw",
-            "Comments": "comments",
+            "Standrad pricing metrix": "pricing_matrix",
+            "Comments (Sementic for AI)": "comments",
         }
     )
-    df = df[df["description"].notna() & (df["description"] != "Description")].copy()
-    df["service_group"] = df["service_group_display"].map(slugify_group)
+    df = df[df["sku"].notna()].copy()
+    df["sku"] = df["sku"].astype(str).str.strip().str.upper()
+    df = df[df["sku"] != "SKU CODE"].copy()
+    df["service_group"] = df["service_group_display"].astype(str).map(slugify_group)
+    return df
 
+
+def parse_bvi_services(bvi_xlsx: Path) -> list[ServiceRecord]:
+    df = _read_bvi_services_df(bvi_xlsx)
     services: list[ServiceRecord] = []
-    counters: dict[str, int] = {}
     for idx, row in df.iterrows():
-        group = row["service_group"]
-        counters[group] = counters.get(group, 0) + 1
-        sku = f"BVI-{group}-{counters[group]:03d}"
-        ptype, pextra, amt, pmin, pmax, raw_fee = parse_bvi_fee(row["fee_usd_raw"])
+        sku = str(row["sku"]).strip().upper()
+        group_display = str(row["service_group_display"]).strip()
+        group = str(row["service_group"]).strip()
         desc = str(row["description"]).strip()
+        fee_raw = _fee_text(row["fee_usd_raw"])
+        ptype, pextra, amt, pmin, pmax, _ = parse_bvi_fee(row["fee_usd_raw"])
+        ptype, pextra = _apply_tiered_pricing(desc, ptype, pextra, amt)
+        comments = clean_comment(row.get("comments"))
         dl = desc.lower()
         optional_kw = ("optional service", "courier", "notaris", "incumbency", "good standing")
-        stype = "OPTIONAL_ADDITIONAL" if any(k in dl for k in optional_kw) else "BASE_MANDATORY"
-        if "government fee" in dl and "50,000" in desc:
-            tier = "gt_50000" if "more than" in dl else "le_50000"
-            ptype = "TIERED"
-            pextra = {"dimension": "share_count", "tier_label": tier, "amount": float(amt) if amt else None}
+        if comments and "optional" in comments.lower():
+            stype = "OPTIONAL_ADDITIONAL"
+        elif any(k in dl for k in optional_kw):
+            stype = "OPTIONAL_ADDITIONAL"
+        else:
+            stype = "BASE_MANDATORY"
+        billing_frequency, recurring = _infer_bvi_billing(group_display, fee_raw)
         services.append(
             ServiceRecord(
                 sku=sku,
-                category_id="harneys-bvi",
-                region="BVI",
-                bu="Harneys",
+                category_id=BVI_CATEGORY_ID,
+                region=BVI_REGION,
+                bu=BVI_BU,
                 department_team=str(row.get("department") or "Corporate Services").strip(),
                 service_group=group,
-                service_group_display=str(row["service_group_display"]).strip(),
+                service_group_display=group_display,
                 product_name=short_name(desc, 120),
                 service_name_on_proposal=short_name(desc, 80),
                 description=desc,
                 scope_of_work=None,
                 service_type=stype,
-                billing_frequency="ONE_TIME" if group == "incorporation" else "ANNUALLY",
-                recurring="ONE_OFF" if group == "incorporation" else "RECURRING",
+                billing_frequency=billing_frequency,
+                recurring=recurring,
                 status="ACTIVE",
                 pricing_type=ptype,
                 price_currency="USD",
@@ -178,47 +322,56 @@ def parse_bvi_catalog(bvi_xlsx: Path) -> tuple[list[ServiceRecord], list[Package
                 price_min=pmin,
                 price_max=pmax,
                 price_spec=pextra,
-                fee_raw=raw_fee or None,
-                footnotes=clean_comment(row.get("comments")),
-                sku_semantic_for_ai=f"BVI {row['service_group_display']}: {short_name(desc, 100)}",
-                external_record_id=None,
-                source_sheet="BVI",
+                fee_raw=fee_raw or None,
+                footnotes=comments,
+                sku_semantic_for_ai=f"BVI {group_display}: {short_name(desc, 100)}",
+                external_record_id=sku,
+                source_sheet=BVI_SERVICES_SHEET,
                 source_row=int(idx) + 2,
             )
         )
+    return services
 
-    inc_skus = [s.sku for s in services if s.service_group == "incorporation"][:6]
-    ann_skus = [s.sku for s in services if s.service_group == "annual_maintenance"][:6]
-    packages = [
-        PackageRecord(
-            package_id="PKG-BVI-INCORP-STD",
-            category_id="harneys-bvi",
-            region="BVI",
-            bu="Harneys",
-            package_name="BVI Standard Incorporation Package",
-            package_detail=None,
-            package_semantic_for_ai="Typical BVI new incorporation bundle from MDM",
-            linked_skus=inc_skus,
-        ),
-        PackageRecord(
-            package_id="PKG-BVI-ANN-STD",
-            category_id="harneys-bvi",
-            region="BVI",
-            bu="Harneys",
-            package_name="BVI Standard Annual Maintenance Package",
-            package_detail=None,
-            package_semantic_for_ai="Typical BVI annual compliance bundle from MDM",
-            linked_skus=ann_skus,
-        ),
-    ]
+
+def parse_bvi_packages(bvi_xlsx: Path, services: list[ServiceRecord]) -> list[PackageRecord]:
+    known_skus = {service.sku for service in services}
+    pkg_df = pd.read_excel(bvi_xlsx, sheet_name=BVI_PACKAGES_SHEET)
+    packages: list[PackageRecord] = []
+    for _, row in pkg_df.iterrows():
+        package_id = str(row["Solution Package ID"]).strip().upper()
+        package_name = str(row["Solution Package Name"]).strip()
+        description = clean_comment(row.get("Solution Package Description"))
+        linked_skus: list[str] = []
+        for ref in _split_package_skus(row.get("SKU")):
+            normalized = normalize_package_sku_ref(ref, known_skus)
+            if normalized and normalized not in linked_skus:
+                linked_skus.append(normalized)
+        packages.append(
+            PackageRecord(
+                package_id=package_id,
+                category_id=BVI_CATEGORY_ID,
+                region=BVI_REGION,
+                bu=BVI_BU,
+                package_name=package_name,
+                package_semantic_for_ai=description or package_name,
+                linked_skus=linked_skus,
+            )
+        )
+    return packages
+
+
+def parse_bvi_catalog(bvi_xlsx: Path) -> tuple[list[ServiceRecord], list[PackageRecord]]:
+    services = parse_bvi_services(bvi_xlsx)
+    packages = parse_bvi_packages(bvi_xlsx, services)
     return services, packages
 
 
 def parse_au_advisory_catalog(
     au_xlsx: Path,
-) -> tuple[list[ServiceRecord], list[PackageRecord], list[PackageNameAlias]]:
+) -> tuple[list[ServiceRecord], list[PackageRecord]]:
     au_df = pd.read_excel(au_xlsx, sheet_name="All products")
     adv = au_df[~au_df["SKU"].astype(str).str.match(r"^ADT", na=False)].copy()
+    package_name_map = load_au_package_name_map(au_xlsx)
 
     def norm_billing(value: Any) -> str:
         s = str(value or "").strip().lower()
@@ -242,10 +395,10 @@ def parse_au_advisory_catalog(
         services.append(
             ServiceRecord(
                 sku=sku,
-                category_id="au-services",
-                region="AU",
-                bu="Tax and Advisory",
-                department_team=sku[:2] if len(sku) >= 2 else None,
+                category_id=AU_CATEGORY_ID,
+                region=AU_REGION,
+                bu=AU_BU,
+                department_team=au_department_team_from_sku(sku),
                 service_group=None,
                 service_group_display=None,
                 product_name=str(row.get("Name", "") or "").strip(),
@@ -285,39 +438,26 @@ def parse_au_advisory_catalog(
             part = part.strip()
             if not part:
                 continue
-            if "*" in part:
-                name, detail = part.split("*", 1)
-                pkg_name, pkg_detail = name.strip(), detail.strip()
+            if part in package_name_map:
+                canonical_name = package_name_map[part]
             else:
-                pkg_name, pkg_detail = part, ""
-            pkg_id = "PKG-AU-" + hashlib.md5(pkg_name.encode()).hexdigest()[:8].upper()
+                canonical_name = canonical_au_package_label(part)
+            internal_name = au_package_internal_name(canonical_name)
+            pkg_id = "PKG-AU-" + hashlib.md5(internal_name.encode()).hexdigest()[:8].upper()
             if pkg_id not in pkg_map:
                 pkg_map[pkg_id] = PackageRecord(
                     package_id=pkg_id,
-                    category_id="au-services",
-                    region="AU",
-                    bu="Tax and Advisory",
-                    package_name=pkg_name,
-                    package_detail=pkg_detail or None,
-                    package_semantic_for_ai=pkg_detail or pkg_name,
+                    category_id=AU_CATEGORY_ID,
+                    region=AU_REGION,
+                    bu=AU_BU,
+                    package_name=canonical_name,
+                    package_semantic_for_ai=canonical_name,
                     linked_skus=[],
                 )
             if sku not in pkg_map[pkg_id].linked_skus:
                 pkg_map[pkg_id].linked_skus.append(sku)
 
-    aliases_df = pd.read_excel(au_xlsx, sheet_name="package").rename(
-        columns={"Before": "legacy_name", "After": "canonical_name"}
-    )
-    aliases = [
-        PackageNameAlias(
-            legacy_name=str(r["legacy_name"]).strip(),
-            canonical_name=str(r["canonical_name"]).strip(),
-        )
-        for _, r in aliases_df.iterrows()
-        if str(r.get("legacy_name", "")).strip()
-    ]
-
-    return services, list(pkg_map.values()), aliases
+    return services, list(pkg_map.values())
 
 
 def load_mdm_snapshot(
@@ -326,9 +466,8 @@ def load_mdm_snapshot(
     au_xlsx: Path,
 ) -> MdmCatalogSnapshot:
     bvi_services, bvi_packages = parse_bvi_catalog(bvi_xlsx)
-    au_services, au_packages, au_aliases = parse_au_advisory_catalog(au_xlsx)
+    au_services, au_packages = parse_au_advisory_catalog(au_xlsx)
     return MdmCatalogSnapshot(
         services=bvi_services + au_services,
         packages=bvi_packages + au_packages,
-        package_aliases=au_aliases,
     )

@@ -142,7 +142,7 @@ def read_knowledge(
     ),
 )
 def initialize_proposal_draft(
-    category_id: Annotated[str, "Proposal category_id, e.g. au-services."],
+    category_id: Annotated[str, "Proposal category_id, e.g. au-advisory."],
     template_id: Annotated[str | None, "Optional template_id; defaults from the category."] = None,
 ) -> dict[str, Any]:
     ctx = get_run_proposal_state()

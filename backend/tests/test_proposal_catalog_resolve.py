@@ -27,7 +27,7 @@ def test_resolve_services_by_display_name_fallback():
     ]
 
     async def _fake_resolve(category_id: str, identifiers: list[str]) -> SelectionResolveResult:
-        assert category_id == "au-services"
+        assert category_id == "au-advisory"
         assert identifiers == ["Special Purpose Financial Statements & Company Tax Return"]
         return SelectionResolveResult(
             services=services,
@@ -37,7 +37,7 @@ def test_resolve_services_by_display_name_fallback():
 
     with patch("app.proposal.catalog._resolve_services_for_selection", new=AsyncMock(side_effect=_fake_resolve)):
         result = resolve_services_for_selection(
-            "au-services",
+            "au-advisory",
             ["Special Purpose Financial Statements & Company Tax Return"],
         )
 
