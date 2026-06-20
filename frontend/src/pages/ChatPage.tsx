@@ -905,17 +905,19 @@ export function ChatPage() {
         </ul>
 
         <div className="agent-sidebar-footer">
-          <div
-            className="agent-sidebar-user"
-            title={userEmail ?? undefined}
-          >
-            <span className="agent-sidebar-avatar">
-              <UserIcon className="h-4 w-4" />
-            </span>
-            {!sidebarCollapsed && userEmail && (
-              <span className="agent-sidebar-email">{userEmail}</span>
-            )}
-          </div>
+          {!sidebarCollapsed && (
+            <div
+              className="agent-sidebar-user"
+              title={userEmail ?? undefined}
+            >
+              <span className="agent-sidebar-avatar">
+                <UserIcon className="h-4 w-4" />
+              </span>
+              {userEmail && (
+                <span className="agent-sidebar-email">{userEmail}</span>
+              )}
+            </div>
+          )}
           <button
             type="button"
             className="agent-sidebar-toggle-btn"
