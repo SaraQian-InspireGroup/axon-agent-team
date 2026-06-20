@@ -23,8 +23,15 @@ sections:
       group_by: package
       table_style: frequency_columns
       currency: AUD
+      column_widths:
+        frequency_columns:
+          service: "33.333%"
+          amount: "13.333%"
       show_line_amount: true
-      include_scope_of_work: true
+      service_columns:
+        service_name: true
+        description: false
+        scope_of_work: true
     intro:
       source:
         type: template_file

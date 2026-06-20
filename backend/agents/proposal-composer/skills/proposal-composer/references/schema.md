@@ -4,6 +4,14 @@
 
 **Guardrails**: patch only concrete draft nodes that the user can see/edit. For catalog additions, use the add-package/add-service materializer tools.
 
+## Preview row numbers (e.g. 2.2)
+
+The live panel shows **`{tableIndex}.{rowSub} service_name`** on AU frequency fee tables. Those numbers are **not** fields in draft JSON.
+
+Before patching a row the user identified by panel number, read the draft and map display ref → physical row. See **`references/fee-table-display-index.md`** (workflow, 0-based JSON Pointer paths, empty-table skip rule, BVI exception).
+
+Stable identifiers when the user provides them: `rows[].source.sku`, `rows[].id`, or `service_name` + table `title`.
+
 ## Template contract
 
 After template is known, initialize the draft and read:
@@ -30,7 +38,9 @@ via `read_knowledge`. That file defines section kinds, default enabled flags, ed
 | `/document/sections/{index}/content` | Editable markdown/static block content |
 | `/document/sections/{index}/tables/{index}/title` | Fee table heading |
 | `/document/sections/{index}/tables/{index}/rows/{index}/service_name` | Client-facing service name |
-| `/document/sections/{index}/tables/{index}/rows/{index}/scope_of_work` | Client-facing SOW |
+| `/document/sections/{index}/tables/{index}/rows/{index}/description` | MDM `description` (fee table when `fee_layout.service_columns.description: true`) |
+| `/document/sections/{index}/tables/{index}/rows/{index}/scope_of_work` | MDM SOW (fee table when `fee_layout.service_columns.scope_of_work: true`) |
+| `/document/sections/{index}/tables/{index}/rows/{index}/footnotes` | Client-facing footnote text (from MDM; aggregated at table end when `fee_layout.footnotes: aggregate`) |
 | `/document/sections/{index}/tables/{index}/rows/{index}/price/amount` | Numeric total used for summaries (`price_amount` semantics) |
 | `/document/sections/{index}/tables/{index}/rows/{index}/price/fee_raw` | Client-facing price text for non-`FIXED` rows; copied from MDM at materialize |
 | `/document/sections/{index}/tables/{index}/rows/{index}/price/pricing_type` | `FIXED`, `UNIT_RATE`, `RANGE`, `BASE_PLUS`, `BASE_PLUS_VARIABLE`, `MATRIX_REF` |
@@ -62,6 +72,11 @@ Prefer `add_package_to_proposal_draft` / `add_services_to_proposal_draft` for MD
 
 - `FIXED`: fee table shows formatted `price.amount`; summaries sum annualised totals from `price.amount`.
 - `UNIT_RATE`, `RANGE`, `BASE_PLUS`, `BASE_PLUS_VARIABLE`, `MATRIX_REF`: AU frequency table shows `price.fee_raw` in the billing column (Monthly/Quarterly/Annual/Once-Off); **Total** column always shows the annualised numeric total from `price.amount` (Monthly×12, Quarterly×4, otherwise×1). BVI simple table shows `fee_raw` in Amount.
+- **Footnotes**: when template sets `fee_layout.footnotes: aggregate`, non-empty `rows[].footnotes` are deduped, numbered once for the **entire fee section**, rendered in a single block after all fee tables, with `<sup>` refs on the **Service** cell linking to `#fn-N`.
+- **Placeholders** (`template.yaml` → `placeholders`): platform resolves `{{client.*}}`, `{{selected_packages_bullet_list}}`, `{{fee_year}}`, etc. on render and after `add_package` / client fact patches (when section `edit_state.content` is `source`).
+- **Package narratives** (`fee_section.package_narratives.index`): platform injects `blocks/solutions/PKG*.md` before fee tables for each package in draft fee tables.
+- **Column widths** (`fee_layout.column_widths`): per `table_style` keys `simple` / `frequency_columns`, each with `service` and `amount` CSS widths (e.g. `72%` / `28%`). Applied to every grouped sub-table via `table-layout: fixed`.
+- **Service cell columns** (`fee_layout.service_columns`): independently toggle `service_name`, `description`, and `scope_of_work` in the fee-table Service cell. BVI default: name + description, no SOW. AU default: name + SOW, no description. Legacy templates may use `include_scope_of_work: true` as alias for `scope_of_work: true`.
 - After confirming facts (e.g. rounds, states), patch `price.amount` with the computed total; keep `fee_raw` as the unit/range description unless sales asks to rewrite it.
 
 ## Readiness

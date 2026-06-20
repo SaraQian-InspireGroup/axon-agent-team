@@ -8,7 +8,6 @@ import type { Message } from '../types'
 
 type Props = {
   messages: Message[]
-  streamingBlocks?: ChatBlock[]
   loading?: boolean
   liveProposalOpen?: boolean
   onExpandArtifact?: (spec: ArtifactSpec) => void
@@ -58,13 +57,12 @@ function renderBlock(
 
 export function ChatMessageList({
   messages,
-  streamingBlocks = [],
   loading = false,
   liveProposalOpen = false,
   onExpandArtifact,
 }: Props) {
-  const blocks = [...groupMessages(messages), ...streamingBlocks]
-  const showPending = shouldShowPendingIndicator(loading, streamingBlocks)
+  const blocks = groupMessages(messages)
+  const showPending = shouldShowPendingIndicator(loading, messages)
 
   return (
     <div className="chat-timeline">

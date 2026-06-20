@@ -56,7 +56,11 @@ def test_frequency_table_html_keeps_all_rows_together():
             ],
         }
     ]
-    table = render_frequency_table(groups, currency="AUD", include_scope=True)
+    table = render_frequency_table(groups, currency="AUD", service_columns={
+        "service_name": True,
+        "description": False,
+        "scope_of_work": True,
+    })
     assert "proposal-fee-table-frequency" in table
     assert 'width="33.333%"' in table
     assert table.count('width="13.333%"') >= 10

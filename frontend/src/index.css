@@ -1129,6 +1129,16 @@ body {
   padding-left: 1.25em;
 }
 
+.markdown-body ul {
+  list-style-type: disc;
+  list-style-position: outside;
+}
+
+.markdown-body ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+}
+
 .markdown-body li {
   margin: 0.2em 0;
 }
@@ -1974,7 +1984,28 @@ body {
   font-size: inherit;
 }
 
-.markdown-body table.proposal-fee-table.proposal-fee-table-frequency {
+.markdown-body table.proposal-fee-table.proposal-fee-table-simple {
+  table-layout: fixed !important;
+  width: 100% !important;
+  word-break: normal;
+}
+
+.markdown-body table.proposal-fee-table-simple .proposal-fee-col-label,
+.markdown-body table.proposal-fee-table-simple th:nth-child(1),
+.markdown-body table.proposal-fee-table-simple td:nth-child(1) {
+  word-break: normal !important;
+  overflow-wrap: break-word;
+}
+
+.markdown-body table.proposal-fee-table-simple .proposal-fee-col-amount,
+.markdown-body table.proposal-fee-table-simple th:nth-child(2),
+.markdown-body table.proposal-fee-table-simple td:nth-child(2) {
+  text-align: right;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.markdown-body table.proposal-fee-table-frequency {
   table-layout: fixed !important;
   width: 100% !important;
   word-break: normal;
@@ -2054,14 +2085,49 @@ body {
 .markdown-body .proposal-fee-table .proposal-fee-service ul {
   margin: 0.35rem 0 0;
   padding-left: 1.25rem;
+  list-style-type: disc;
+  list-style-position: outside;
 }
 
 .markdown-body .proposal-fee-table .proposal-fee-service li {
   margin: 0.15rem 0;
+  display: list-item;
 }
 
 .markdown-body .proposal-fee-table tr.proposal-fee-summary td {
   background: #fafafa;
+}
+
+.markdown-body .proposal-fee-footnotes {
+  margin: 1.25rem 0 0;
+  font-size: 0.9em;
+  color: var(--color-text-secondary, #444);
+}
+
+.markdown-body .proposal-fee-footnotes ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  list-style: decimal;
+}
+
+.markdown-body .proposal-fee-footnotes li {
+  margin: 0.35rem 0;
+}
+
+.markdown-body .proposal-fee-ref {
+  font-size: 0.75em;
+  line-height: 0;
+  vertical-align: super;
+  margin-left: 0.1em;
+}
+
+.markdown-body .proposal-fee-ref a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.markdown-body .proposal-fee-ref a:hover {
+  text-decoration: underline;
 }
 
 .artifact-maximize-panel {

@@ -18,7 +18,13 @@ def test_harneys_template_has_solution_and_price():
     sections = {section["id"]: section for section in tpl.get("sections") or []}
     assert "solution_and_fees" in sections
     assert sections["solution_and_fees"]["kind"] == "fee_section"
-    assert "group_by" not in sections["solution_and_fees"]["fee_layout"]
+    layout = sections["solution_and_fees"]["fee_layout"]
+    assert layout.get("group_by") == "department"
+    assert layout.get("footnotes") == "aggregate"
+    cols = layout.get("service_columns") or {}
+    assert cols.get("service_name") is False
+    assert cols.get("description") is True
+    assert cols.get("scope_of_work") is False
 
 
 def test_au_template_fee_layout():
@@ -27,6 +33,10 @@ def test_au_template_fee_layout():
     layout = sections["solution_and_fees"]["fee_layout"]
     assert layout.get("group_by") == "package"
     assert layout.get("table_style") == "frequency_columns"
+    cols = layout.get("service_columns") or {}
+    assert cols.get("service_name") is True
+    assert cols.get("description") is False
+    assert cols.get("scope_of_work") is True
     assert "body" not in tpl
     assert tpl.get("document_title", {}).get("prefix") == "INCORP ADVISORY PROPOSAL"
 

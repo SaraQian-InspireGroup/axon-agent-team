@@ -4,22 +4,55 @@ catalog_filter:
   jurisdiction: BVI
   bu: Harneys
 
+# Placeholders: resolved by platform from draft facts + fee tables (see placeholders.* below).
+# Package solution prose: fee_section.package_narratives → blocks/package-narratives.yaml.
+placeholders:
+  introduction:
+    - token: "{{client.contract_name}}"
+      draft_path: /facts/client/contract_name
+    - token: "{{selected_packages_bullet_list}}"
+      draft_path: derived
+      hint: "Bullet list of selected package_name values, e.g. '- Incorporation\\n- Annual maintenance'"
+  fee_table:
+    - token: "{{fee_year}}"
+      draft_path: /facts/inputs/fee_year
+      default: "2026"
+
 sections:
   - id: introduction
     kind: markdown_block
     title: Introduction
     required: true
     editable: true
-    content: "Harneys Fiduciary is pleased to provide this proposal for British Virgin Islands corporate and fiduciary services."
+    source:
+      type: template_file
+      file: blocks/introduction-bvi.md
 
   - id: solution_and_fees
     kind: fee_section
     title: Solution and pricing
     required: true
     materializer: mdm_fee_tables
+    # Platform injects blocks/solutions/*.md before fee tables when packages are added.
+    package_narratives:
+      index: blocks/package-narratives.yaml
     fee_layout:
+      group_by: department
+      table_style: simple
+      tables_heading: Fees
+      column_widths:
+        simple:
+          service: "75%"
+          amount: "25%"
+      service_columns:
+        service_name: false
+        description: true
+        scope_of_work: false
+      show_billing_frequency: true
       show_line_amount: true
-      show_recurring: true
+      show_recurring: false
+      amount_column_label: "Fees (US$)"
+      footnotes: aggregate
 
   - id: required_documents
     kind: markdown_block
@@ -37,15 +70,6 @@ sections:
     source:
       type: template_file
       file: blocks/additional-info-bvi.md
-
-  - id: terms
-    kind: static_block
-    title: Terms and conditions
-    required: true
-    editable: false
-    source:
-      type: template_file
-      file: blocks/terms-bvi.md
 
 document_title:
   prefix: Proposal

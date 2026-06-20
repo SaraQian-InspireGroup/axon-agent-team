@@ -197,6 +197,8 @@ def initialize_proposal_draft(
     description=(
         "Read the editable proposal draft that renders the right-hand Proposal Preview. "
         "Use before patching when you need exact section/table/row indexes or ids. "
+        "Panel labels like 2.2 are render-time only (not stored in draft); map them to "
+        "tables[]/rows[] per proposal-composer skill fee-table-display-index before patch. "
         "Omit path for the full draft; pass a JSON Pointer for a subtree."
     ),
 )
@@ -243,6 +245,14 @@ def patch_proposal_draft(
         return {"status": "error", "error": "Proposal draft is not initialized."}
     try:
         ctx.draft = patch_draft(ctx.draft, patch)
+        if any(
+            str(op.get("path") or "").startswith("/facts/client")
+            for op in patch
+            if isinstance(op, dict)
+        ):
+            from app.proposal.placeholders import sync_draft_template_placeholders
+
+            ctx.draft = sync_draft_template_placeholders(ctx.draft)
         ctx.mark_draft_dirty()
         return {"status": "ok", "patched": True, "draft": copy.deepcopy(ctx.draft)}
     except DraftPatchError as exc:
@@ -256,14 +266,18 @@ def patch_proposal_draft(
     name="add_package_to_proposal_draft",
     description=(
         "Materialize a confirmed MDM package into the draft fee section from rows already "
-        "queried via MCP SQL. Pass the package row and its service rows, including pricing_type, "
-        "price_amount, and fee_raw; this tool does not query MDM. Do not use for renaming/editing "
-        "an existing package table; patch the draft."
+        "queried via MCP SQL. Pass the package row and its service rows, including description, "
+        "department_team, pricing_type, price_amount, fee_raw, and footnotes; this tool does not "
+        "query MDM. Do not use for renaming/editing an existing package table; patch the draft."
     ),
 )
 def add_package_to_proposal_draft(
     package: Annotated[Any, "MDM package row object, including package_id and package_name."],
-    services: Annotated[Any, "Array of MDM service row objects returned for this package."],
+    services: Annotated[
+        Any,
+        "Array of MDM service row objects returned for this package. Each row must include fields "
+        "needed by the template fee_layout (typically description, department_team, pricing fields).",
+    ],
 ) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:

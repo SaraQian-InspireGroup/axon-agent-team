@@ -67,6 +67,13 @@ def read_knowledge_file(relative_path: str) -> str:
     return full.read_text(encoding="utf-8")
 
 
+@lru_cache(maxsize=32)
+def load_package_narratives_index(template_id: str, index_ref: str) -> dict[str, Any]:
+    raw = read_static_block(template_id, index_ref)
+    data = yaml.safe_load(raw) or {}
+    return data if isinstance(data, dict) else {}
+
+
 def read_static_block(template_id: str, file_ref: str) -> str:
     rel = file_ref.strip().lstrip("/")
     if ".." in rel.split("/"):

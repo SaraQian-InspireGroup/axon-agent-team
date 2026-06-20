@@ -35,7 +35,9 @@ Use `/meta/template_id` from draft, or `list_templates` when the proposal type i
 | `sections[].default_enabled` / `required` | Initial visibility and whether the section can be disabled |
 | `sections[].editable` | Whether user/agent may patch visible content |
 | `sections[].source` / `intro.source` | Template block or peripheral source for initial content |
-| `sections[].fee_layout` | Rendering hints for fee tables |
+| `sections[].fee_layout` | Rendering hints for fee tables (`footnotes: aggregate`, `column_widths`, etc.) |
+| `sections[].package_narratives` | Index YAML mapping `package_id` → `blocks/solutions/*.md` (auto-injected before fee tables) |
+| `placeholders` | Tokens in introduction/fee blocks resolved from `facts.client`, `facts.inputs`, or selected packages |
 | `sections[].derivation` | Derived content rule, e.g. AU `payment_options_from_fee_tables` |
 | `document_title` | How draft `meta.title` is built from `facts.client.*` |
 

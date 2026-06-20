@@ -16,15 +16,14 @@ import { formatAgentSlugLabel } from '../lib/agentLabel'
 import { formatApiError } from '../lib/apiErrorMessage'
 import { getStoredChatId, setStoredChatId } from '../lib/chatStorage'
 import {
-  applyStreamingArtifact,
-  applyStreamingBlockActivity,
-  applyStreamingText,
-  applyStreamingViz,
-  createStreamingActivityEntry,
-  finalizeStreamingBlocks,
-  finalizeStreamingReasoning,
+  applyStreamArtifact,
+  applyStreamReasoning,
+  applyStreamText,
+  applyStreamToolCall,
+  applyStreamToolResult,
+  applyStreamViz,
+  finalizeStreamReasoning,
   mergeMessagesFromApi,
-  type ChatBlock,
 } from '../lib/messageActivity'
 import type { ArtifactSpec } from '../types/artifact'
 import type { VizSpec } from '../types/viz'
@@ -109,7 +108,6 @@ export function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [streamingBlocks, setStreamingBlocks] = useState<ChatBlock[]>([])
   const [error, setError] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed)
   const [userEmail, setUserEmail] = useState<string | null>(null)
@@ -139,6 +137,7 @@ export function ChatPage() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const streamGenRef = useRef(0)
   const streamAbortRef = useRef<AbortController | null>(null)
+  const reloadInFlightRef = useRef<Promise<void> | null>(null)
 
   const SCROLL_PIN_THRESHOLD_PX = 80
 
@@ -282,7 +281,6 @@ export function ChatPage() {
     setProposalStateFingerprint(null)
     setProposalStateError(null)
     setStoredChatId(agentId, id)
-    setStreamingBlocks([])
     setInput('')
     const rows = await api.listMessages(id)
     setMessages(rows)
@@ -307,7 +305,6 @@ export function ChatPage() {
     async (agent: Agent) => {
       setSelectedId(agent.id)
       setHistoryOpen(false)
-      setStreamingBlocks([])
       setInput('')
       try {
         await loadChat(agent.id)
@@ -369,29 +366,24 @@ export function ChatPage() {
 
   useEffect(() => {
     scrollToBottomIfPinned()
-  }, [messages, streamingBlocks, scrollToBottomIfPinned])
+  }, [messages, scrollToBottomIfPinned])
 
   const reloadMessagesAfterStream = useCallback(
-    async (id: string, options?: { keepStreamingIfEmpty?: boolean }) => {
-      const rows = await api.listMessages(id)
-      setMessages((prev) => mergeMessagesFromApi(rows, prev))
-      setStreamingBlocks((prev) => {
-        if (rows.length === 0 && prev.length > 0) {
-          return prev
+    async (id: string) => {
+      const task = (async () => {
+        const rows = await api.listMessages(id)
+        setMessages((prev) => mergeMessagesFromApi(rows, prev))
+        if (selectedId) {
+          await refreshChatHistory(selectedId)
         }
-        if (!options?.keepStreamingIfEmpty || prev.length === 0) {
-          return []
+      })()
+      reloadInFlightRef.current = task
+      try {
+        await task
+      } finally {
+        if (reloadInFlightRef.current === task) {
+          reloadInFlightRef.current = null
         }
-        const hasCancelledContent = rows.some(
-          (m) =>
-            m.message_type === 'cancelled' &&
-            typeof m.content === 'string' &&
-            m.content.trim().length > 0,
-        )
-        return hasCancelledContent ? [] : prev
-      })
-      if (selectedId) {
-        await refreshChatHistory(selectedId)
       }
     },
     [refreshChatHistory, selectedId],
@@ -407,13 +399,16 @@ export function ChatPage() {
       /* idempotent */
     }
 
-    setLoading(false)
-    setProposalTurnSyncing(false)
-    setActiveRunId(null)
-    runIdRef.current = null
     streamAbortRef.current?.abort()
 
-    await reloadMessagesAfterStream(chatId, { keepStreamingIfEmpty: true })
+    try {
+      await reloadMessagesAfterStream(chatId)
+    } finally {
+      setLoading(false)
+      setProposalTurnSyncing(false)
+      setActiveRunId(null)
+      runIdRef.current = null
+    }
   }
 
   const send = async () => {
@@ -423,41 +418,42 @@ export function ChatPage() {
     setLoading(true)
     setProposalTurnSyncing(false)
     pinToBottomRef.current = true
-    setStreamingBlocks([])
     setError(null)
 
-    const optimistic: Message = {
-      id: `tmp-${Date.now()}`,
-      chat_id: chatId,
-      role: 'user',
-      message_type: 'text',
-      content: text,
-      metadata: {},
-      parent_id: null,
-      sequence: messages.length + 1,
-      created_at: new Date().toISOString(),
-    }
-    setMessages((prev) => [...prev, optimistic])
-
     streamAbortRef.current?.abort()
+
+    if (reloadInFlightRef.current) {
+      try {
+        await reloadInFlightRef.current
+      } catch {
+        /* reload may fail; still attempt send */
+      }
+    }
+
+    setMessages((prev) => {
+      const nextSequence = prev.reduce((max, row) => Math.max(max, row.sequence), 0) + 1
+      const optimistic: Message = {
+        id: `tmp-${Date.now()}`,
+        chat_id: chatId,
+        role: 'user',
+        message_type: 'text',
+        content: text,
+        metadata: {},
+        parent_id: null,
+        sequence: nextSequence,
+        created_at: new Date().toISOString(),
+      }
+      return [...prev, optimistic]
+    })
+
     const generation = ++streamGenRef.current
     const abortController = new AbortController()
     streamAbortRef.current = abortController
 
     let segmentText = ''
-    let streamFinished = false
     let reloadedAfterStream = false
     runIdRef.current = null
     setActiveRunId(null)
-
-    const finishStreamingUi = () => {
-      if (generation !== streamGenRef.current || streamFinished) return
-      streamFinished = true
-      setLoading(false)
-      setActiveRunId(null)
-      runIdRef.current = null
-      setStreamingBlocks((prev) => finalizeStreamingBlocks(prev))
-    }
 
     const finishTurnAfterStream = async () => {
       if (generation !== streamGenRef.current || reloadedAfterStream) return
@@ -476,6 +472,9 @@ export function ChatPage() {
       } finally {
         if (generation === streamGenRef.current) {
           setProposalTurnSyncing(false)
+          setLoading(false)
+          setActiveRunId(null)
+          runIdRef.current = null
         }
       }
     }
@@ -505,18 +504,18 @@ export function ChatPage() {
             } else if (chunk) {
               segmentText += chunk
             }
-            setStreamingBlocks((prev) => applyStreamingText(prev, segmentText))
+            setMessages((prev) => applyStreamText(prev, chatId, segmentText))
           }
           if (ev.event === 'reasoning_done') {
-            setStreamingBlocks((prev) => finalizeStreamingReasoning(prev))
+            setMessages((prev) => finalizeStreamReasoning(prev))
           }
           if (ev.event === 'viz' && ev.data.spec && typeof ev.data.spec === 'object') {
             const spec = ev.data.spec as VizSpec
-            setStreamingBlocks((prev) => applyStreamingViz(prev, spec))
+            setMessages((prev) => applyStreamViz(prev, chatId, spec))
           }
           if (ev.event === 'artifact' && ev.data.spec && typeof ev.data.spec === 'object') {
             const spec = ev.data.spec as ArtifactSpec
-            setStreamingBlocks((prev) => applyStreamingArtifact(prev, spec))
+            setMessages((prev) => applyStreamArtifact(prev, chatId, spec))
           }
           if (ev.event === 'proposal_updated') {
             const preview = parseProposalPreview(ev.data)
@@ -552,39 +551,19 @@ export function ChatPage() {
               void fetchProposalState(chatId)
             }
           }
-          if (
-            (ev.event === 'reasoning' ||
-              ev.event === 'tool_call' ||
-              ev.event === 'tool_result') &&
-            ev.data
-          ) {
-            if (ev.event === 'tool_call' || ev.event === 'tool_result') {
-              segmentText = ''
-            }
-            const entry = createStreamingActivityEntry(
-              ev.event as 'reasoning' | 'tool_call' | 'tool_result',
-              ev.data,
-            )
-            if (entry) {
-              setStreamingBlocks((prev) => applyStreamingBlockActivity(prev, entry))
-            }
+          if (ev.event === 'reasoning' && typeof ev.data.text === 'string') {
+            setMessages((prev) => applyStreamReasoning(prev, chatId, ev.data.text as string))
           }
-          if (ev.event === 'stream_idle') {
-            finishStreamingUi()
-            if (isProposalComposer) {
-              setProposalTurnSyncing(true)
-            }
+          if (ev.event === 'tool_call' && ev.data) {
+            segmentText = ''
+            setMessages((prev) => applyStreamToolCall(prev, chatId, ev.data))
           }
-          if (ev.event === 'run_cancelled') {
-            finishStreamingUi()
-            setProposalTurnSyncing(false)
-            void finishTurnAfterStream()
+          if (ev.event === 'tool_result' && ev.data) {
+            segmentText = ''
+            setMessages((prev) => applyStreamToolResult(prev, chatId, ev.data))
           }
-          if (ev.event === 'done') {
-            if (!streamFinished) {
-              finishStreamingUi()
-            }
-            void finishTurnAfterStream()
+          if (ev.event === 'stream_idle' && isProposalComposer) {
+            setProposalTurnSyncing(true)
           }
           if (ev.event === 'error') {
             throw new Error(String(ev.data.error ?? 'stream error'))
@@ -594,23 +573,23 @@ export function ChatPage() {
       )
 
       if (generation !== streamGenRef.current) return
-      if (!streamFinished) {
-        finishStreamingUi()
-      }
-      void finishTurnAfterStream()
+      await finishTurnAfterStream()
     } catch (e) {
       if (generation !== streamGenRef.current) return
       if (e instanceof Error && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : 'Failed to send message')
-      setStreamingBlocks([])
+      try {
+        await reloadMessagesAfterStream(chatId)
+      } catch {
+        /* ignore reload failure */
+      }
       setProposalTurnSyncing(false)
-      finishStreamingUi()
+      setLoading(false)
+      setActiveRunId(null)
+      runIdRef.current = null
     } finally {
-      if (generation === streamGenRef.current) {
-        finishStreamingUi()
-        if (streamAbortRef.current === abortController) {
-          streamAbortRef.current = null
-        }
+      if (generation === streamGenRef.current && streamAbortRef.current === abortController) {
+        streamAbortRef.current = null
       }
     }
   }
@@ -626,7 +605,6 @@ export function ChatPage() {
     setError(null)
     setChatSessionLoading(true)
     setMessages([])
-    setStreamingBlocks([])
     setInput('')
     try {
       const chat = await api.createChat(selectedId)
@@ -844,14 +822,13 @@ export function ChatPage() {
                       </div>
                     ) : (
                       <>
-                        {messages.length === 0 && streamingBlocks.length === 0 && (
+                        {messages.length === 0 && (
                           <div className="chat-messages-empty">
                             Send a message to start a conversation
                           </div>
                         )}
                         <ChatMessageList
                           messages={messages}
-                          streamingBlocks={streamingBlocks}
                           loading={loading}
                           liveProposalOpen={isProposalComposer && !proposalPanelCollapsed}
                           onExpandArtifact={handleExpandArtifact}

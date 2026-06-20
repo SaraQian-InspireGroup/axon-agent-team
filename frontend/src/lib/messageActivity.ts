@@ -289,42 +289,57 @@ function mergeProcessBlock(blocks: ChatBlock[], entry: ActivityEntry): void {
   blocks.push({ kind: 'process', id: entry.id, item: entry })
 }
 
-function isStreamingTextBubble(
-  block: ChatBlock | undefined,
-): block is { kind: 'bubble'; message: Message } {
-  return block?.kind === 'bubble' && block.message.metadata?.streaming === true
+export const LOCAL_STREAM_TEXT_ID = 'local-stream-text'
+export const LOCAL_STREAM_REASONING_ID = 'local-stream-reasoning'
+
+function nextSequence(messages: Message[]): number {
+  return messages.reduce((max, row) => Math.max(max, row.sequence), 0) + 1
 }
 
-function closeOpenStreamingText(blocks: ChatBlock[]): ChatBlock[] {
-  const last = blocks[blocks.length - 1]
-  if (!isStreamingTextBubble(last)) return blocks
-  const next = [...blocks]
-  next[next.length - 1] = {
-    kind: 'bubble',
-    message: {
-      ...last.message,
-      metadata: { ...last.message.metadata, streaming: false },
-    },
-  }
+function removeMessageById(messages: Message[], id: string): Message[] {
+  return messages.filter((message) => message.id !== id)
+}
+
+function upsertMessage(messages: Message[], message: Message): Message[] {
+  const index = messages.findIndex((row) => row.id === message.id)
+  if (index < 0) return [...messages, message]
+  const next = [...messages]
+  next[index] = message
   return next
 }
 
-function createStreamingTextMessage(text: string): Message {
-  return {
-    id: `stream-text-${Date.now()}`,
-    chat_id: '',
-    role: 'assistant',
-    message_type: 'text',
-    content: text,
-    metadata: { streaming: true },
-    parent_id: null,
-    sequence: 0,
-    created_at: new Date().toISOString(),
+function commitLocalStreamText(messages: Message[]): Message[] {
+  const existing = messages.find((message) => message.id === LOCAL_STREAM_TEXT_ID)
+  if (!existing) return messages
+  const content = existing.content ?? ''
+  if (!content.trim()) {
+    return removeMessageById(messages, LOCAL_STREAM_TEXT_ID)
   }
+  const committed: Message = {
+    ...existing,
+    id: `local-text-${existing.sequence}-${Date.now()}`,
+    metadata: localMetadata({ streaming: false }),
+  }
+  return [...removeMessageById(messages, LOCAL_STREAM_TEXT_ID), committed]
 }
 
+function finalizeLocalReasoning(messages: Message[]): Message[] {
+  return messages.map((message) =>
+    message.id === LOCAL_STREAM_REASONING_ID && message.metadata?.streaming === true
+      ? { ...message, metadata: { ...message.metadata, streaming: false } }
+      : message,
+  )
+}
+
+function localMetadata(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { local: true, ...extra }
+}
+
+/** Replace in-memory timeline with persisted rows; keep only unconfirmed optimistic user sends. */
 export function mergeMessagesFromApi(persisted: Message[], local: Message[]): Message[] {
   const merged = new Map(persisted.map((message) => [message.id, message]))
+  let maxSequence = persisted.reduce((max, row) => Math.max(max, row.sequence), 0)
+
   for (const message of local) {
     if (!message.id.startsWith('tmp-') || message.role !== 'user' || message.message_type !== 'text') {
       continue
@@ -335,10 +350,151 @@ export function mergeMessagesFromApi(persisted: Message[], local: Message[]): Me
       (row) => row.role === 'user' && (row.content ?? '').trim() === content,
     )
     if (!confirmed) {
-      merged.set(message.id, message)
+      maxSequence += 1
+      merged.set(message.id, { ...message, sequence: maxSequence })
     }
   }
+
   return Array.from(merged.values()).sort((a, b) => a.sequence - b.sequence)
+}
+
+export function applyStreamText(messages: Message[], chatId: string, text: string): Message[] {
+  if (!text.trim()) return messages
+  const existing = messages.find((message) => message.id === LOCAL_STREAM_TEXT_ID)
+  const message: Message = existing
+    ? {
+        ...existing,
+        content: text,
+        metadata: localMetadata({ streaming: true }),
+      }
+    : {
+        id: LOCAL_STREAM_TEXT_ID,
+        chat_id: chatId,
+        role: 'assistant',
+        message_type: 'text',
+        content: text,
+        metadata: localMetadata({ streaming: true }),
+        parent_id: null,
+        sequence: nextSequence(messages),
+        created_at: new Date().toISOString(),
+      }
+  return upsertMessage(messages, message)
+}
+
+export function applyStreamReasoning(messages: Message[], chatId: string, chunk: string): Message[] {
+  if (!chunk) return messages
+  const existing = messages.find((message) => message.id === LOCAL_STREAM_REASONING_ID)
+  const message: Message = {
+    id: LOCAL_STREAM_REASONING_ID,
+    chat_id: chatId,
+    role: 'assistant',
+    message_type: 'reasoning',
+    content: `${existing?.content ?? ''}${chunk}`,
+    metadata: localMetadata({ streaming: true }),
+    parent_id: null,
+    sequence: existing?.sequence ?? nextSequence(messages),
+    created_at: existing?.created_at ?? new Date().toISOString(),
+  }
+  return upsertMessage(messages, message)
+}
+
+export function finalizeStreamReasoning(messages: Message[]): Message[] {
+  return finalizeLocalReasoning(messages)
+}
+
+export function applyStreamToolCall(
+  messages: Message[],
+  chatId: string,
+  data: Record<string, unknown>,
+): Message[] {
+  let next = commitLocalStreamText(finalizeLocalReasoning(messages))
+  const callId = String(data.call_id ?? `call-${Date.now()}`)
+  const toolName = String(data.tool_name ?? '').trim() || 'unknown'
+  const message: Message = {
+    id: `local-call-${callId}`,
+    chat_id: chatId,
+    role: 'assistant',
+    message_type: 'tool_call',
+    content: null,
+    metadata: localMetadata({
+      call_id: callId,
+      tool_name: toolName,
+      arguments: data.arguments ?? {},
+    }),
+    parent_id: null,
+    sequence: nextSequence(next),
+    created_at: new Date().toISOString(),
+  }
+  return upsertMessage(next, message)
+}
+
+export function applyStreamToolResult(
+  messages: Message[],
+  chatId: string,
+  data: Record<string, unknown>,
+): Message[] {
+  let next = commitLocalStreamText(finalizeLocalReasoning(messages))
+  const callId = String(data.call_id ?? `result-${Date.now()}`)
+  const toolName = String(data.tool_name ?? '').trim() || 'unknown'
+  const result = data.result
+  const response = formatToolResponse(result)
+  const message: Message = {
+    id: `local-result-${callId}`,
+    chat_id: chatId,
+    role: 'tool',
+    message_type: 'tool_result',
+    content: response || null,
+    metadata: localMetadata({
+      call_id: callId,
+      tool_name: toolName,
+      arguments: data.arguments ?? {},
+      result,
+    }),
+    parent_id: null,
+    sequence: nextSequence(next),
+    created_at: new Date().toISOString(),
+  }
+  return upsertMessage(next, message)
+}
+
+export function applyStreamViz(messages: Message[], chatId: string, spec: VizSpec): Message[] {
+  const next = commitLocalStreamText(finalizeLocalReasoning(messages))
+  return [
+    ...next,
+    {
+      id: `local-viz-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      chat_id: chatId,
+      role: 'assistant',
+      message_type: 'viz',
+      content: spec.title,
+      metadata: localMetadata({ spec }),
+      parent_id: null,
+      sequence: nextSequence(next),
+      created_at: new Date().toISOString(),
+    },
+  ]
+}
+
+export function applyStreamArtifact(
+  messages: Message[],
+  chatId: string,
+  spec: ArtifactSpec,
+): Message[] {
+  const next = commitLocalStreamText(finalizeLocalReasoning(messages))
+  return [
+    ...next,
+    {
+      id: `local-artifact-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      chat_id: chatId,
+      role: 'assistant',
+      message_type: 'artifact',
+      content: spec.title,
+      metadata: localMetadata({ spec }),
+      parent_id: null,
+      sequence: nextSequence(next),
+      created_at: new Date().toISOString(),
+    },
+  ]
 }
 
 export function groupMessages(messages: Message[]): ChatBlock[] {
@@ -379,184 +535,42 @@ export function groupMessages(messages: Message[]): ChatBlock[] {
   return blocks
 }
 
-export function applyStreamingText(blocks: ChatBlock[], text: string): ChatBlock[] {
-  const last = blocks[blocks.length - 1]
-  if (isStreamingTextBubble(last)) {
-    const next = [...blocks]
-    next[next.length - 1] = {
-      kind: 'bubble',
-      message: { ...last.message, content: text },
-    }
-    return next
-  }
-  return [...blocks, { kind: 'bubble', message: createStreamingTextMessage(text) }]
-}
-
-export function applyStreamingBlockActivity(
-  blocks: ChatBlock[],
-  entry: ActivityEntry,
-): ChatBlock[] {
-  let next = closeOpenStreamingText(blocks)
-
-  if (entry.kind === 'reasoning' && entry.id === 'stream-reasoning') {
-    const idx = next.findIndex((block) => block.kind === 'process' && block.id === 'stream-reasoning')
-    if (idx >= 0) {
-      const updated = [...next]
-      const current = updated[idx]
-      if (current.kind === 'process') {
-        updated[idx] = {
-          kind: 'process',
-          id: 'stream-reasoning',
-          item: {
-            ...current.item,
-            detail: `${current.item.detail}${entry.detail}`,
-            status: 'running',
-          },
-        }
-      }
-      return updated
-    }
-    return [...next, { kind: 'process', id: entry.id, item: entry }]
-  }
-
-  if (entry.kind !== 'reasoning') {
-    next = next.map((block) => {
-      if (
-        block.kind === 'process' &&
-        block.id === 'stream-reasoning' &&
-        block.item.status === 'running'
-      ) {
-        return { ...block, item: { ...block.item, status: 'done' as const } }
-      }
-      return block
-    })
-  }
-
-  const idx = findProcessBlockIndex(next, entry.id)
-  if (idx >= 0) {
-    const updated = [...next]
-    const current = updated[idx]
-    if (current.kind === 'process') {
-      updated[idx] = {
-        kind: 'process',
-        id: entry.id,
-        item: mergeActivityPair(current.item, entry),
-      }
-    }
-    return updated
-  }
-
-  return [...next, { kind: 'process', id: entry.id, item: entry }]
-}
-
-export function finalizeStreamingReasoning(blocks: ChatBlock[]): ChatBlock[] {
-  return blocks.map((block) => {
-    if (
-      block.kind === 'process' &&
-      block.id === 'stream-reasoning' &&
-      block.item.status === 'running'
-    ) {
-      return { ...block, item: { ...block.item, status: 'done' as const } }
-    }
-    return block
-  })
-}
-
-/** Mark all in-flight streaming UI as complete when the server signals run end. */
-export function finalizeStreamingBlocks(blocks: ChatBlock[]): ChatBlock[] {
-  let next = finalizeStreamingReasoning(blocks)
-  next = closeOpenStreamingText(next)
-  return next.map((block) => {
-    if (block.kind === 'process' && block.item.status === 'running') {
-      return { ...block, item: { ...block.item, status: 'done' as const } }
-    }
-    return block
-  })
-}
-
 /** Show a breathing dot when the run is active but nothing is visibly streaming yet. */
-export function shouldShowPendingIndicator(loading: boolean, blocks: ChatBlock[]): boolean {
+export function shouldShowPendingIndicator(loading: boolean, messages: Message[]): boolean {
   if (!loading) return false
-  if (blocks.length === 0) return true
-  const last = blocks[blocks.length - 1]
-  if (last.kind === 'bubble') {
-    const text = last.message.content?.trim() ?? ''
-    if (text.length > 0) return false
-    if (last.message.metadata?.streaming === true) return false
+
+  let lastUserIndex = -1
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role === 'user' && message.message_type === 'text') {
+      lastUserIndex = index
+      break
+    }
   }
-  if (last.kind === 'process' && last.item.status === 'running') return false
+
+  const turnMessages = messages.slice(lastUserIndex + 1)
+  if (turnMessages.length === 0) return true
+
+  for (const message of turnMessages) {
+    if (message.message_type === 'text' && (message.content?.trim() ?? '').length > 0) {
+      return false
+    }
+    if (message.message_type === 'reasoning' && (message.content?.trim() ?? '').length > 0) {
+      return false
+    }
+    if (
+      message.message_type === 'tool_call' ||
+      message.message_type === 'tool_result' ||
+      message.message_type === 'mcp_call' ||
+      message.message_type === 'mcp_result'
+    ) {
+      return false
+    }
+    if (message.message_type === 'viz' || message.message_type === 'artifact') {
+      return false
+    }
+  }
+
   return true
-}
-
-export function createStreamingActivityEntry(
-  event: 'reasoning' | 'tool_call' | 'tool_result',
-  data: Record<string, unknown>,
-): ActivityEntry | null {
-  if (event === 'reasoning' && typeof data.text === 'string') {
-    return {
-      id: 'stream-reasoning',
-      kind: 'reasoning',
-      title: REASONING_TITLE,
-      detail: data.text,
-      status: 'running',
-    }
-  }
-
-  if (event === 'tool_call') {
-    const toolName = String(data.tool_name ?? '').trim() || 'unknown'
-    const callId = String(data.call_id ?? `call-${Date.now()}`)
-    const request = formatToolRequest(data.arguments)
-    return {
-      id: callId,
-      kind: 'tool',
-      title: toolName,
-      request: hasToolRequest(request) ? request : undefined,
-      detail: request,
-      status: 'running',
-    }
-  }
-
-  if (event === 'tool_result') {
-    const toolName = String(data.tool_name ?? '').trim() || 'unknown'
-    const callId = String(data.call_id ?? `result-${Date.now()}`)
-    const result = data.result
-    const request = formatToolRequest(data.arguments)
-    const response = formatToolResponse(result)
-    return {
-      id: callId,
-      kind: 'tool',
-      title: toolName,
-      request: hasToolRequest(request) ? request : undefined,
-      response: response || undefined,
-      detail: response,
-      status: resultLooksLikeError(result) ? 'error' : 'done',
-    }
-  }
-
-  return null
-}
-
-export function applyStreamingViz(blocks: ChatBlock[], spec: VizSpec): ChatBlock[] {
-  const next = closeOpenStreamingText(blocks)
-  return [
-    ...next,
-    {
-      kind: 'viz',
-      id: `stream-viz-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      spec,
-    },
-  ]
-}
-
-export function applyStreamingArtifact(blocks: ChatBlock[], spec: ArtifactSpec): ChatBlock[] {
-  const next = closeOpenStreamingText(blocks)
-  return [
-    ...next,
-    {
-      kind: 'artifact',
-      id: `stream-artifact-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      spec,
-    },
-  ]
 }
 

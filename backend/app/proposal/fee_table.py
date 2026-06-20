@@ -67,6 +67,60 @@ def build_service_cell_html(
     return "".join(parts)
 
 
+def service_column_flags(layout: dict[str, Any]) -> dict[str, bool]:
+    """Resolve which MDM text fields appear in the fee-table Service cell."""
+    cols = layout.get("service_columns")
+    if isinstance(cols, dict):
+        return {
+            "service_name": bool(cols.get("service_name", True)),
+            "description": bool(cols.get("description", False)),
+            "scope_of_work": bool(cols.get("scope_of_work", False)),
+        }
+    # Legacy: include_scope_of_work maps to scope_of_work only.
+    return {
+        "service_name": True,
+        "description": False,
+        "scope_of_work": bool(layout.get("include_scope_of_work")),
+    }
+
+
+def build_fee_service_cell_html(
+    row: dict[str, Any],
+    columns: dict[str, bool],
+    *,
+    numbered_prefix: str | None = None,
+) -> str:
+    name = str(row.get("service_name") or row.get("label") or "").strip()
+    desc = str(row.get("description") or "").strip()
+    sow = str(row.get("scope_of_work") or "").strip()
+
+    if columns.get("service_name") and name:
+        heading = name
+    elif columns.get("description") and desc:
+        heading = desc
+    else:
+        heading = str(row.get("sku") or "")
+
+    parts: list[str] = []
+    title = f"{numbered_prefix} {heading}" if numbered_prefix else heading
+    parts.append(f"<strong>{escape_html(title)}</strong>")
+
+    if columns.get("description") and desc and desc != heading:
+        parts.append(f"<p>{escape_html(desc)}</p>")
+    if columns.get("scope_of_work") and sow:
+        scope_html = format_scope_html(sow)
+        if scope_html:
+            parts.append(scope_html)
+
+    result = "".join(parts)
+    footnote_num = row.get("footnote_num")
+    if footnote_num:
+        from app.proposal.footnotes import footnote_superscript_html
+
+        result += footnote_superscript_html(int(footnote_num))
+    return result
+
+
 def row_frequency_columns(row: dict[str, Any]) -> dict[str, float | None]:
     amount = row.get("amount")
     if amount is None:
@@ -85,9 +139,32 @@ def row_frequency_columns(row: dict[str, Any]) -> dict[str, float | None]:
     return cols
 
 
-_LABEL_COL_WIDTH = "33.333%"
-_AMOUNT_COL_WIDTH = "13.333%"
+_DEFAULT_COLUMN_WIDTHS: dict[str, dict[str, str]] = {
+    "simple": {"service": "68%", "amount": "32%"},
+    "frequency_columns": {"service": "33.333%", "amount": "13.333%"},
+}
 _TABLE_STYLE = "width:100%;table-layout:fixed;border-collapse:collapse"
+
+
+def fee_column_widths(layout: dict[str, Any] | None, table_style: str) -> dict[str, str]:
+    """Resolve service/amount column widths for a fee table style from template fee_layout."""
+    style = str(table_style or "simple").strip().lower()
+    if style not in _DEFAULT_COLUMN_WIDTHS:
+        style = "simple"
+    defaults = _DEFAULT_COLUMN_WIDTHS[style]
+    raw = (layout or {}).get("column_widths") or {}
+    nested: dict[str, Any] = {}
+    if isinstance(raw.get(style), dict):
+        nested = raw[style]
+    flat: dict[str, str] = {}
+    if isinstance(raw.get("service"), str):
+        flat["service"] = str(raw["service"])
+    if isinstance(raw.get("amount"), str):
+        flat["amount"] = str(raw["amount"])
+    return {
+        "service": str(nested.get("service") or flat.get("service") or defaults["service"]),
+        "amount": str(nested.get("amount") or flat.get("amount") or defaults["amount"]),
+    }
 
 
 def format_money(amount: float | None, currency: str = "", *, include_currency: bool = True) -> str:
@@ -158,23 +235,39 @@ def _amount_cell(
     *,
     include_currency: bool = False,
     compact_layout: bool = False,
+    col_width: str | None = None,
 ) -> str:
     text = format_money(amount, currency, include_currency=include_currency)
-    if compact_layout:
+    if compact_layout and col_width:
         return (
-            f"<td width=\"{_AMOUNT_COL_WIDTH}\" class=\"proposal-fee-amount\" "
-            f"style=\"width:{_AMOUNT_COL_WIDTH}\">"
+            f"<td width=\"{col_width}\" class=\"proposal-fee-amount\" "
+            f"style=\"width:{col_width}\">"
+            f"{escape_html(text) if text else '&nbsp;'}</td>"
+        )
+    if col_width:
+        return (
+            f"<td width=\"{col_width}\" class=\"proposal-fee-amount\" style=\"width:{col_width}\">"
             f"{escape_html(text) if text else '&nbsp;'}</td>"
         )
     return f"<td class=\"proposal-fee-amount\">{escape_html(text) if text else '&nbsp;'}</td>"
 
 
-def _text_amount_cell(text: str | None, *, compact_layout: bool = False) -> str:
+def _text_amount_cell(
+    text: str | None,
+    *,
+    compact_layout: bool = False,
+    col_width: str | None = None,
+) -> str:
     value = str(text or "").strip()
-    if compact_layout:
+    if compact_layout and col_width:
         return (
-            f"<td width=\"{_AMOUNT_COL_WIDTH}\" class=\"proposal-fee-amount\" "
-            f"style=\"width:{_AMOUNT_COL_WIDTH}\">"
+            f"<td width=\"{col_width}\" class=\"proposal-fee-amount\" "
+            f"style=\"width:{col_width}\">"
+            f"{escape_html(value) if value else '&nbsp;'}</td>"
+        )
+    if col_width:
+        return (
+            f"<td width=\"{col_width}\" class=\"proposal-fee-amount\" style=\"width:{col_width}\">"
             f"{escape_html(value) if value else '&nbsp;'}</td>"
         )
     return f"<td class=\"proposal-fee-amount\">{escape_html(value) if value else '&nbsp;'}</td>"
@@ -205,33 +298,44 @@ def _frequency_row_display(row: dict[str, Any]) -> tuple[dict[str, float | None]
     return cols, fee_raw_text, annualized_total
 
 
-def _fee_table_colgroup() -> str:
+def _fee_table_colgroup(service_width: str, amount_width: str) -> str:
     amount_col = (
-        f'<col width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'<col width="{amount_width}" style="width:{amount_width}" '
         f'class="proposal-fee-col-amount" />'
     )
     return (
         "<colgroup>"
-        f'<col width="{_LABEL_COL_WIDTH}" style="width:{_LABEL_COL_WIDTH}" '
+        f'<col width="{service_width}" style="width:{service_width}" '
         f'class="proposal-fee-col-label" />'
         f"{amount_col * 5}"
         "</colgroup>"
     )
 
 
-def _fee_table_head(label: str) -> str:
+def _simple_table_colgroup(service_width: str, amount_width: str) -> str:
+    return (
+        "<colgroup>"
+        f'<col width="{service_width}" style="width:{service_width}" '
+        f'class="proposal-fee-col-label" />'
+        f'<col width="{amount_width}" style="width:{amount_width}" '
+        f'class="proposal-fee-col-amount" />'
+        "</colgroup>"
+    )
+
+
+def _fee_table_head(label: str, service_width: str, amount_width: str) -> str:
     return (
         "<thead><tr>"
-        f'<th width="{_LABEL_COL_WIDTH}" style="width:{_LABEL_COL_WIDTH}">{label}</th>'
-        f'<th width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'<th width="{service_width}" style="width:{service_width}">{label}</th>'
+        f'<th width="{amount_width}" style="width:{amount_width}" '
         f'class="proposal-fee-amount-head">Monthly</th>'
-        f'<th width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'<th width="{amount_width}" style="width:{amount_width}" '
         f'class="proposal-fee-amount-head">Quarterly</th>'
-        f'<th width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'<th width="{amount_width}" style="width:{amount_width}" '
         f'class="proposal-fee-amount-head">Annual</th>'
-        f'<th width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'<th width="{amount_width}" style="width:{amount_width}" '
         f'class="proposal-fee-amount-head">Once-Off</th>'
-        f'<th width="{_AMOUNT_COL_WIDTH}" style="width:{_AMOUNT_COL_WIDTH}" '
+        f'<th width="{amount_width}" style="width:{amount_width}" '
         f'class="proposal-fee-amount-head">Total</th>'
         "</tr></thead><tbody>"
     )
@@ -250,12 +354,25 @@ def _payment_table_head() -> str:
     )
 
 
+def _format_amount_cell_text(amount_text: str) -> str:
+    return escape_html(amount_text)
+
+
 def render_frequency_table(
     groups: list[dict[str, Any]],
     *,
     currency: str = "",
-    include_scope: bool = False,
+    service_columns: dict[str, bool] | None = None,
+    column_widths: dict[str, str] | None = None,
 ) -> str:
+    widths = column_widths or fee_column_widths(None, "frequency_columns")
+    service_width = widths["service"]
+    amount_width = widths["amount"]
+    columns = service_columns or {
+        "service_name": True,
+        "description": False,
+        "scope_of_work": False,
+    }
     parts: list[str] = []
     for index, group in enumerate(groups, 1):
         title = group.get("display_name") or group.get("group_id") or f"{index}. Services"
@@ -265,47 +382,52 @@ def render_frequency_table(
         parts.append(
             f"<table class=\"proposal-fee-table proposal-fee-table-frequency\" style=\"{_TABLE_STYLE}\">"
         )
-        parts.append(_fee_table_colgroup())
-        parts.append(_fee_table_head("Service"))
+        parts.append(_fee_table_colgroup(service_width, amount_width))
+        parts.append(_fee_table_head("Service", service_width, amount_width))
         sub = 1
         for row in group.get("rows") or []:
             cols, fee_raw_text, annualized_total = _frequency_row_display(row)
             active_col = _active_frequency_column(row.get("billing_frequency"))
             row_currency = str(row.get("currency") or currency)
-            label = str(row.get("label") or row.get("sku"))
-            service_html = build_service_cell_html(
-                index,
-                sub,
-                label,
-                scope=str(row["scope_of_work"]) if include_scope and row.get("scope_of_work") else None,
-                note=str(row["note"]) if row.get("note") else None,
+            service_html = build_fee_service_cell_html(
+                row,
+                columns,
+                numbered_prefix=f"{index}.{sub}",
             )
 
             def _frequency_cell(column: str) -> str:
                 if fee_raw_text and column == active_col:
-                    return _text_amount_cell(fee_raw_text, compact_layout=True)
+                    return _text_amount_cell(fee_raw_text, compact_layout=True, col_width=amount_width)
                 if fee_raw_text:
-                    return _text_amount_cell(None, compact_layout=True)
+                    return _text_amount_cell(None, compact_layout=True, col_width=amount_width)
                 return _amount_cell(
                     cols.get(column),
                     row_currency,
                     include_currency=bool(row_currency),
                     compact_layout=True,
+                    col_width=amount_width,
                 )
 
+            total_display = _format_amount_cell_text(
+                format_money(
+                    annualized_total,
+                    row_currency,
+                    include_currency=bool(row_currency),
+                ).strip()
+                if annualized_total is not None
+                else "",
+            )
             parts.append(
                 "<tr>"
-                f"<td width=\"{_LABEL_COL_WIDTH}\" class=\"proposal-fee-service\" "
-                f"style=\"width:{_LABEL_COL_WIDTH}\">{service_html}</td>"
+                f"<td width=\"{service_width}\" class=\"proposal-fee-service\" "
+                f"style=\"width:{service_width}\">{service_html}</td>"
                 + _frequency_cell("monthly")
                 + _frequency_cell("quarterly")
                 + _frequency_cell("annual")
                 + _frequency_cell("once_off")
-                + _amount_cell(
-                    annualized_total,
-                    row_currency,
-                    include_currency=bool(row_currency),
-                    compact_layout=True,
+                + (
+                    f"<td width=\"{amount_width}\" class=\"proposal-fee-amount\" "
+                    f"style=\"width:{amount_width}\">{total_display or '&nbsp;'}</td>"
                 )
                 + "</tr>"
             )
@@ -319,14 +441,33 @@ def render_simple_table(
     groups: list[dict[str, Any]],
     *,
     show_recurring: bool = True,
-    include_scope: bool = False,
+    service_columns: dict[str, bool] | None = None,
+    amount_column_label: str = "Amount",
+    column_widths: dict[str, str] | None = None,
 ) -> str:
+    widths = column_widths or fee_column_widths(None, "simple")
+    service_width = widths["service"]
+    amount_width = widths["amount"]
+    columns = service_columns or {
+        "service_name": True,
+        "description": False,
+        "scope_of_work": False,
+    }
     parts: list[str] = []
+    amount_header = escape_html(amount_column_label)
     for group in groups:
         parts.append(f"### {group.get('display_name') or group.get('group_id')}")
         parts.append("")
-        parts.append("<table class=\"proposal-fee-table proposal-fee-table-simple\">")
-        parts.append("<thead><tr><th>Service</th><th>Amount</th></tr></thead><tbody>")
+        parts.append(
+            f"<table class=\"proposal-fee-table proposal-fee-table-simple\" style=\"{_TABLE_STYLE}\">"
+        )
+        parts.append(_simple_table_colgroup(service_width, amount_width))
+        parts.append(
+            "<thead><tr>"
+            f'<th width="{service_width}" style="width:{service_width}">Service</th>'
+            f'<th width="{amount_width}" style="width:{amount_width}">{amount_header}</th>'
+            "</tr></thead><tbody>"
+        )
         for row in group.get("rows") or []:
             amount_display = row.get("amount_display")
             amount = row.get("amount")
@@ -337,19 +478,18 @@ def render_simple_table(
             else:
                 row_currency = row.get("currency") or ""
                 amount_text = format_money(float(amount), row_currency, include_currency=bool(row_currency)).strip()
-            label = str(row.get("label") or row.get("sku"))
+            label = str(row.get("service_name") or row.get("label") or row.get("sku"))
             if show_recurring and row.get("recurring") == "RECURRING":
                 label = f"{label} ({str(row.get('billing_frequency', 'recurring')).lower()})"
-            service_parts = [f"<strong>{escape_html(label)}</strong>"]
-            if include_scope and row.get("scope_of_work"):
-                scope_html = format_scope_html(str(row["scope_of_work"]))
-                if scope_html:
-                    service_parts.append(scope_html)
-            service_html = "".join(service_parts)
+                row = {**row, "service_name": label}
+            service_html = build_fee_service_cell_html(row, columns)
+            amount_html = _format_amount_cell_text(amount_text)
             parts.append(
                 "<tr>"
-                f"<td class=\"proposal-fee-service\">{service_html}</td>"
-                f"<td class=\"proposal-fee-amount\">{escape_html(amount_text)}</td>"
+                f"<td width=\"{service_width}\" class=\"proposal-fee-service\" "
+                f"style=\"width:{service_width}\">{service_html}</td>"
+                f'<td width="{amount_width}" class="proposal-fee-amount" '
+                f'style="width:{amount_width}">{amount_html}</td>'
                 "</tr>"
             )
         parts.append("</tbody></table>")

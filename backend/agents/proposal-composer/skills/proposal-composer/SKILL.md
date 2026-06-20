@@ -36,16 +36,29 @@ description: >-
 | 刚明确 jurisdiction/BU，尚未定 template | 对齐可用 `template_id` |
 | **template_id 刚设定** | `initialize_proposal_draft(template_id)`；必要时读 `templates/{id}/template.yaml` |
 | 口头点了方案名 / SKU，ID 不确定 | 加载 **`proposal-mdm-catalog`**：`describe_table` → SQL 查 `package_id` / `sku` |
-| **追加**服务（保留已有 fee rows） | 先用 MCP SQL 查 service rows，再 `add_services_to_proposal_draft`，参数是 `{"services":[{...}]}` |
-| **添加 package** | 先用 MCP SQL 查 package row + service rows，再 `add_package_to_proposal_draft`，参数是 `{"package":{...},"services":[{...}]}` |
-| 给了客户名、简称、地址、联系人等 | patch draft `/facts/client/*`；`company_name`、`short_name`、`address`、`contract_name`、`contract_title`、`contract_email` 是 optional facts |
+| **追加**服务（保留已有 fee rows） | 先用 MCP SQL 查 service rows（含 `description`、`department_team` 等 template 所需列），再 `add_services_to_proposal_draft`，参数是 `{"services":[{...}]}` |
+| **添加 package** | 先用 MCP SQL 查 package + 全部 service rows，再 `add_package_to_proposal_draft(package, services)`。**禁止**只传 `sku`/`price` 缺字段的行。添加后 platform 自动刷新 introduction 占位符与 solution 叙事块 — **不要**手动 `read_knowledge` 再 patch 叙事，除非销售要改文案 |
+| 给了客户名、简称、地址、联系人等 | patch draft `/facts/client/*`；platform 会同步刷新 introduction 里 `{{client.*}}` 占位符（`edit_state.content` 仍为 `source` 时） |
 | 要 credentials / appendix / payment summary 等块 | patch draft section 或用 `enable_proposal_draft_section` 启用；AU payment options 是 `payment_options` derived section，多报价方式写入该 section 的 `options` |
 | 销售要改某一行的价 | patch draft fee row `price.amount`（汇总 total）；非 FIXED 行 fee table 展示仍来自 `price.fee_raw`，必要时也可 patch `price.fee_raw` |
 | 销售要改某一行的显示标题 / SOW | patch draft fee row `service_name` / `scope_of_work` |
+| 用户用 **面板编号** 指行（如「2.2」「第二张表第三行」、SOW 第 N 点） | **先** `get_proposal_draft`，按 **`references/fee-table-display-index.md`** 把 display ref 映射到 `tables[]/rows[]` 与 JSON Pointer；**不要**把「2.2」当成 `rows[2]` 或全局第 2 行 |
+| 用户要求按 department 分组 / regroup fee table | **不要**重新 SQL 拉全库 SKU；`fee_layout.group_by: department` 在 render 时按 **draft rows 的 `department_team`** 分组。MCP 查 package 时必须 SELECT `description` + `department_team` 并原样传入 add tool |
 | 用户要看 proposal | **不必**为右侧面板反复 preview——patch 后面板 live 更新；口头总结前用 draft fee tables/rows 核对 |
 | 用户要 **下载/发客户** 正式文件 | `generate_document`；若 blocked，补缺口或经用户同意后 `force` |
 
 **合并 patch**：同一轮能确定的字段尽量一次写入；新增不存在字段用 JSON Patch `add`，已存在字段才用 `replace`，不确定路径先 `get_proposal_draft`。
+
+## 面板编号 ↔ draft（AU fee table）
+
+Preview 里的 **`2.2 Service Name`** 是渲染时加的，draft JSON **没有**该前缀。用户按编号改行时：
+
+1. `get_proposal_draft` → 找到 `fee_section`。
+2. 只对 **有 rows 的 table** 从 1 编号；行在表内从 1 编号（与 preview 一致）。
+3. 映射到物理路径 `/document/sections/{i}/tables/{ti}/rows/{ri}/…` 再 patch。
+4. 有 SKU 时优先用 `source.sku` 定位；BVI simple 表无行号，用名称或 SKU。
+
+完整规则与反例：**`references/fee-table-display-index.md`**。
 
 ## Draft 与文档
 
@@ -58,7 +71,21 @@ description: >-
 
 MDM 查询统一加载 **`proposal-mdm-catalog`**。本 core skill 只负责把已确认的 MDM rows 写入 draft，并在写入后核对 fee tables/rows。
 
+## Template placeholders 与 package 叙事（BVI 等）
+
+`template.yaml` → `placeholders` 定义 introduction / fee_table 令牌；`fee_section.package_narratives.index` 指向 `blocks/package-narratives.yaml`。
+
+| 机制 | 行为 |
+|------|------|
+| `{{client.contract_name}}` 等 | patch `/facts/client/*` 或 init 时传入 client → introduction 自动替换 |
+| `{{selected_packages_bullet_list}}` | `add_package_to_proposal_draft` 后按 fee tables 的 package 名生成 bullet list |
+| `blocks/solutions/PKG*.md` | 每个已添加 package 的叙事在 **Solution and pricing** 标题下、fee tables **之前** 自动注入 |
+| Agent 只需 | 查 MDM → add package → 核对 preview；**不要** `read_skill_resource('few-shots')` 或重复 patch 叙事块 |
+
+定制文案：patch introduction `content` 会把 `edit_state.content` 变为 manual，之后 platform 不再覆盖该 section。
+
 ## References
 
 - `references/schema.md` — draft JSON Pointer / Patch 常用路径
+- `references/fee-table-display-index.md` — **Preview 表序号/行号（如 2.2）如何映射到 draft row**
 - `references/template-contract.md` — **何时/如何读 `template.yaml`**、section 类型、与 draft materialization 的配合
