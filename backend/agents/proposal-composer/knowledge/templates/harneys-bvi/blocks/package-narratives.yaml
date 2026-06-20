@@ -1,6 +1,5 @@
-# Maps MDM package_id → solution narrative block auto-injected at render time.
-# Platform reads this index when fee tables contain a package; agent does NOT need to
-# read_knowledge this file unless customizing narrative copy via patch.
+# Maps MDM package_id → solution narrative block materialized into draft fee_section.narratives[].
+# add_package_to_proposal_draft seeds/syncs these blocks; agent may patch /sections/.../narratives/N/content.
 #
 # Placeholders in blocks (e.g. {{fee_year}}) resolve from draft facts.inputs per template.yaml.
 

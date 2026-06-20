@@ -185,6 +185,7 @@ def _fee_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
         },
         "fee_layout": dict(spec.get("fee_layout") or {}),
         "package_narratives": dict(spec.get("package_narratives") or {}),
+        "narratives": [],
         "intro": {
             "content": intro_content,
             "source": intro_source,
@@ -394,18 +395,37 @@ def add_package_to_draft(draft: dict[str, Any], package: dict[str, Any], service
         raise ValueError("services are required")
 
     fee_section = _first_fee_section(updated)
-    rows = [_draft_fee_row(service, package_id=package_id) for service in services]
-    existing_ids = {
-        row.get("id")
-        for table in fee_section.setdefault("tables", [])
-        for row in table.get("rows", [])
+    existing_packages = {
+        str((table.get("source") or {}).get("package_id") or "").strip()
+        for table in fee_section.get("tables") or []
+        if isinstance(table, dict)
     }
-    rows = [row for row in rows if row["id"] not in existing_ids]
+    if package_id in existing_packages:
+        return updated
+
+    rows = [_draft_fee_row(service, package_id=package_id) for service in services]
     if not rows:
         return updated
+
+    template_id = str((updated.get("meta") or {}).get("template_id") or "").strip()
+    from app.proposal.placeholders import build_package_narrative_block, sync_draft_template_placeholders
+
+    narratives = fee_section.setdefault("narratives", [])
+    if not any(str(n.get("package_id") or "") == package_id for n in narratives if isinstance(n, dict)):
+        narrative_block = build_package_narrative_block(
+            updated,
+            fee_section,
+            template_id=template_id,
+            package_id=package_id,
+            package_name=str(package.get("package_name") or package_id),
+        )
+        if narrative_block:
+            narratives.append(narrative_block)
+
     fee_section.setdefault("tables", []).append(
         {
             "id": f"table_{package_id}",
+            "kind": "fee_table",
             "title": package.get("package_name") or package_id,
             "source": {"type": "mdm_package", "package_id": package_id},
             "policy": {
@@ -417,8 +437,6 @@ def add_package_to_draft(draft: dict[str, Any], package: dict[str, Any], service
             "rows": rows,
         }
     )
-    from app.proposal.placeholders import sync_draft_template_placeholders
-
     return sync_draft_template_placeholders(updated)
 
 
@@ -447,6 +465,7 @@ def add_services_to_draft(
     if target is None:
         target = {
             "id": table_id or "table_additional_services",
+            "kind": "fee_table",
             "title": table_title,
             "source": {"type": "session"},
             "policy": {
@@ -652,9 +671,9 @@ def _render_fee_section(draft: dict[str, Any], section: dict[str, Any]) -> str:
     if intro:
         parts.extend([intro, ""])
     template_id = str((draft.get("meta") or {}).get("template_id") or "")
-    from app.proposal.placeholders import render_package_narratives
+    from app.proposal.placeholders import render_fee_section_narratives
 
-    narratives = render_package_narratives(draft, template_id=template_id, fee_section=section)
+    narratives = render_fee_section_narratives(draft, template_id=template_id, fee_section=section)
     if narratives:
         parts.extend([narratives, ""])
     tables_heading = str(layout.get("tables_heading") or "").strip()

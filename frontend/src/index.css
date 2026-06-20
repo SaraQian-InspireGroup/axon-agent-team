@@ -1999,10 +1999,18 @@ body {
 
 .markdown-body table.proposal-fee-table-simple .proposal-fee-col-amount,
 .markdown-body table.proposal-fee-table-simple th:nth-child(2),
-.markdown-body table.proposal-fee-table-simple td:nth-child(2) {
+.markdown-body table.proposal-fee-table-simple td:nth-child(2),
+.markdown-body table.proposal-fee-table-simple td.proposal-fee-amount {
   text-align: right;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
   vertical-align: top;
+}
+
+.markdown-body table.proposal-fee-table-simple td.proposal-fee-service {
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .markdown-body table.proposal-fee-table-frequency {
@@ -2036,6 +2044,8 @@ body {
   border: 1px solid #d1d5db;
   padding: 0.5rem 0.625rem;
   vertical-align: top;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .markdown-body .proposal-fee-table th {
@@ -2343,6 +2353,96 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
   color: #1e293b;
+}
+
+.proposal-draft-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.proposal-draft-sections-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.proposal-draft-root-label {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-subtle, #64748b);
+}
+
+.proposal-draft-section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.proposal-draft-section {
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  background: #fff;
+  overflow: hidden;
+}
+
+.proposal-draft-section-summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-ink, #1e293b);
+  background: #f8faf9;
+  border-bottom: 1px solid transparent;
+}
+
+.proposal-draft-section[open] .proposal-draft-section-summary {
+  border-bottom-color: var(--color-border);
+}
+
+.proposal-draft-section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.proposal-draft-section-summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 1rem;
+  color: #64748b;
+  transition: transform 0.15s ease;
+}
+
+.proposal-draft-section[open] .proposal-draft-section-summary::before {
+  transform: rotate(90deg);
+}
+
+.proposal-draft-section-json {
+  border: none;
+  border-radius: 0;
+  background: #f8faf9;
+}
+
+.proposal-draft-fee-section-wrap {
+  padding: 0.375rem 0.5rem 0.5rem;
+}
+
+.proposal-draft-fee-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.proposal-draft-nested-group {
+  gap: 0.25rem;
+  margin: 0;
+}
+
+.proposal-draft-section-list-nested {
+  padding-left: 0.375rem;
 }
 
 .artifact-widget-frame-expanded {

@@ -67,6 +67,13 @@ function shouldReplaceProposalPreview(
   next: ProposalPreview,
 ): boolean {
   if (!prev) return true
+  if (
+    next.chat_id &&
+    prev.chat_id &&
+    next.chat_id !== prev.chat_id
+  ) {
+    return true
+  }
   if (prev.markdown && !next.markdown && (next.status === 'empty' || next.status === 'blocked')) {
     return false
   }
@@ -129,6 +136,7 @@ export function ChatPage() {
   const [proposalStateError, setProposalStateError] = useState<string | null>(null)
   const proposalPreviewFetchGenRef = useRef(0)
   const proposalStateFetchGenRef = useRef(0)
+  const chatIdRef = useRef<string | null>(null)
   const proposalPanelTabRef = useRef<ProposalPanelTab>('preview')
   const [memoryRefreshKey, setMemoryRefreshKey] = useState(0)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
@@ -160,6 +168,12 @@ export function ChatPage() {
   const isProposalComposer = selected?.slug === PROPOSAL_COMPOSER_SLUG
   const showChat = !agentsLoading && selected != null
 
+  const invalidateProposalPanelFetches = useCallback(() => {
+    ++proposalPreviewFetchGenRef.current
+    ++proposalStateFetchGenRef.current
+    previewFreshFromStreamRef.current = false
+  }, [])
+
   const fetchProposalPreview = useCallback(async (id: string) => {
     const generation = ++proposalPreviewFetchGenRef.current
     setProposalPreviewLoading(true)
@@ -167,6 +181,8 @@ export function ChatPage() {
     try {
       const preview = await api.getProposalPreview(id, true)
       if (generation !== proposalPreviewFetchGenRef.current) return
+      if (chatIdRef.current !== id) return
+      if (preview.chat_id && preview.chat_id !== id) return
       setProposalPreview((prev) =>
         shouldReplaceProposalPreview(prev, preview) ? preview : prev,
       )
@@ -187,6 +203,8 @@ export function ChatPage() {
     try {
       const payload: ProposalDraftResponse = await api.getProposalDraft(id)
       if (generation !== proposalStateFetchGenRef.current) return
+      if (chatIdRef.current !== id) return
+      if (payload.chat_id && payload.chat_id !== id) return
       setProposalState(payload.draft)
       setProposalStateFingerprint(payload.state_fingerprint)
     } catch (e) {
@@ -199,7 +217,9 @@ export function ChatPage() {
     }
   }, [])
 
-  const applyProposalPreview = useCallback((preview: ProposalPreview) => {
+  const applyProposalPreview = useCallback((preview: ProposalPreview, forChatId: string) => {
+    if (chatIdRef.current !== forChatId) return
+    if (preview.chat_id && preview.chat_id !== forChatId) return
     ++proposalPreviewFetchGenRef.current
     previewFreshFromStreamRef.current = true
     setProposalPreview((prev) =>
@@ -212,6 +232,10 @@ export function ChatPage() {
       setProposalPanelCollapsed(false)
     }
   }, [])
+
+  useEffect(() => {
+    chatIdRef.current = chatId
+  }, [chatId])
 
   useEffect(() => {
     proposalPanelTabRef.current = proposalPanelTab
@@ -278,6 +302,7 @@ export function ChatPage() {
 
   const openChatById = useCallback(async (agentId: string, id: string) => {
     setError(null)
+    invalidateProposalPanelFetches()
     setChatId(id)
     setProposalPreview(null)
     setProposalPreviewError(null)
@@ -288,7 +313,7 @@ export function ChatPage() {
     setInput('')
     const rows = await api.listMessages(id)
     setMessages(rows)
-  }, [])
+  }, [invalidateProposalPanelFetches])
 
   const loadChat = useCallback(
     async (agentId: string) => {
@@ -363,10 +388,11 @@ export function ChatPage() {
       return
     }
     if (!chatId) return
+    invalidateProposalPanelFetches()
     setProposalPanelCollapsed(false)
     setProposalPanelTab('preview')
     void fetchProposalPreview(chatId)
-  }, [isProposalComposer, chatId, fetchProposalPreview])
+  }, [isProposalComposer, chatId, fetchProposalPreview, invalidateProposalPanelFetches])
 
   useEffect(() => {
     scrollToBottomIfPinned()
@@ -523,7 +549,7 @@ export function ChatPage() {
           if (ev.event === 'proposal_updated') {
             const preview = parseProposalPreview(ev.data)
             if (preview) {
-              applyProposalPreview(preview)
+              applyProposalPreview(preview, chatId)
             }
             if (proposalPanelTabRef.current === 'state' && chatId) {
               void fetchProposalState(chatId)
@@ -596,7 +622,9 @@ export function ChatPage() {
   const startNewChat = async () => {
     if (!selectedId || loading || chatSessionLoading) return
     setHistoryOpen(false)
+    invalidateProposalPanelFetches()
     setProposalPreview(null)
+    setProposalPreviewError(null)
     setProposalState(null)
     setProposalStateFingerprint(null)
     setProposalStateError(null)

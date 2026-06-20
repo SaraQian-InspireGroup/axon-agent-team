@@ -76,6 +76,36 @@ def test_fee_tables_heading_separates_narratives_from_tables():
     assert "## Fees" in solution
     assert solution.index("streamlined route for investment managers") < solution.index("## Fees")
     assert solution.index("## Fees") < solution.index("### Approval Manager")
+
+
+def test_add_package_materializes_narrative_block():
+    draft = materialize_draft(template_id="harneys-bvi")
+    updated = add_package_to_draft(
+        draft,
+        {"package_id": "PKG003", "package_name": "Approval Manager"},
+        [
+            {
+                "sku": "AM001",
+                "description": "Formation fee",
+                "department_team": "Corporate Secretarial Services",
+                "pricing_type": "FIXED",
+                "price_amount": 100.0,
+                "price_currency": "USD",
+                "billing_frequency": "ONE_TIME",
+                "recurring": "ONE_OFF",
+            },
+        ],
+    )
+    fee = next(s for s in updated["document"]["sections"] if s["kind"] == "fee_section")
+    assert len(fee["narratives"]) == 1
+    narrative = fee["narratives"][0]
+    assert narrative["kind"] == "package_narrative"
+    assert narrative["package_id"] == "PKG003"
+    assert "streamlined route for investment managers" in narrative["content"]
+    assert fee["tables"][0]["kind"] == "fee_table"
+
+
+def test_sync_after_client_patch():
     draft = materialize_draft(template_id="harneys-bvi")
     draft = sync_draft_template_placeholders(draft)
     draft["facts"]["client"]["contract_name"] = "Updated Name"

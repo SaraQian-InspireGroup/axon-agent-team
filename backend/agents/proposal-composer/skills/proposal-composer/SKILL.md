@@ -1,91 +1,123 @@
 ---
 name: proposal-composer
 description: >-
-  Domain rules for the Proposal Composer agent: editable proposal_draft semantics,
-  template section contracts, draft fee rows, optional/derived sections, and
-  proposal generation workflow.
+  Editable proposal_draft semantics: document meta-model (facts, sections by kind),
+  preview-vs-draft, patch vs materialize, and template as render contract. Use when
+  initializing or editing a proposal draft—not for MDM catalog SQL.
 ---
 
-# Proposal Composer — Skill（对内）
+# Proposal Composer — Draft Skill
 
-## 与 Tool Description / System Prompt 的分工
+## 与 System Prompt 的分工
 
-| 层 | 写什么 | 不写什么 |
-|----|--------|----------|
-| **Tool descriptions** | 何时调哪个 tool、JSON Patch / path 语义 | 销售话术、jurisdiction 业务 |
-| **System prompt** | 角色、对外语言、任务驱动节奏 | 重复 tool 路由表 |
-| **本 Skill** | 业务意图、draft 字段、完整性怎么解读 | 再写一遍 tool description / MDM SQL |
-| **`references/schema.md`** | Draft JSON Pointer / JSON Patch 路径示例 | — |
-| **`proposal-mdm-catalog`** | MDM schema-first SQL / catalog few-shot | draft patch 语义 |
+| 层 | 内容 |
+|----|------|
+| **System prompt** | 角色、销售语言、任务驱动 |
+| **Tool descriptions** | 各 tool 的调用时机与参数 |
+| **本 Skill** | draft **元模型**与编辑原则 |
+| **`references/`** | 补充说明（preview 差异、template 字段）；**非**完整 schema 镜像 |
 
-**Tool 怎么选**：读各 builtin / MCP tool 的 description；本 Skill 只补充 **填什么、查什么、怎么验证**。
+## 编辑原则
 
-## 核心目标（每轮 implicit checklist）
+1. **Draft 是编辑真相，Preview 是渲染结果** — 改用户指的内容 = 改产生该内容的 draft 字段，不是 panel 上的装饰（编号、分组、脚注序号等）。
 
-1. **Draft 是展示草稿**——用户看到什么就改 draft 的对应 node。
-2. **Catalog additions 走 materializer**——新增 MDM package/service 先用 MCP SQL 查询，再把返回行传给 add tools，让平台生成 fee table/row 与 source/provenance；不要手写完整 fee row。
-3. **展示编辑走 patch**——客户信息、section content、table title、fee row `service_name` / `scope_of_work` / `price.amount`（汇总金额）/ `price.fee_raw`（非 FIXED 展示文案）用 JSON Patch。
-4. **选型后检查 draft fee tables**——添加 package/service 后读 draft 的 `fee_section.tables[].rows[]`，确认右侧展示对象真的更新。
-5. **Readiness 只影响导出**——缺项可继续 draft/preview；正式下载看 `generate_document` 返回的 ready/block 状态。
-6. **写 draft tools 不并发**——会修改 draft 的工具顺序调用；多个服务一次放进 `services` array。
+2. **先定位，再修改** — `get_proposal_draft` → 按 section `kind` / `id` 找到 node → 用稳定 key（`source.sku`、`package_id`、服务名）定位 → patch。详见 [preview-vs-draft.md](references/preview-vs-draft.md)。
 
-## 业务意图 → 做什么（非 tool 清单）
+3. **新增 vs 编辑** — catalog 新增用 materializer；可见内容编辑用 patch。勿 patch 手写整行来「加服务」。
 
-| 销售信号 | 你要完成的 |
-|----------|------------|
-| 刚明确 jurisdiction/BU，尚未定 template | 对齐可用 `template_id` |
-| **template_id 刚设定** | `initialize_proposal_draft(template_id)`；必要时读 `templates/{id}/template.yaml` |
-| 口头点了方案名 / SKU，ID 不确定 | 加载 **`proposal-mdm-catalog`**：`describe_table` → SQL 查 `package_id` / `sku` |
-| **追加**服务（保留已有 fee rows） | 先用 MCP SQL 查 service rows（含 `description`、`department_team` 等 template 所需列），再 `add_services_to_proposal_draft`，参数是 `{"services":[{...}]}` |
-| **添加 package** | 先用 MCP SQL 查 package + 全部 service rows，再 `add_package_to_proposal_draft(package, services)`。**禁止**只传 `sku`/`price` 缺字段的行。添加后 platform 自动刷新 introduction 占位符与 solution 叙事块 — **不要**手动 `read_knowledge` 再 patch 叙事，除非销售要改文案 |
-| 给了客户名、简称、地址、联系人等 | patch draft `/facts/client/*`；platform 会同步刷新 introduction 里 `{{client.*}}` 占位符（`edit_state.content` 仍为 `source` 时） |
-| 要 credentials / appendix / payment summary 等块 | patch draft section 或用 `enable_proposal_draft_section` 启用；AU payment options 是 `payment_options` derived section，多报价方式写入该 section 的 `options` |
-| 销售要改某一行的价 | patch draft fee row `price.amount`（汇总 total）；非 FIXED 行 fee table 展示仍来自 `price.fee_raw`，必要时也可 patch `price.fee_raw` |
-| 销售要改某一行的显示标题 / SOW | patch draft fee row `service_name` / `scope_of_work` |
-| 用户用 **面板编号** 指行（如「2.2」「第二张表第三行」、SOW 第 N 点） | **先** `get_proposal_draft`，按 **`references/fee-table-display-index.md`** 把 display ref 映射到 `tables[]/rows[]` 与 JSON Pointer；**不要**把「2.2」当成 `rows[2]` 或全局第 2 行 |
-| 用户要求按 department 分组 / regroup fee table | **不要**重新 SQL 拉全库 SKU；`fee_layout.group_by: department` 在 render 时按 **draft rows 的 `department_team`** 分组。MCP 查 package 时必须 SELECT `description` + `department_team` 并原样传入 add tool |
-| 用户要看 proposal | **不必**为右侧面板反复 preview——patch 后面板 live 更新；口头总结前用 draft fee tables/rows 核对 |
-| 用户要 **下载/发客户** 正式文件 | `generate_document`；若 blocked，补缺口或经用户同意后 `force` |
+4. **Template 是契约** — section 有哪些 slot、render 怎么画，以 `templates/{id}/template.yaml` 为准；结构不清楚时 `read_knowledge` 读 template，不要凭 skill 记路径。
 
-**合并 patch**：同一轮能确定的字段尽量一次写入；新增不存在字段用 JSON Patch `add`，已存在字段才用 `replace`，不确定路径先 `get_proposal_draft`。
+5. **Platform 会重算的不要重复做** — `edit_state: source` 的块、add_package 触发的 narratives/占位符；只为销售明确要的差异 patch，必要时锁定 edit_state。
 
-## 面板编号 ↔ draft（AU fee table）
+6. **改完核对 draft** — 右侧面板随 draft 更新；报价以 draft fee rows 为准。
 
-Preview 里的 **`2.2 Service Name`** 是渲染时加的，draft JSON **没有**该前缀。用户按编号改行时：
+7. **Readiness 只约束导出** — live preview / 改单无步骤锁。
 
-1. `get_proposal_draft` → 找到 `fee_section`。
-2. 只对 **有 rows 的 table** 从 1 编号；行在表内从 1 编号（与 preview 一致）。
-3. 映射到物理路径 `/document/sections/{i}/tables/{ti}/rows/{ri}/…` 再 patch。
-4. 有 SKU 时优先用 `source.sku` 定位；BVI simple 表无行号，用名称或 SKU。
+## Document 元模型
 
-完整规则与反例：**`references/fee-table-display-index.md`**。
+```
+proposal_draft
+├── meta          … template_id, title
+├── facts         … client, inputs（跨 section 的事实）
+└── document
+    └── sections[]   … 每个 node 有 kind，kind 决定「里面有什么」
+```
 
-## Draft 与文档
+**不要**把 skill 当成 JSON Schema 镜像。对象演进时：**以 `get_proposal_draft` 返回为准**；本 skill 只描述稳定 **概念层**。
 
-- 字段与路径：**`get_proposal_draft`** 或 **`references/schema.md`**
-- **模版契约（section kind、optional、derived、列/hints）**：**`read_knowledge("templates/{template_id}/template.yaml")`** — 见 **`references/template-contract.md`**
-- Patch 后核对：draft `/document/sections` 中对应 section/table/row（对外翻译成白话）
-- **Live 面板**：平台按 draft 渲染 proposal 正文；聊天内 artifact 仅 **generate** 等里程碑
+### Section 由 `kind` 决定形状
 
-## Catalog 边界
+| kind | 概念 | 典型可编辑内容 |
+|------|------|----------------|
+| `markdown_block` / `static_block` | 单块文案 | `content`（视 editable） |
+| **`fee_section`** | **定价区 composite**（见下） | intro、package 叙事、fee rows |
+| `derived_section` | 从其他 draft 推导 | 启用/配置；一般不 patch 生成结果 |
+| `collection` | 条目列表 | `items[]` |
 
-MDM 查询统一加载 **`proposal-mdm-catalog`**。本 core skill 只负责把已确认的 MDM rows 写入 draft，并在写入后核对 fee tables/rows。
+其他 kind 出现时：读 template + 当前 draft，按 node 上实际字段编辑。
 
-## Template placeholders 与 package 叙事（BVI 等）
+### `fee_section`：一个 section，多个内容槽
 
-`template.yaml` → `placeholders` 定义 introduction / fee_table 令牌；`fee_section.package_narratives.index` 指向 `blocks/package-narratives.yaml`。
+Template 里通常一个 id（如 `solution_and_fees`）对应 **一个** `fee_section` node，**不是**两个并列 template section。
 
-| 机制 | 行为 |
-|------|------|
-| `{{client.contract_name}}` 等 | patch `/facts/client/*` 或 init 时传入 client → introduction 自动替换 |
-| `{{selected_packages_bullet_list}}` | `add_package_to_proposal_draft` 后按 fee tables 的 package 名生成 bullet list |
-| `blocks/solutions/PKG*.md` | 每个已添加 package 的叙事在 **Solution and pricing** 标题下、fee tables **之前** 自动注入 |
-| Agent 只需 | 查 MDM → add package → 核对 preview；**不要** `read_skill_resource('few-shots')` 或重复 patch 叙事块 |
+Draft 内按 **语义槽** 组织（非独立 sub-section id）：
 
-定制文案：patch introduction `content` 会把 `edit_state.content` 变为 manual，之后 platform 不再覆盖该 section。
+| 槽 | 存什么 | Preview 里大致对应 |
+|----|--------|-------------------|
+| `intro` | 定价区引导文案 | Solution 开头段落 |
+| `narratives[]` | 每个 package 的 solution 叙事块 | package 说明段落（在 fee 表 **之前**） |
+| `tables[].rows[]` | 计费行（SKU、展示字段、price、footnotes 等） | Fee tables（在叙事 **之后**） |
+
+**Preview 顺序**（intro → narratives → fee 表标题 → tables → 可选脚注区）由 platform render + `fee_layout` 决定，不是 draft 里再嵌一层 section tree。
+
+`add_package` 同时往 `narratives[]` 和 `tables[]` 写入；改 package 叙事 patch narrative 的 `content`，改价 patch 对应 row 的 price 字段。
+
+### Row 级字段：按语义找，不按 jurisdiction 记路径
+
+Fee row 是 **结构化业务对象**，常见语义类别：
+
+| 类别 | 含义 | patch 场景 |
+|------|------|------------|
+| **identity / provenance** | `source.sku`, `source.package_id`, `id` | 定位用，少改 |
+| **display text** | `service_name`, `description`, `scope_of_work` | 销售改展示、SOW |
+| **pricing** | `price.amount`, `price.fee_raw`, `pricing_type` | 改总价 / 规则文案 |
+| **footnotes** | `footnotes`（行级文本） | 改脚注 **正文** |
+
+JSON Pointer 模式：`/document/sections/{i}/…`，其中 `{i}` 下具体 key 名 **以 draft 为准**（如 `tables/{t}/rows/{r}/footnotes`）。不必 memorized 每张表的路径。
+
+### `fee_layout`：只改显示，不改存储路径
+
+`fee_layout`（在 fee_section 或 template 上）控制 **怎么画**，不改变 footnote/price 存在哪：
+
+| layout 开关 | 存储 | Preview |
+|-------------|------|---------|
+| `footnotes: aggregate` | 仍在 **每行** `rows[].footnotes` | 全文去重、统一编号、section 末一次渲染 |
+| `group_by: department` | rows 仍在 tables 内 | render 时按 `department_team` 拆多张表 |
+| `service_columns` | 各字段仍在 row 上 | 决定 Service 单元格展示哪些列 |
+| `table_style` | — | 是否显示 `2.2` 行号等 |
+
+未来非 aggregate 脚注模式：row 路径仍相同，仅 render 不同。
+
+### Facts 与 placeholders
+
+`facts.client` / `facts.inputs` 是跨 section 输入；template `placeholders` 在 render 时注入 markdown 块。Patch client facts 即可；勿为 `{{client.*}}` 去 patch introduction 全文（除非销售要 override 且 edit_state 允许）。
+
+## 用户指称 → 思考方式
+
+- **某行 / 某价 / SOW / 脚注** → 在 `fee_section` 的 `tables[].rows[]` 里按 sku/名称定位 → patch 对应 **语义字段**。
+- **某 package 方案说明** → `narratives[]` 里按 `package_id` 定位 → patch `content`。
+- **客户 / 公司** → `facts.client.*`。
+- **其他章节** → `sections[]` 里按 `id` + `kind`。
+- **加/换 catalog 项** → catalog 查询 → materialize；只改已有 draft → patch。
+
+Path 不确定：**读 draft**，不要猜数组下标。
 
 ## References
 
-- `references/schema.md` — draft JSON Pointer / Patch 常用路径
-- `references/fee-table-display-index.md` — **Preview 表序号/行号（如 2.2）如何映射到 draft row**
-- `references/template-contract.md` — **何时/如何读 `template.yaml`**、section 类型、与 draft materialization 的配合
+| 主题 | Resource |
+|------|----------|
+| Preview vs draft、指称解析 | [preview-vs-draft.md](references/preview-vs-draft.md) |
+| Template 字段与 section kind | [template-contract.md](references/template-contract.md) |
+| 补充字段说明（非权威 schema） | [schema.md](references/schema.md) |
+
+Template：`read_knowledge("templates/{template_id}/template.yaml")`。

@@ -1,84 +1,72 @@
-# Proposal draft schema
+# Proposal Draft — Supplementary Reference
 
-`proposal_draft` is the editable display-layer document. The right-side Proposal Preview is rendered directly from this object.
+**权威形状**：运行时 **`get_proposal_draft`** 返回的 JSON。本文件是概念补充，**不是**需随每次模型变更同步的路径清单。
 
-**Guardrails**: patch only concrete draft nodes that the user can see/edit. For catalog additions, use the add-package/add-service materializer tools.
+元模型与编辑原则见主 Skill **Document 元模型**。
 
-## Preview row numbers (e.g. 2.2)
+## 三层结构
 
-The live panel shows **`{tableIndex}.{rowSub} service_name`** on AU frequency fee tables. Those numbers are **not** fields in draft JSON.
+| 层 | 角色 |
+|----|------|
+| `meta` | 哪份 template、文档标题 |
+| `facts` | 客户与定价输入（跨 section） |
+| `document.sections[]` | 按 template 物化的章节；**`kind` 决定 node 形状** |
 
-Before patching a row the user identified by panel number, read the draft and map display ref → physical row. See **`references/fee-table-display-index.md`** (workflow, 0-based JSON Pointer paths, empty-table skip rule, BVI exception).
+定位 section：`sections[].id` + `sections[].kind`（fee 区通常是 `kind: fee_section`）。
 
-Stable identifiers when the user provides them: `rows[].source.sku`, `rows[].id`, or `service_name` + table `title`.
+## `fee_section` 内容槽（非 template 子 section）
 
-## Template contract
+一个 `fee_section` node 内：
 
-After template is known, initialize the draft and read:
-
-```text
-templates/{template_id}/template.yaml
+```
+intro          … 可选引导文案
+narratives[]   … package 叙事（kind: package_narrative）
+tables[]       … fee_table → rows[]（kind: fee_row）
+fee_layout     … render 规则（也可由 template 合并）
 ```
 
-via `read_knowledge`. That file defines section kinds, default enabled flags, editability, materializers, and derivations. Full workflow: **`references/template-contract.md`**.
+Preview 顺序由 platform render 决定（通常 narratives 先于 fee tables），不是 draft 里再嵌 `sections[]`。
 
-## Common paths
+## Fee row：语义字段（非穷举路径）
 
-| Path | Purpose |
-|------|---------|
-| `/meta/template_id` | Document template |
-| `/facts/client/*` | Company and contact |
-| `/facts/client/company_name` | Optional legal/client company name |
-| `/facts/client/short_name` | Optional client short name |
-| `/facts/client/address` | Optional client address |
-| `/facts/client/contract_name` | Optional contract/contact name |
-| `/facts/client/contract_title` | Optional contract/contact title |
-| `/facts/client/contract_email` | Optional contract/contact email |
-| `/document/sections/{index}/enabled` | Section visibility |
-| `/document/sections/{index}/content` | Editable markdown/static block content |
-| `/document/sections/{index}/tables/{index}/title` | Fee table heading |
-| `/document/sections/{index}/tables/{index}/rows/{index}/service_name` | Client-facing service name |
-| `/document/sections/{index}/tables/{index}/rows/{index}/description` | MDM `description` (fee table when `fee_layout.service_columns.description: true`) |
-| `/document/sections/{index}/tables/{index}/rows/{index}/scope_of_work` | MDM SOW (fee table when `fee_layout.service_columns.scope_of_work: true`) |
-| `/document/sections/{index}/tables/{index}/rows/{index}/footnotes` | Client-facing footnote text (from MDM; aggregated at table end when `fee_layout.footnotes: aggregate`) |
-| `/document/sections/{index}/tables/{index}/rows/{index}/price/amount` | Numeric total used for summaries (`price_amount` semantics) |
-| `/document/sections/{index}/tables/{index}/rows/{index}/price/fee_raw` | Client-facing price text for non-`FIXED` rows; copied from MDM at materialize |
-| `/document/sections/{index}/tables/{index}/rows/{index}/price/pricing_type` | `FIXED`, `UNIT_RATE`, `RANGE`, `BASE_PLUS`, `BASE_PLUS_VARIABLE`, `MATRIX_REF` |
-| `/document/sections/{payment_options_index}/options` | Optional derived payment option configurations, e.g. Option A / Option B |
-| `/document/sections/{payment_options_index}/options/{index}/rows` | Payment option rows keyed by fee table `group_id`; each row is a fee-table summary, not a service row |
+Patch 时按 **语义** 找 field，路径形如 `/document/sections/{si}/tables/{ti}/rows/{ri}/{field}`：
 
-## JSON Patch examples
+| 语义 | 常见 field | 备注 |
+|------|------------|------|
+| 定位 | `source.sku`, `source.package_id`, `id` | 优先用于匹配用户指称 |
+| 展示 | `service_name`, `description`, `scope_of_work` | 取决于 `service_columns` 是否在 preview 显示 |
+| 定价 | `price.amount`, `price.fee_raw`, `price.pricing_type` | 汇总用 amount；非 FIXED 展示常看 fee_raw |
+| 脚注 | `footnotes` | **始终在行上**；见下 |
+
+`edit_state` 标记字段是否仍跟 MDM/template source 同步。
+
+## Footnotes：存储 vs aggregate 显示
+
+| | Draft | Preview（BVI `footnotes: aggregate`） |
+|---|-------|----------------------------------------|
+| 存哪 | 每行 `rows[].footnotes`（字符串） | — |
+| 怎么画 | — | 相同文案去重；`<sup>` 链到 section 末 `<ol>` |
+| 怎么改 | patch 该行的 `footnotes` | 不要 patch preview 底部 HTML 或虚构 section 级 footnotes 数组 |
+
+其他 region 若将来不用 aggregate：row 路径 **不变**，仅 render 布局不同（例如每表脚注、行内脚注）。以 template `fee_layout.footnotes` + 当前 preview 为准。
+
+## Pricing display（render 语义）
+
+- `FIXED` → 表内展示格式化 `price.amount`
+- 其他 `pricing_type` → 常展示 `fee_raw` 规则文案；Total/汇总仍看 `price.amount`
+- `group_by` / `column_widths` / `table_style` → 只影响 layout，不改变 row 字段集合
+
+## Patch 示例（illustrative）
 
 ```json
 [
   {"op": "replace", "path": "/facts/client/company_name", "value": "Acme Ltd"},
-  {"op": "replace", "path": "/document/sections/1/tables/0/title", "value": "Corporate Advisory"},
-  {"op": "replace", "path": "/document/sections/1/tables/0/rows/0/service_name", "value": "Application - Substituted Accounting Period"},
-  {"op": "replace", "path": "/document/sections/1/tables/0/rows/0/price/amount", "value": 1200},
-  {"op": "add", "path": "/document/sections/2/options", "value": [
-    {"option_id": "option_a", "label": "Payment Option A - One-off Payment", "rows": [
-      {"group_id": "table_css", "label": "CSS Package 2", "once_off": 4500, "monthly": 0, "quarterly": 0, "annual": 0}
-    ]},
-    {"option_id": "option_b", "label": "Payment Option B - Monthly Recurring", "rows": [
-      {"group_id": "table_css", "label": "CSS Package 2", "once_off": 0, "monthly": 360, "quarterly": 0, "annual": 0}
-    ]}
-  ]}
+  {"op": "replace", "path": "/document/sections/2/tables/0/rows/1/price/amount", "value": 1200}
 ]
 ```
 
-Prefer `add_package_to_proposal_draft` / `add_services_to_proposal_draft` for MDM catalog additions instead of manually constructing rows.
-
-## Pricing display
-
-- `FIXED`: fee table shows formatted `price.amount`; summaries sum annualised totals from `price.amount`.
-- `UNIT_RATE`, `RANGE`, `BASE_PLUS`, `BASE_PLUS_VARIABLE`, `MATRIX_REF`: AU frequency table shows `price.fee_raw` in the billing column (Monthly/Quarterly/Annual/Once-Off); **Total** column always shows the annualised numeric total from `price.amount` (Monthly×12, Quarterly×4, otherwise×1). BVI simple table shows `fee_raw` in Amount.
-- **Footnotes**: when template sets `fee_layout.footnotes: aggregate`, non-empty `rows[].footnotes` are deduped, numbered once for the **entire fee section**, rendered in a single block after all fee tables, with `<sup>` refs on the **Service** cell linking to `#fn-N`.
-- **Placeholders** (`template.yaml` → `placeholders`): platform resolves `{{client.*}}`, `{{selected_packages_bullet_list}}`, `{{fee_year}}`, etc. on render and after `add_package` / client fact patches (when section `edit_state.content` is `source`).
-- **Package narratives** (`fee_section.package_narratives.index`): platform injects `blocks/solutions/PKG*.md` before fee tables for each package in draft fee tables.
-- **Column widths** (`fee_layout.column_widths`): per `table_style` keys `simple` / `frequency_columns`, each with `service` and `amount` CSS widths (e.g. `72%` / `28%`). Applied to every grouped sub-table via `table-layout: fixed`.
-- **Service cell columns** (`fee_layout.service_columns`): independently toggle `service_name`, `description`, and `scope_of_work` in the fee-table Service cell. BVI default: name + description, no SOW. AU default: name + SOW, no description. Legacy templates may use `include_scope_of_work: true` as alias for `scope_of_work: true`.
-- After confirming facts (e.g. rounds, states), patch `price.amount` with the computed total; keep `fee_raw` as the unit/range description unless sales asks to rewrite it.
+Section/row 索引 **0-based**，且须与 **当前 draft** 一致。Catalog 新增用 materializer，勿手写 row。
 
 ## Readiness
 
-`render_preview` and `generate_document` compute readiness from the draft. Live panel renders the draft even when incomplete.
+Incomplete draft 仍可 preview；`generate_document` 检查 completeness。

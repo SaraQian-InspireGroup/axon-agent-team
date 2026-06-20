@@ -113,7 +113,8 @@ def _validate_read_path(relative_path: str) -> None:
     description=(
         "List available proposal templates and their MDM catalog filters. "
         "Use when the user has not clearly chosen a proposal type, or asks what "
-        "proposal types are supported. Do not use for service/package lookup."
+        "proposal types are supported. Do not use for service/package lookup. "
+        "Read-only: may run in parallel with load_skill or postgres schema/query tools."
     ),
 )
 def list_templates() -> dict[str, Any]:
@@ -197,9 +198,11 @@ def initialize_proposal_draft(
     description=(
         "Read the editable proposal draft that renders the right-hand Proposal Preview. "
         "Use before patching when you need exact section/table/row indexes or ids. "
-        "Panel labels like 2.2 are render-time only (not stored in draft); map them to "
-        "tables[]/rows[] per proposal-composer skill fee-table-display-index before patch. "
-        "Omit path for the full draft; pass a JSON Pointer for a subtree."
+        "Panel labels like 2.2 are render-time only (not stored in draft); locate the "
+        "underlying draft row/field via get_proposal_draft and proposal-composer skill "
+        "preview-vs-draft principles before patch. "
+        "Omit path for the full draft; pass a JSON Pointer for a subtree. "
+        "Read-only: may run in parallel with MCP catalog queries."
     ),
 )
 def get_proposal_draft(
@@ -223,7 +226,8 @@ def get_proposal_draft(
     name="patch_proposal_draft",
     description=(
         "Apply RFC 6902 JSON Patch to existing proposal draft nodes. Use for visible "
-        "display edits: client facts, section content, table titles, fee row service_name, "
+        "display edits: client facts, section content, package narrative content "
+        "(/sections/{fee_index}/narratives/{n}/content), table titles, fee row service_name, "
         "scope_of_work, price.amount (numeric total), price.fee_raw (non-FIXED display text), "
         "or row/table ordering. If adding an MDM package or "
         "service, use add_package_to_proposal_draft/add_services_to_proposal_draft instead "
@@ -268,7 +272,9 @@ def patch_proposal_draft(
         "Materialize a confirmed MDM package into the draft fee section from rows already "
         "queried via MCP SQL. Pass the package row and its service rows, including description, "
         "department_team, pricing_type, price_amount, fee_raw, and footnotes; this tool does not "
-        "query MDM. Do not use for renaming/editing an existing package table; patch the draft."
+        "query MDM. Do not use for renaming/editing an existing package table; patch the draft. "
+        "Mutates draft: call sequentially; do not parallelize with other draft write tools. "
+        "Multiple packages: add one at a time in order."
     ),
 )
 def add_package_to_proposal_draft(
@@ -302,7 +308,8 @@ def add_package_to_proposal_draft(
         "rows already queried via MCP SQL. Pass services as an array of row objects with "
         "pricing_type, price_amount, and fee_raw; a single service is represented as a one-item "
         "array. This tool does not query MDM. Do not use for editing service name, SOW, or price "
-        "on existing rows; patch the draft."
+        "on rows already in the draft; patch instead. "
+        "Mutates draft: one call with all services in the array; do not parallelize multiple calls."
     ),
 )
 def add_services_to_proposal_draft(

@@ -116,43 +116,117 @@ def resolve_section_source_content(
     return content.strip()
 
 
-def render_package_narratives(
+def _narrative_index_entry(
+    fee_section: dict[str, Any],
+    template_id: str,
+    package_id: str,
+) -> tuple[dict[str, Any], str] | None:
+    index_ref = str((fee_section.get("package_narratives") or {}).get("index") or "").strip()
+    if not index_ref:
+        return None
+    try:
+        index = load_package_narratives_index(template_id, index_ref)
+    except (OSError, ValueError):
+        return None
+    entry = index.get(package_id)
+    if not isinstance(entry, dict):
+        return None
+    file_ref = str(entry.get("file") or "").strip()
+    if not file_ref:
+        return None
+    return entry, file_ref
+
+
+def build_package_narrative_block(
+    draft: dict[str, Any],
+    fee_section: dict[str, Any],
+    *,
+    template_id: str,
+    package_id: str,
+    package_name: str,
+) -> dict[str, Any] | None:
+    """Materialize one editable package narrative block for fee_section.narratives."""
+    resolved = _narrative_index_entry(fee_section, template_id, package_id)
+    if resolved is None:
+        return None
+    entry, file_ref = resolved
+    title = str(package_name or entry.get("package_name") or package_id).strip()
+    content = ""
+    try:
+        content = read_static_block(template_id, file_ref).strip()
+    except OSError:
+        content = ""
+    if content:
+        content = apply_template_placeholders(content, draft, template_id, "fee_table")
+    return {
+        "id": f"narrative_{package_id}",
+        "kind": "package_narrative",
+        "package_id": package_id,
+        "title": title,
+        "content": content,
+        "edit_state": {"content": "source" if content else "empty"},
+        "source": {
+            "type": "template_package_narrative",
+            "package_id": package_id,
+            "file": file_ref,
+        },
+        "policy": {"editable": True, "removable": True},
+    }
+
+
+def resolve_package_narrative_content(
+    draft: dict[str, Any],
+    narrative: dict[str, Any],
+    *,
+    template_id: str,
+) -> str:
+    edit_state = (narrative.get("edit_state") or {}).get("content")
+    source = narrative.get("source") or {}
+    file_ref = source.get("file")
+    content = str(narrative.get("content") or "")
+    if edit_state == "source" and file_ref:
+        try:
+            content = read_static_block(template_id, str(file_ref)).strip()
+        except OSError:
+            content = str(narrative.get("content") or "")
+    return apply_template_placeholders(content, draft, template_id, "fee_table").strip()
+
+
+def render_fee_section_narratives(
     draft: dict[str, Any],
     *,
     template_id: str,
     fee_section: dict[str, Any],
 ) -> str:
-    """Concatenate solution narrative blocks for packages present in fee tables."""
-    index_ref = str((fee_section.get("package_narratives") or {}).get("index") or "").strip()
-    if not index_ref:
-        return ""
-    try:
-        index = load_package_narratives_index(template_id, index_ref)
-    except (OSError, ValueError):
-        return ""
-
+    """Concatenate package narrative blocks stored on the draft fee section."""
     parts: list[str] = []
-    seen_packages: set[str] = set()
-    for table in fee_section.get("tables") or []:
-        source = table.get("source") or {}
-        package_id = str(source.get("package_id") or "").strip()
-        if not package_id or package_id in seen_packages:
+    for narrative in fee_section.get("narratives") or []:
+        if not isinstance(narrative, dict):
             continue
-        seen_packages.add(package_id)
-        entry = index.get(package_id)
-        if not isinstance(entry, dict):
-            continue
-        file_ref = str(entry.get("file") or "").strip()
-        if not file_ref:
-            continue
-        try:
-            body = read_static_block(template_id, file_ref).strip()
-        except OSError:
-            continue
+        body = resolve_package_narrative_content(draft, narrative, template_id=template_id)
         if body:
-            body = apply_template_placeholders(body, draft, template_id, "fee_table")
             parts.append(body)
     return "\n\n".join(parts).strip()
+
+
+def _sync_fee_section_intro(
+    draft: dict[str, Any],
+    fee_section: dict[str, Any],
+    *,
+    template_id: str,
+) -> None:
+    intro = fee_section.get("intro") or {}
+    if intro.get("edit_state") != "source":
+        return
+    source = intro.get("source") or {}
+    file_ref = source.get("file")
+    if not file_ref:
+        return
+    try:
+        content = read_static_block(template_id, str(file_ref)).strip()
+    except OSError:
+        content = str(intro.get("content") or "")
+    intro["content"] = apply_template_placeholders(content, draft, template_id, "fee_table")
 
 
 def sync_draft_template_placeholders(draft: dict[str, Any]) -> dict[str, Any]:
@@ -161,6 +235,19 @@ def sync_draft_template_placeholders(draft: dict[str, Any]) -> dict[str, Any]:
     if not template_id:
         return draft
     for section in (draft.get("document") or {}).get("sections") or []:
+        if section.get("kind") == "fee_section":
+            _sync_fee_section_intro(draft, section, template_id=template_id)
+            for narrative in section.get("narratives") or []:
+                if not isinstance(narrative, dict):
+                    continue
+                if (narrative.get("edit_state") or {}).get("content") != "source":
+                    continue
+                narrative["content"] = resolve_package_narrative_content(
+                    draft,
+                    narrative,
+                    template_id=template_id,
+                )
+            continue
         if section.get("kind") != "markdown_block":
             continue
         edit_state = (section.get("edit_state") or {}).get("content")

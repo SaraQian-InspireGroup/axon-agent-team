@@ -1,3 +1,5 @@
+import { ProposalDraftView } from './ProposalDraftView'
+
 type Props = {
   open: boolean
   embedded?: boolean
@@ -8,15 +10,6 @@ type Props = {
   error: string | null
   onCollapse: () => void
   onRefresh: () => void
-}
-
-function formatStateJson(state: Record<string, unknown> | null): string {
-  if (!state) return ''
-  try {
-    return JSON.stringify(state, null, 2)
-  } catch {
-    return String(state)
-  }
 }
 
 export function ProposalStatePanel({
@@ -30,12 +23,12 @@ export function ProposalStatePanel({
   onCollapse,
   onRefresh,
 }: Props) {
-  const json = formatStateJson(state)
+  const hasDraft = Boolean(state && Object.keys(state).length > 0)
   const subtitle = syncing
     ? 'Syncing draft…'
     : fingerprint
       ? `Fingerprint ${fingerprint}`
-      : 'Editable proposal draft JSON'
+      : 'Structured draft view'
 
   return (
     <aside
@@ -98,12 +91,12 @@ export function ProposalStatePanel({
           </div>
         </div>
         <div className="artifact-side-panel-scroll">
-          {loading && !json && (
+          {loading && !hasDraft && (
             <p className="proposal-live-panel-placeholder">Loading draft…</p>
           )}
           {error && <p className="proposal-live-panel-error">{error}</p>}
-          {json ? (
-            <pre className="proposal-state-json">{json}</pre>
+          {state && hasDraft ? (
+            <ProposalDraftView draft={state} />
           ) : !loading && !error ? (
             <p className="proposal-live-panel-placeholder">No proposal draft yet.</p>
           ) : null}
