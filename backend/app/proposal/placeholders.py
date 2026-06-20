@@ -160,7 +160,7 @@ def build_package_narrative_block(
         content = apply_template_placeholders(content, draft, template_id, "fee_table")
     return {
         "id": f"narrative_{package_id}",
-        "kind": "package_narrative",
+        "kind": "markdown_block",
         "package_id": package_id,
         "title": title,
         "content": content,
@@ -209,14 +209,23 @@ def render_fee_section_narratives(
     return "\n\n".join(parts).strip()
 
 
-def _sync_fee_section_intro(
+def _intro_content_edit_state(intro: dict[str, Any]) -> str:
+    edit_state = intro.get("edit_state")
+    if isinstance(edit_state, dict):
+        return str(edit_state.get("content") or "")
+    if isinstance(edit_state, str):
+        return edit_state
+    return ""
+
+
+def _sync_intro_markdown_block(
     draft: dict[str, Any],
-    fee_section: dict[str, Any],
+    intro: dict[str, Any],
     *,
     template_id: str,
+    placeholder_context: str = "fee_table",
 ) -> None:
-    intro = fee_section.get("intro") or {}
-    if intro.get("edit_state") != "source":
+    if _intro_content_edit_state(intro) != "source":
         return
     source = intro.get("source") or {}
     file_ref = source.get("file")
@@ -226,7 +235,19 @@ def _sync_fee_section_intro(
         content = read_static_block(template_id, str(file_ref)).strip()
     except OSError:
         content = str(intro.get("content") or "")
-    intro["content"] = apply_template_placeholders(content, draft, template_id, "fee_table")
+    intro["content"] = apply_template_placeholders(content, draft, template_id, placeholder_context)
+
+
+def _sync_fee_section_intro(
+    draft: dict[str, Any],
+    fee_section: dict[str, Any],
+    *,
+    template_id: str,
+) -> None:
+    intro = fee_section.get("intro") or {}
+    if not isinstance(intro, dict):
+        return
+    _sync_intro_markdown_block(draft, intro, template_id=template_id, placeholder_context="fee_table")
 
 
 def sync_draft_template_placeholders(draft: dict[str, Any]) -> dict[str, Any]:
@@ -247,6 +268,11 @@ def sync_draft_template_placeholders(draft: dict[str, Any]) -> dict[str, Any]:
                     narrative,
                     template_id=template_id,
                 )
+            continue
+        if section.get("kind") == "derived_section":
+            intro = section.get("intro") or {}
+            if isinstance(intro, dict):
+                _sync_intro_markdown_block(draft, intro, template_id=template_id, placeholder_context="fee_table")
             continue
         if section.get("kind") != "markdown_block":
             continue

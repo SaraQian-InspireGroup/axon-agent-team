@@ -13,10 +13,6 @@ placeholders:
     - token: "{{selected_packages_bullet_list}}"
       draft_path: derived
       hint: "Bullet list of selected package_name values, e.g. '- Incorporation\\n- Annual maintenance'"
-  fee_table:
-    - token: "{{fee_year}}"
-      draft_path: /facts/inputs/fee_year
-      default: "2026"
 
 sections:
   - id: introduction

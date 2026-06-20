@@ -1,5 +1,5 @@
 from app.proposal.draft import add_package_to_draft, build_draft_preview, materialize_draft
-from app.proposal.placeholders import apply_template_placeholders, sync_draft_template_placeholders
+from app.proposal.placeholders import sync_draft_template_placeholders
 
 
 def test_introduction_placeholders_resolve_client_and_packages():
@@ -99,7 +99,7 @@ def test_add_package_materializes_narrative_block():
     fee = next(s for s in updated["document"]["sections"] if s["kind"] == "fee_section")
     assert len(fee["narratives"]) == 1
     narrative = fee["narratives"][0]
-    assert narrative["kind"] == "package_narrative"
+    assert narrative["kind"] == "markdown_block"
     assert narrative["package_id"] == "PKG003"
     assert "streamlined route for investment managers" in narrative["content"]
     assert fee["tables"][0]["kind"] == "fee_table"
@@ -112,31 +112,3 @@ def test_sync_after_client_patch():
     draft = sync_draft_template_placeholders(draft)
     intro = next(s for s in draft["document"]["sections"] if s["id"] == "introduction")
     assert "Updated Name" in intro["content"]
-
-
-def test_fee_year_placeholder_in_narrative():
-    draft = materialize_draft(template_id="harneys-bvi")
-    draft["facts"].setdefault("inputs", {})["fee_year"] = "2027"
-    updated = add_package_to_draft(
-        draft,
-        {"package_id": "PKG001", "package_name": "Incorporation"},
-        [
-            {
-                "sku": "CSS001",
-                "description": "Formation",
-                "department_team": "Corporate Services",
-                "pricing_type": "FIXED",
-                "price_amount": 100.0,
-                "price_currency": "USD",
-                "billing_frequency": "ONE_TIME",
-                "recurring": "ONE_OFF",
-            },
-        ],
-    )
-    text = apply_template_placeholders(
-        "Fees for {{fee_year}}",
-        updated,
-        "harneys-bvi",
-        "fee_table",
-    )
-    assert text == "Fees for 2027"

@@ -48,7 +48,7 @@ def empty_proposal_draft() -> dict[str, Any]:
     return {
         "version": 1,
         "meta": {"template_id": None, "title": None},
-        "facts": {"client": copy.deepcopy(DEFAULT_CLIENT_FACTS), "inputs": {}},
+        "facts": {"client": copy.deepcopy(DEFAULT_CLIENT_FACTS)},
         "document": {"sections": []},
     }
 
@@ -159,17 +159,43 @@ def _markdown_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _fee_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
-    intro_spec = spec.get("intro") or {}
-    intro_source = dict((intro_spec or {}).get("source") or {})
-    intro_content = ""
+def _build_intro_markdown_block(
+    template_id: str,
+    intro_spec: dict[str, Any] | None,
+    *,
+    block_id: str = "intro",
+    title: str = "Intro",
+) -> dict[str, Any] | None:
+    """Materialize fee/derived section intro as a standard markdown_block node."""
+    if not intro_spec:
+        return None
+    intro_source = dict(intro_spec.get("source") or {})
     file_ref = intro_source.get("file")
-    if file_ref:
+    inline_content = str(intro_spec.get("content") or "").strip()
+    if not file_ref and not inline_content:
+        return None
+    if file_ref and not intro_source.get("type"):
+        intro_source["type"] = "template_file"
+    content = inline_content
+    if file_ref and not content:
         try:
-            intro_content = read_static_block(template_id, str(file_ref))
+            content = read_static_block(template_id, str(file_ref)).strip()
         except OSError:
-            intro_content = ""
+            content = ""
+    editable = bool(intro_spec.get("editable", True))
     return {
+        "id": block_id,
+        "kind": "markdown_block",
+        "title": title,
+        "content": content,
+        "source": intro_source,
+        "policy": {"editable": editable, "removable": False},
+        "edit_state": {"content": "source" if (content or file_ref) else "empty"},
+    }
+
+
+def _fee_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
+    section: dict[str, Any] = {
         "id": str(spec["id"]),
         "kind": "fee_section",
         "title": str(spec.get("title") or spec["id"]),
@@ -186,14 +212,12 @@ def _fee_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
         "fee_layout": dict(spec.get("fee_layout") or {}),
         "package_narratives": dict(spec.get("package_narratives") or {}),
         "narratives": [],
-        "intro": {
-            "content": intro_content,
-            "source": intro_source,
-            "editable": bool((intro_spec or {}).get("editable", True)),
-            "edit_state": "source" if intro_content else "empty",
-        },
         "tables": [],
     }
+    intro_block = _build_intro_markdown_block(template_id, spec.get("intro") or {})
+    if intro_block:
+        section["intro"] = intro_block
+    return section
 
 
 def _collection_section(spec: dict[str, Any]) -> dict[str, Any]:
@@ -215,9 +239,8 @@ def _collection_section(spec: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _derived_section(spec: dict[str, Any]) -> dict[str, Any]:
-    intro_spec = spec.get("intro") or {}
-    return {
+def _derived_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
+    section: dict[str, Any] = {
         "id": str(spec["id"]),
         "kind": "derived_section",
         "title": str(spec.get("title") or spec["id"]),
@@ -230,13 +253,12 @@ def _derived_section(spec: dict[str, Any]) -> dict[str, Any]:
             "regenerable": True,
         },
         "derivation": dict(spec.get("derivation") or {}),
-        "intro": {
-            "source": dict((intro_spec or {}).get("source") or {}),
-            "editable": bool((intro_spec or {}).get("editable", True)),
-            "edit_state": "source" if intro_spec else "empty",
-        },
         "overrides": {},
     }
+    intro_block = _build_intro_markdown_block(template_id, spec.get("intro") or {})
+    if intro_block:
+        section["intro"] = intro_block
+    return section
 
 
 def materialize_draft(
@@ -269,7 +291,7 @@ def materialize_draft(
         elif kind == "collection":
             materialized.append(_collection_section(spec))
         elif kind == "derived_section":
-            materialized.append(_derived_section(spec))
+            materialized.append(_derived_section(template_id, spec))
         else:
             materialized.append(
                 {

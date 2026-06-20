@@ -68,6 +68,21 @@ export function isFeeSection(section: Record<string, unknown>): boolean {
   return section.kind === 'fee_section'
 }
 
+export function isMarkdownBlockNode(node: Record<string, unknown>): boolean {
+  const kind = node.kind
+  return kind === 'markdown_block' || kind === 'package_narrative'
+}
+
+/** Document-level markdown section (same shape as fee_section.narratives[] items). */
+export function isMarkdownBlockSection(section: Record<string, unknown>): boolean {
+  return isMarkdownBlockNode(section)
+}
+
+export function markdownBlockContent(section: Record<string, unknown>): string {
+  const content = section.content
+  return typeof content === 'string' ? content : ''
+}
+
 export function draftBlockTitle(block: Record<string, unknown>, index: number): string {
   const title = block.title
   if (typeof title === 'string' && title.trim()) return title.trim()
@@ -99,7 +114,39 @@ export function feeSectionMetadata(section: Record<string, unknown>): Record<str
   return metadata
 }
 
-export function feeSectionHasIntro(section: Record<string, unknown>): boolean {
+export function feeSectionIntroBlock(section: Record<string, unknown>): Record<string, unknown> | null {
   const intro = section.intro
-  return Boolean(intro) && typeof intro === 'object' && !Array.isArray(intro)
+  if (!intro || typeof intro !== 'object' || Array.isArray(intro)) return null
+  const block = intro as Record<string, unknown>
+  if (isMarkdownBlockNode(block)) return block
+
+  const content = typeof block.content === 'string' ? block.content : ''
+  const source = block.source
+  const hasSource = Boolean(source) && typeof source === 'object' && !Array.isArray(source)
+  if (!content.trim() && !hasSource) return null
+
+  const legacyEditState = block.edit_state
+  let contentEditState = 'empty'
+  if (typeof legacyEditState === 'object' && legacyEditState && !Array.isArray(legacyEditState)) {
+    contentEditState = String((legacyEditState as Record<string, unknown>).content || 'empty')
+  } else if (legacyEditState === 'source' || content.trim()) {
+    contentEditState = 'source'
+  }
+
+  return {
+    id: typeof block.id === 'string' ? block.id : 'intro',
+    kind: 'markdown_block',
+    title: typeof block.title === 'string' ? block.title : 'Intro',
+    content,
+    source: hasSource ? source : {},
+    policy: {
+      editable: block.editable !== false,
+      removable: false,
+    },
+    edit_state: { content: contentEditState },
+  }
+}
+
+export function feeSectionHasIntro(section: Record<string, unknown>): boolean {
+  return feeSectionIntroBlock(section) !== null
 }

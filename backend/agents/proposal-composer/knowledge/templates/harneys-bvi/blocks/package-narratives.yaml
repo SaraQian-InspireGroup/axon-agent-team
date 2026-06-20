@@ -1,17 +1,15 @@
 # Maps MDM package_id → solution narrative block materialized into draft fee_section.narratives[].
 # add_package_to_proposal_draft seeds/syncs these blocks; agent may patch /sections/.../narratives/N/content.
-#
-# Placeholders in blocks (e.g. {{fee_year}}) resolve from draft facts.inputs per template.yaml.
 
 PKG001:
   package_name: Incorporation
   file: blocks/solutions/PKG001-incorporation.md
-  fee_table_title: "Incorporation fee: {{fee_year}} fees"
+  fee_table_title: "Incorporation fees"
 
 PKG002:
   package_name: Annual maintenance
   file: blocks/solutions/PKG002-annual-maintenance.md
-  fee_table_title: "Annual maintenance fee: {{fee_year}} fees"
+  fee_table_title: "Annual maintenance fees"
 
 PKG003:
   package_name: Approval Manager

@@ -59,6 +59,19 @@ def test_materialize_bvi_draft_from_template_sections():
     assert "solution_and_fees" in ids
     assert "additional_info" in ids
     assert "appendix" in ids
+    fee = next(s for s in draft["document"]["sections"] if s["id"] == "solution_and_fees")
+    assert "intro" not in fee
+
+
+def test_materialize_au_fee_section_intro_is_markdown_block():
+    draft = materialize_draft(template_id="au-advisory")
+    fee = next(s for s in draft["document"]["sections"] if s["id"] == "solution_and_fees")
+    intro = fee["intro"]
+    assert intro["kind"] == "markdown_block"
+    assert intro["id"] == "intro"
+    assert intro["edit_state"] == {"content": "source"}
+    assert intro["policy"]["editable"] is True
+    assert "professional fees" in intro["content"].lower()
 
 
 def test_add_package_materializes_editable_fee_rows():

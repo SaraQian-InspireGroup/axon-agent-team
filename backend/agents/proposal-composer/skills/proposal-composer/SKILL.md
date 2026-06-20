@@ -67,7 +67,7 @@ description: >-
 ```
 proposal_draft
 ├── meta          … template_id, title
-├── facts         … client, inputs（跨 section 的事实）
+├── facts         … client（跨 section 的客户事实）
 └── document
     └── sections[]   … 每个 node 有 kind，kind 决定「里面有什么」
 ```
@@ -93,8 +93,8 @@ Draft 内按 **语义槽** 组织（非独立 sub-section id）：
 
 | 槽 | 存什么 | Preview 里大致对应 |
 |----|--------|-------------------|
-| `intro` | 定价区引导文案 | Solution 开头段落 |
-| `narratives[]` | 每个 package 的 solution 叙事块 | package 说明段落（在 fee 表 **之前**） |
+| `intro` | 定价区引导文案（`kind: markdown_block`） | Solution 开头段落 |
+| `narratives[]` | 每个 package 的 solution 叙事块（`kind: markdown_block`） | package 说明段落（在 fee 表 **之前**） |
 | `tables[].rows[]` | 计费行（SKU、展示字段、price、footnotes 等） | Fee tables（在叙事 **之后**） |
 
 **Preview 顺序**（intro → narratives → fee 表标题 → tables → 可选脚注区）由 platform render + `fee_layout` 决定，不是 draft 里再嵌一层 section tree。
@@ -150,7 +150,7 @@ JSON Pointer 模式：`/document/sections/{i}/…`，其中 `{i}` 下具体 key 
 
 ### Facts 与 placeholders
 
-`facts.client` / `facts.inputs` 是跨 section 输入；template `placeholders` 在 render 时注入 markdown 块。Patch client facts 即可；勿为 `{{client.*}}` 去 patch introduction 全文（除非销售要 override 且 edit_state 允许）。
+`facts.client` 是跨 section 输入；template `placeholders` 在 render 时注入 markdown 块。Patch client facts 即可；勿为 `{{client.*}}` 去 patch introduction 全文（除非销售要 override 且 edit_state 允许）。
 
 ## 用户指称 → 思考方式
 
