@@ -130,6 +130,11 @@ export function ProposalLivePanel({
             <p className="proposal-live-panel-placeholder">Loading proposal…</p>
           )}
           {error && <p className="proposal-live-panel-error">{error}</p>}
+          {!loading && !error && !preview?.markdown && !preview?.message && (
+            <p className="proposal-live-panel-placeholder">
+              Send a message to start drafting your proposal.
+            </p>
+          )}
           {!loading && !error && preview?.status !== 'ok' && preview?.message && (
             <p className="proposal-live-panel-placeholder">{preview.message}</p>
           )}

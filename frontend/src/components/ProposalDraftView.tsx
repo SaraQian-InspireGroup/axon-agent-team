@@ -3,6 +3,7 @@ import {
   draftBlockTitle,
   draftExtraTopLevel,
   draftRecordList,
+  draftSectionFlags,
   draftSectionKey,
   draftSections,
   draftSectionTitle,
@@ -15,6 +16,46 @@ import {
 
 type Props = {
   draft: Record<string, unknown>
+}
+
+function DraftSectionStatusBadges({
+  enabled,
+  required,
+}: {
+  enabled: boolean
+  required: boolean
+}) {
+  return (
+    <span className="proposal-draft-section-badges">
+      <span
+        className={`proposal-draft-bagel${enabled ? ' proposal-draft-bagel-true' : ''}`}
+        aria-label={`enabled ${enabled}`}
+      >
+        enabled
+      </span>
+      <span
+        className={`proposal-draft-bagel${required ? ' proposal-draft-bagel-true' : ''}`}
+        aria-label={`required ${required}`}
+      >
+        required
+      </span>
+    </span>
+  )
+}
+
+function DraftSectionSummary({
+  title,
+  flags,
+}: {
+  title: string
+  flags?: { enabled: boolean; required: boolean }
+}) {
+  return (
+    <>
+      <span className="proposal-draft-section-summary-title">{title}</span>
+      {flags ? <DraftSectionStatusBadges enabled={flags.enabled} required={flags.required} /> : null}
+    </>
+  )
 }
 
 function DraftJsonCollapsible({ title, value }: { title: string; value: unknown }) {
@@ -78,11 +119,14 @@ function DocumentSectionDraftView({
   section: Record<string, unknown>
   index: number
 }) {
+  const title = draftSectionTitle(section, index)
+  const flags = draftSectionFlags(section)
+
   if (isFeeSection(section)) {
     return (
       <details className="proposal-draft-section">
         <summary className="proposal-draft-section-summary">
-          {draftSectionTitle(section, index)}
+          <DraftSectionSummary title={title} flags={flags} />
         </summary>
         <div className="proposal-draft-fee-section-wrap">
           <FeeSectionDraftView section={section} />
@@ -91,8 +135,15 @@ function DocumentSectionDraftView({
     )
   }
 
+  const json = formatDraftJson(section)
+  if (!json) return null
   return (
-    <DraftJsonCollapsible title={draftSectionTitle(section, index)} value={section} />
+    <details className="proposal-draft-section">
+      <summary className="proposal-draft-section-summary">
+        <DraftSectionSummary title={title} flags={flags} />
+      </summary>
+      <pre className="proposal-state-json proposal-draft-section-json">{json}</pre>
+    </details>
   )
 }
 

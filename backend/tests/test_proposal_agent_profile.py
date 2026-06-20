@@ -9,13 +9,18 @@ def test_proposal_composer_profile_loads():
     assert profile.slug == "proposal-composer"
     allowed = profile.extra_config.get("allowed_tools") or []
     assert "patch_proposal_draft" in allowed
-    assert "postgres_query_data" in allowed
+    assert "search_mdm_services" in allowed
+    assert "postgres_query_data" not in allowed
 
 
 def test_proposal_builtin_tools_registered():
     for name in (
         "list_templates",
         "read_knowledge",
+        "list_mdm_packages",
+        "get_mdm_package_services",
+        "search_mdm_services",
+        "list_mdm_packages_for_services",
         "initialize_proposal_draft",
         "get_proposal_draft",
         "patch_proposal_draft",

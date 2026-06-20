@@ -8,6 +8,10 @@ PROPOSAL_TOOL_NAMES = frozenset(
     {
         "list_templates",
         "read_knowledge",
+        "list_mdm_packages",
+        "get_mdm_package_services",
+        "search_mdm_services",
+        "list_mdm_packages_for_services",
         "initialize_proposal_draft",
         "get_proposal_draft",
         "patch_proposal_draft",

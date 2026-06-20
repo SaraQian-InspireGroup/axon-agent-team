@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AgentModel, Chat, Message
+from app.db.repositories.attachments import AttachmentRepository
 from app.db.repositories.messages import MessageRepository
 from app.memory.long_term import try_handle_memory_command
 from app.memory.maf_mapping import maf_message_to_rows
@@ -17,6 +18,8 @@ from app.memory.memory_config import MemoryConfig, parse_memory_config
 from app.platform.agent_factory import AgentFactory
 from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
 from app.platform.session_store import SessionStore
+from app.platform.user_message_input import build_user_run_input, link_attachments_metadata
+from app.services.attachment_service import AttachmentService
 from app.proposal.context import get_run_proposal_state, init_run_proposal_state, reset_run_proposal_state
 from app.proposal.draft import build_draft_preview
 from app.proposal.store import (
@@ -50,19 +53,56 @@ class ChatRunService:
             raise ValueError(f"Chat not found: {chat_id}")
         return chat
 
-    async def _maybe_set_chat_title(self, chat: Chat, content: str) -> None:
+    async def _maybe_set_chat_title(self, chat: Chat, content: str, attachments: list | None = None) -> None:
         if chat.title and chat.title != "New Chat":
             return
         snippet = " ".join(content.strip().split())[:60]
+        if not snippet and attachments:
+            snippet = attachments[0].filename[:60]
         if snippet:
             chat.title = snippet
 
-    async def _commit_user_turn(self, chat: Chat, content: str) -> Message:
-        """Persist the user message immediately so it survives agent failures."""
-        row = await self._messages.insert(
-            chat_id=chat.id, role="user", message_type="text", content=content
+    async def _resolve_attachments(self, chat: Chat, attachment_ids: list[uuid.UUID]) -> list:
+        if not attachment_ids:
+            return []
+        agent = await self._db.get(AgentModel, chat.agent_id)
+        if agent is None:
+            raise ValueError("Agent not found for chat")
+        service = AttachmentService(self._db)
+        return await service.resolve_for_message(
+            chat.id,
+            attachment_ids,
+            expected_provider=agent.model_provider,
         )
-        await self._maybe_set_chat_title(chat, content)
+
+    async def _commit_user_turn(
+        self,
+        chat: Chat,
+        content: str,
+        *,
+        attachments: list | None = None,
+        attachment_ids: list[uuid.UUID] | None = None,
+    ) -> Message:
+        """Persist the user message immediately so it survives agent failures."""
+        resolved = (
+            attachments
+            if attachments is not None
+            else await self._resolve_attachments(chat, attachment_ids or [])
+        )
+        metadata = link_attachments_metadata({}, resolved)
+        row = await self._messages.insert(
+            chat_id=chat.id,
+            role="user",
+            message_type="text",
+            content=content,
+            metadata=metadata or None,
+        )
+        if resolved:
+            await AttachmentRepository(self._db).link_to_message(
+                [att.id for att in resolved],
+                row.id,
+            )
+        await self._maybe_set_chat_title(chat, content, resolved)
         await self._db.commit()
         return row
 
@@ -173,12 +213,24 @@ class ChatRunService:
                 metadata={"spec": _artifact_spec_payload(spec)},
             )
 
-    async def run_message(self, chat_id: uuid.UUID, content: str) -> str:
+    async def run_message(
+        self,
+        chat_id: uuid.UUID,
+        content: str,
+        *,
+        attachment_ids: list[uuid.UUID] | None = None,
+    ) -> str:
         chat = await self._get_chat(chat_id)
         memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
         await self._prepare_proposal_context(chat)
-        user_row = await self._commit_user_turn(chat, content)
+        attachments = await self._resolve_attachments(chat, attachment_ids or [])
+        if not content.strip() and not attachments:
+            raise ValueError("Message content or attachments required")
+        user_row = await self._commit_user_turn(
+            chat, content, attachments=attachments, attachment_ids=attachment_ids
+        )
+        run_input = build_user_run_input(content, attachments)
         memory_result = await try_handle_memory_command(
             self._db,
             user_id=chat.user_id,
@@ -207,7 +259,7 @@ class ChatRunService:
         )
         try:
             async with bundle as agent:
-                result = await agent.run(content, session=session)
+                result = await agent.run(run_input, session=session)
             await self._persist_pending_artifacts(chat_id)
             await self._finalize_success(
                 chat_id,
@@ -223,12 +275,24 @@ class ChatRunService:
         finally:
             reset_run_proposal_state()
 
-    async def stream_message(self, chat_id: uuid.UUID, content: str) -> AsyncIterator[dict[str, Any]]:
+    async def stream_message(
+        self,
+        chat_id: uuid.UUID,
+        content: str,
+        *,
+        attachment_ids: list[uuid.UUID] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         chat = await self._get_chat(chat_id)
         memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
         await self._prepare_proposal_context(chat)
-        user_row = await self._commit_user_turn(chat, content)
+        attachments = await self._resolve_attachments(chat, attachment_ids or [])
+        if not content.strip() and not attachments:
+            raise ValueError("Message content or attachments required")
+        user_row = await self._commit_user_turn(
+            chat, content, attachments=attachments, attachment_ids=attachment_ids
+        )
+        run_input = build_user_run_input(content, attachments)
         memory_result = await try_handle_memory_command(
             self._db,
             user_id=chat.user_id,
@@ -292,7 +356,7 @@ class ChatRunService:
                 session_store=self._sessions,
             )
             async with bundle as agent:
-                stream = agent.run(content, session=session, stream=True)
+                stream = agent.run(run_input, session=session, stream=True)
                 async for update in stream:
                     if run.stop_event.is_set():
                         break

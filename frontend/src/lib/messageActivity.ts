@@ -335,6 +335,27 @@ function localMetadata(extra: Record<string, unknown> = {}): Record<string, unkn
   return { local: true, ...extra }
 }
 
+function attachmentIds(metadata: Record<string, unknown> | undefined): string[] {
+  const raw = metadata?.attachments
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((item) => (item && typeof item === 'object' ? String((item as { id?: unknown }).id ?? '') : ''))
+    .filter(Boolean)
+    .sort()
+}
+
+function userMessageConfirmed(persisted: Message[], optimistic: Message): boolean {
+  const content = (optimistic.content ?? '').trim()
+  const optimisticAttachmentIds = attachmentIds(optimistic.metadata)
+  return persisted.some((row) => {
+    if (row.role !== 'user') return false
+    if ((row.content ?? '').trim() !== content) return false
+    const persistedAttachmentIds = attachmentIds(row.metadata)
+    if (optimisticAttachmentIds.length !== persistedAttachmentIds.length) return false
+    return optimisticAttachmentIds.every((id, index) => id === persistedAttachmentIds[index])
+  })
+}
+
 /** Replace in-memory timeline with persisted rows; keep only unconfirmed optimistic user sends. */
 export function mergeMessagesFromApi(persisted: Message[], local: Message[]): Message[] {
   const merged = new Map(persisted.map((message) => [message.id, message]))
@@ -345,11 +366,9 @@ export function mergeMessagesFromApi(persisted: Message[], local: Message[]): Me
       continue
     }
     const content = (message.content ?? '').trim()
-    if (!content) continue
-    const confirmed = persisted.some(
-      (row) => row.role === 'user' && (row.content ?? '').trim() === content,
-    )
-    if (!confirmed) {
+    const hasAttachments = attachmentIds(message.metadata).length > 0
+    if (!content && !hasAttachments) continue
+    if (!userMessageConfirmed(persisted, message)) {
       maxSequence += 1
       merged.set(message.id, { ...message, sequence: maxSequence })
     }

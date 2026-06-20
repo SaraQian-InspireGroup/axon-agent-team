@@ -62,6 +62,29 @@ def _row_to_content(row: dict[str, Any]) -> Content | None:
     return None
 
 
+def _attachment_dicts(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = metadata.get("attachments")
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def _attachments_to_contents(metadata: dict[str, Any]) -> list[Content]:
+    contents: list[Content] = []
+    for item in _attachment_dicts(metadata):
+        file_id = item.get("provider_file_id")
+        if not file_id:
+            continue
+        contents.append(
+            Content.from_hosted_file(
+                file_id=str(file_id),
+                media_type=str(item.get("mime_type") or "application/octet-stream"),
+                name=str(item.get("filename") or "attachment"),
+            )
+        )
+    return contents
+
+
 def to_maf_messages(rows: list[dict[str, Any]]) -> list[Message]:
     """Rebuild MAF history with Anthropic-compatible grouping.
 
@@ -101,10 +124,17 @@ def to_maf_messages(rows: list[dict[str, Any]]) -> list[Message]:
 
         if message_type == "text" and role == "user":
             flush_assistant()
+            user_contents: list[Content] = []
+            text = row.get("content") or ""
+            if text:
+                user_contents.append(Content.from_text(text))
+            user_contents.extend(_attachments_to_contents(metadata))
+            if not user_contents:
+                user_contents.append(Content.from_text(""))
             messages.append(
                 Message(
                     role="user",
-                    contents=[Content.from_text(row.get("content") or "")],
+                    contents=user_contents,
                     additional_properties=_platform_props(row),
                 )
             )

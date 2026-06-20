@@ -116,6 +116,28 @@ class Chat(Base):
     user: Mapped["User"] = relationship(back_populates="chats")
     agent: Mapped["AgentModel"] = relationship(back_populates="chats")
     messages: Mapped[list["Message"]] = relationship(back_populates="chat", cascade="all, delete-orphan")
+    attachments: Mapped[list["ChatAttachment"]] = relationship(back_populates="chat", cascade="all, delete-orphan")
+
+
+class ChatAttachment(Base):
+    __tablename__ = "chat_attachments"
+    __table_args__ = (Index("idx_chat_attachments_chat_id", "chat_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    chat_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("chats.id", ondelete="CASCADE"), nullable=False
+    )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
+    )
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    provider_file_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    chat: Mapped["Chat"] = relationship(back_populates="attachments")
 
 
 class Message(Base):

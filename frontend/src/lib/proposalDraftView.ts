@@ -48,6 +48,16 @@ export function draftSectionTitle(section: Record<string, unknown>, index: numbe
   return `Section ${index + 1}`
 }
 
+export function draftSectionFlags(section: Record<string, unknown>): {
+  enabled: boolean
+  required: boolean
+} {
+  return {
+    enabled: section.enabled === true,
+    required: section.required === true,
+  }
+}
+
 export function draftSectionKey(section: Record<string, unknown>, index: number): string {
   const id = section.id
   if (typeof id === 'string' && id.trim()) return id.trim()

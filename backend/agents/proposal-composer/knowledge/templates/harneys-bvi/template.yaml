@@ -71,6 +71,13 @@ sections:
       type: template_file
       file: blocks/additional-info-bvi.md
 
+  - id: appendix
+    kind: markdown_block
+    title: Appendix
+    required: false
+    default_enabled: false
+    editable: true
+
 document_title:
   prefix: Proposal
   name_from:

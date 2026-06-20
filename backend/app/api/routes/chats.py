@@ -1,15 +1,25 @@
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.schemas import ChatCreate, ChatListOut, ChatOut, MessageCreate, MessageOut, ProposalDraftOut, ProposalPreviewOut
+from app.api.schemas import (
+    AttachmentOut,
+    ChatCreate,
+    ChatListOut,
+    ChatOut,
+    MessageCreate,
+    MessageOut,
+    ProposalDraftOut,
+    ProposalPreviewOut,
+)
 from app.db.models import AgentModel, Chat
 from app.platform.current_user import get_current_user_id
 from app.db.session import get_db
+from app.services.attachment_service import AttachmentService
 from app.services.chat_run import ChatRunService, list_chat_messages
 from app.services.proposal_preview_service import get_chat_proposal_draft, get_chat_proposal_preview
 from app.proposal.storage import artifact_download_filename, resolve_artifact_path
@@ -121,6 +131,45 @@ async def download_artifact(
     )
 
 
+@router.post("/{chat_id}/attachments", response_model=AttachmentOut, status_code=201)
+async def upload_attachment(
+    chat_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+) -> AttachmentOut:
+    chat = await db.get(Chat, chat_id)
+    if chat is None:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+
+    data = await file.read()
+    mime_type = file.content_type or "application/octet-stream"
+    service = AttachmentService(db)
+    try:
+        payload = await service.upload(
+            chat_id,
+            filename=file.filename,
+            mime_type=mime_type,
+            data=data,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"File upload failed: {exc}") from exc
+
+    return AttachmentOut(
+        id=uuid.UUID(payload["id"]),
+        chat_id=chat_id,
+        filename=payload["filename"],
+        mime_type=payload["mime_type"],
+        size_bytes=payload["size_bytes"],
+        provider=payload["provider"],
+        provider_file_id=payload["provider_file_id"],
+        created_at=None,
+    )
+
+
 @router.post("/{chat_id}/messages")
 async def post_message(
     chat_id: uuid.UUID,
@@ -132,7 +181,11 @@ async def post_message(
         raise HTTPException(status_code=404, detail="Chat not found")
     service = ChatRunService(db)
     try:
-        text = await service.run_message(chat_id, body.content)
+        text = await service.run_message(
+            chat_id,
+            body.content,
+            attachment_ids=body.attachment_ids,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"chat_id": str(chat_id), "text": text}
@@ -161,7 +214,11 @@ async def stream_message(
 
     async def event_generator():
         try:
-            async for event in service.stream_message(chat_id, body.content):
+            async for event in service.stream_message(
+                chat_id,
+                body.content,
+                attachment_ids=body.attachment_ids,
+            ):
                 yield f"event: {event['event']}\ndata: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
         except ValueError as exc:
             payload = {"error": str(exc)}

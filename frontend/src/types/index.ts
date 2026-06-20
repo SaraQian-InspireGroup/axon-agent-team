@@ -28,6 +28,26 @@ export interface ChatSummary {
   updated_at: string | null
 }
 
+export interface ChatAttachment {
+  id: string
+  chat_id: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  provider: string
+  provider_file_id: string
+  created_at: string | null
+}
+
+export interface MessageAttachmentMeta {
+  id: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  provider: string
+  provider_file_id: string
+}
+
 export interface Message {
   id: string
   chat_id: string

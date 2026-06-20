@@ -1,194 +1,78 @@
 ---
 name: proposal-mdm-catalog
 description: >-
-  Read-only Postgres MDM catalog queries for Proposal Composer: schema-first
-  SELECT on mdm_services, mdm_packages, and mdm_package_services. Use when
-  package_id or SKU is unknown, when listing packages in scope, comparing
-  packages, keyword-searching services, or loading all SKUs for a package—not
-  when patching an existing draft or editing client facts.
+  Read-only MDM catalog lookup for Proposal Composer via list_mdm_packages,
+  get_mdm_package_services, search_mdm_services, and list_mdm_packages_for_services.
+  Use when package_id or SKU is unknown, when exploring catalog in scope, comparing
+  bundles, or resolving which packages contain given SKUs — not when patching an
+  existing draft or editing client facts. Do not write SQL for MDM tables.
 ---
 
-# Proposal MDM Catalog — SQL Skill
+# Proposal MDM Catalog
 
 ## 与 System Prompt 的分工
 
 | 层 | 内容 |
 |----|------|
-| **System prompt** | 角色、catalog 只读、tool 并行/顺序 |
-| **Postgres MCP tools** | `get_schema` / `describe_table` / `query_data` 参数 |
-| **本 Skill** | MDM 表关系、列名、SQL 模板、jurisdiction filter |
+| **System prompt** | 角色、tool 并行/顺序、对外话术 |
+| **本 Skill** | Catalog 概念、四个 MDM tool 的语义、与 add tools 的衔接 |
+| **proposal-composer skill** | Draft 编辑、Reply gate、section 种类 |
 
-触发后 catalog 查数以本 Skill 为准；**回复正文遵守 system prompt 对外铁律**。
+触发后 catalog 查数以 **MDM tools** 为准；**禁止**对 `mdm_*` 表写 SQL 或调用 postgres MCP。
 
-## Catalog 查询原则
+## 核心原则
 
-1. **Catalog 回答「能卖什么、标价多少」；draft 回答「这份 proposal 里有什么」** — 已写入 draft 的改单、调价、改 SOW 不再查 catalog。
-2. **Schema 先于 SQL** — 列名以 `get_schema` / `describe_table` 为准，禁止臆造字段。
-3. **Scope 与 template 一致** — 过滤 `catalog_filter`（jurisdiction + bu）+ `status = 'ACTIVE'`。
-4. **查是为了 materialize** — 返回 **完整 row**（含 `description`、`department_team`、定价字段）交给 add tools；勿截断字段、勿 `run_skill_script`。
-5. **SQL 是手段，销售确认是闸门** — 查完用销售语言总结；选型确认后再写入 draft。
+1. **Catalog 回答「能卖什么、标价多少」；draft 回答「这份 proposal 里有什么」** — 已写入 draft 的改单、调价、改 SOW **不再查 catalog**。
+2. **Service 与 package 同等** — package 只是「常一起卖的服务集合 / shortcut」，**不是** proposal 的前置条件。可以只加 services，也可以加 package；必要时向销售 **建议** 整包，但 **不得** 因「必须先选 package」而 block 编写。
+3. **查与写分离** — 四个 MDM tools **只读**；确认选型后，用 `add_package_to_proposal_draft` 或 `add_services_to_proposal_draft` **单独**写入（顺序、不并行）。
+4. **Scope 自动** — `jurisdiction` + `bu` 来自 `template_id` 或已 initialize 的 draft；勿手填错 jurisdiction。
+5. **完整 row** — `get_mdm_package_services` 返回完整 `services[]` 供预览/确认；写入 draft 时 **`add_package_to_proposal_draft` 只需 `package_id`**，由 tool 服务端加载全部 ACTIVE 服务，勿手传截断的 services 列表。
 
-## 表与 JOIN
+## 四个 Tool（按问题选，无固定顺序）
 
-| 表 | 用途 |
-|----|------|
-| `mdm_services` | SKU、定价、展示字段 |
-| `mdm_packages` | 方案包 |
-| `mdm_package_services` | Package ↔ SKU |
+| 销售 / 任务问题 | Tool | 得到什么 |
+|-----------------|------|----------|
+| 这个 jurisdiction 有哪些 package？/ 搜 AML package | `list_mdm_packages` | `packages[]`（可选 `skus` / `sku_count`） |
+| 这个 package 里有哪些服务、什么价？ | `get_mdm_package_services` | `package` + `services[]` + `warnings` |
+| 按 SKU / 关键词 / 部门找服务 | `search_mdm_services` | `services[]` + `not_found_skus` + `warnings` |
+| 这些 SKU 属于哪些 package？（bundle 建议用） | `list_mdm_packages_for_services` | `items[].packages[]` |
 
-Package 内容查询必须 JOIN `mdm_packages` 限定 `jurisdiction` / `bu`，且 `ps.sku = s.sku` 并匹配 `s.jurisdiction` / `s.bu`。
+**写入 draft（本 skill 不覆盖细节，但需衔接）：**
 
-## Schema-first
+| 选型结果 | Add tool |
+|----------|----------|
+| 确认整包 | `add_package_to_proposal_draft(package_id=...)` — tool 服务端从 MDM 加载全部 ACTIVE 服务 |
+| 确认若干服务（含单 SKU、跨 package 拼单） | `add_services_to_proposal_draft(services)` — `services` 来自 `search_mdm_services` |
 
-**禁止**臆造列名（`price_note` **不存在**）。
+`services[]` 在 MDM search tool 里可直接传给 `add_services_to_proposal_draft`；整包 add 只需 `package_id`。
 
-1. `postgres_get_schema` 一次，或并行 `describe_table` 三张 MDM 表。
-2. 只 SELECT 已确认存在的列。
-3. `postgres_query_data` — 非空 SELECT；`status = 'ACTIVE'` + template `catalog_filter`（`jurisdiction`, `bu`）。
-4. 无依赖的多条 SELECT 可同一轮并行。
+## `warnings` 与定价
 
-### `mdm_services` 常用列
+Tool 可能在 `warnings` 里提示 catalog 行缺少展示所需定价（如 FIXED 无 `price_amount`、UNIT_RATE 无 `fee_raw`）。含义：
 
-| 列 | 用途 |
-|----|------|
-| `sku`, `jurisdiction`, `bu`, `status` | 过滤 |
-| `service_name`, `description`, `scope_of_work`, `sku_semantic_for_ai` | 展示 / 搜索 |
-| `department_team` | BVI department 分组（add 时必须传入） |
-| `pricing_type`, `price_amount`, `price_currency` | 定价 |
-| `fee_raw`, `footnotes` | 非 FIXED 展示 |
-| `billing_frequency`, `recurring` | 周期 |
+- **可以**先把 row 加入 draft，preview 可能显示 `missing_facts`
+- **应**向销售确认数量/规则后再 patch `price.amount` 或补事实 — 不是 catalog tool 的错误
 
-### `pricing_type` → materializer
+`pricing_type` 行为见 proposal-composer skill 的 row 语义；catalog 只提供源数据。
 
-| 类型 | 传给 add tool | 说明 |
-|------|---------------|------|
-| `FIXED` | `price_amount` → draft `price.amount` | fee table 显示 amount |
-| `UNIT_RATE` / `RANGE` / `BASE_PLUS*` / `MATRIX_REF` | `price_amount` + `fee_raw` | 需数量/事实时先问销售再定 total |
-
-BVI `fee_layout` 通常用 **description** 列 — SELECT 与 add 时勿丢 `description`、`department_team`。
-
-## SQL 模板
-
-占位：`JURISDICTION` / `BU` ← template `catalog_filter`；`PACKAGE_ID` / `KEYWORD` / `SKU_*` ← 实际值。
-
-### 列 packages
-
-```sql
-SELECT package_id, package_name, package_semantic_for_ai
-FROM mdm_packages
-WHERE jurisdiction = 'JURISDICTION'
-  AND bu = 'BU'
-  AND status = 'ACTIVE'
-ORDER BY package_name;
-```
-
-### Package 含哪些 services
-
-```sql
-SELECT ps.package_id, ps.sku,
-       s.service_name, s.description, s.department_team,
-       s.pricing_type, s.price_currency, s.price_amount,
-       s.billing_frequency, s.recurring, s.scope_of_work,
-       s.fee_raw, s.footnotes
-FROM mdm_package_services ps
-JOIN mdm_packages p ON p.package_id = ps.package_id
-JOIN mdm_services s
-  ON ps.sku = s.sku AND s.jurisdiction = p.jurisdiction AND s.bu = p.bu
-WHERE p.jurisdiction = 'JURISDICTION'
-  AND p.bu = 'BU'
-  AND ps.package_id = 'PACKAGE_ID'
-  AND p.status = 'ACTIVE'
-  AND s.status = 'ACTIVE'
-ORDER BY ps.sku;
-```
-
-### 关键词搜 SKU
-
-```sql
-SELECT sku, department_team, service_name, description,
-       pricing_type, price_currency, price_amount,
-       billing_frequency, recurring, scope_of_work, fee_raw, footnotes
-FROM mdm_services
-WHERE jurisdiction = 'JURISDICTION'
-  AND bu = 'BU'
-  AND status = 'ACTIVE'
-  AND (
-    service_name ILIKE '%KEYWORD%'
-    OR sku_semantic_for_ai ILIKE '%KEYWORD%'
-  )
-ORDER BY department_team, sku;
-```
-
-### 多 SKU 核对
-
-```sql
-SELECT sku, department_team, service_name, description,
-       pricing_type, price_currency, price_amount,
-       billing_frequency, recurring, scope_of_work, fee_raw, footnotes
-FROM mdm_services
-WHERE jurisdiction = 'JURISDICTION'
-  AND bu = 'BU'
-  AND status = 'ACTIVE'
-  AND sku IN ('SKU_1', 'SKU_2')
-ORDER BY sku;
-```
-
-返回行数少于 SKU 列表 → 存在 inactive/无效 SKU，勿 materialize。
-
-### Package 聚合 SKU
-
-```sql
-SELECT p.package_id, p.package_name, p.package_semantic_for_ai,
-       array_agg(ps.sku ORDER BY ps.sku) AS skus
-FROM mdm_packages p
-JOIN mdm_package_services ps ON ps.package_id = p.package_id
-WHERE p.jurisdiction = 'JURISDICTION'
-  AND p.bu = 'BU'
-  AND p.status = 'ACTIVE'
-GROUP BY p.package_id, p.package_name, p.package_semantic_for_ai;
-```
-
-### Harneys BVI — PKG003 示例
-
-```sql
-SELECT ps.package_id, ps.sku,
-       s.service_name, s.description, s.department_team,
-       s.pricing_type, s.price_currency, s.price_amount,
-       s.billing_frequency, s.recurring, s.fee_raw, s.footnotes
-FROM mdm_package_services ps
-JOIN mdm_packages p ON p.package_id = ps.package_id
-JOIN mdm_services s
-  ON ps.sku = s.sku AND s.jurisdiction = p.jurisdiction AND s.bu = p.bu
-WHERE p.jurisdiction = 'BVI'
-  AND p.bu = 'Harneys'
-  AND ps.package_id = 'PKG003'
-  AND p.status = 'ACTIVE'
-  AND s.status = 'ACTIVE'
-ORDER BY s.department_team NULLS LAST, ps.sku;
-```
-
-## Jurisdiction filter
+## Scope 与 template
 
 | Template | `jurisdiction` | `bu` |
 |----------|----------------|------|
 | `harneys-bvi` | `BVI` | `Harneys` |
 | `au-advisory` | `AU` | `Incorp AU` |
 
-AU advisory 勿主动加 audit-only SKU（如 `ADT%`）。BVI `department_team` 为 `nan` 时在 SQL 用 `CASE` 或后续 patch draft row。
+无 draft 时传 `template_id`；有 draft 时可省略（从 `meta.template_id` 推断）。
 
-## 反例
+## 反模式
 
-```sql
--- 臆造列
-SELECT sku, price_note FROM mdm_services ...
+- 写 `SELECT … FROM mdm_services`（用 MDM tools）
+- 只把 `sku, price_amount` 传给 add tool（BVI 等会丢 `description` / `department_team`）
+- 手传 `services[]` 给 `add_package_to_proposal_draft`（应只传 `package_id`；tool 服务端加载 catalog）
+- 因 SKU 在某个 package 里就 **强制** 整包 add（应听销售要整包还是散加）
+- 查 catalog 代替 patch 已有 draft row
 
--- JOIN 未限定 package jurisdiction/bu
-JOIN mdm_services s ON s.sku = ps.sku
+## 何时 **不需要** 本 skill
 
--- 缺 status 过滤
-WHERE jurisdiction = 'AU'
-
--- 空 query_data {}
-```
-
-**反例**：只 SELECT `sku, price_amount` → BVI preview Service 列只剩 SKU 代码。
+- 用户只改 draft 里已有服务名、价格、optional 章节
+- 纯客户 facts / 文档 generate（无 catalog 选型）

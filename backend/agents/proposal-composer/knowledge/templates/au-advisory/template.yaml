@@ -46,6 +46,13 @@ sections:
     derivation:
       type: payment_options_from_fee_tables
       source_section: solution_and_fees
+      agent_guidance: >
+        Enable shows a single Option A derived from fee table sums — no extra config needed.
+        For multiple options, patch 'overrides' on this draft node:
+        {option_id: {label, rows: {group_id: {monthly, quarterly, annual, once_off}}}}.
+        group_id = fee_section tables[].id (read draft to get actual ids).
+        monthly/quarterly/annual/once_off are floats (use 0.0, not null, for unused columns).
+        Omit rows on an option to keep the default fee-table sums for that option.
     intro:
       source:
         type: template_file

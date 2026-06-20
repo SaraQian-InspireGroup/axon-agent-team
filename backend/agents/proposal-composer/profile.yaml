@@ -7,15 +7,15 @@ model: ${CLAUDE_AZURE_FOUNDRY_MODEL}
 prompt_file: system_prompt.md
 skills_dir: skills
 
-mcp_servers:
-  postgres:
-    env:
-      DATABASE_URL: ${DATABASE_URL}
-      DB_READ_ONLY: "true"
+mcp_servers: {}
 
 allowed_tools:
   - list_templates
   - read_knowledge
+  - list_mdm_packages
+  - get_mdm_package_services
+  - search_mdm_services
+  - list_mdm_packages_for_services
   - initialize_proposal_draft
   - get_proposal_draft
   - patch_proposal_draft
@@ -24,10 +24,6 @@ allowed_tools:
   - enable_proposal_draft_section
   - render_preview
   - generate_document
-  - postgres_list_tables
-  - postgres_describe_table
-  - postgres_get_schema
-  - postgres_query_data
 
 hooks:
   proposal_persist: {}

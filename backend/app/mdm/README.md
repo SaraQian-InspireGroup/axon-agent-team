@@ -21,8 +21,9 @@ alembic upgrade head
 Runtime source of truth: PostgreSQL `mdm_*` tables.  
 Migration snapshot fixture retained for revision 008: `app/mdm/data/bvi_catalog.json`.
 
-Runtime proposal flows do not import or parse source Excel files. Agents query MDM through
-Postgres MCP using SQL examples in the proposal-composer skills.
+Runtime proposal flows query MDM through **catalog builtin tools**
+(`list_mdm_packages`, `get_mdm_package_services`, `search_mdm_services`,
+`list_mdm_packages_for_services`). See `proposal-mdm-catalog` skill.
 
 ## Agent 如何读
 

@@ -10,6 +10,8 @@ from typing import Annotated, Any
 
 from agent_framework import tool
 
+from app.mdm.catalog_scope import resolve_catalog_scope
+from app.mdm.catalog_service import get_package_services, run_catalog_query
 from app.proposal.artifact_spec import ArtifactKind, ArtifactSpec
 from app.proposal.context import get_run_proposal_state
 from app.proposal.draft import (
@@ -113,8 +115,9 @@ def _validate_read_path(relative_path: str) -> None:
     description=(
         "List available proposal templates and their MDM catalog filters. "
         "Use when the user has not clearly chosen a proposal type, or asks what "
-        "proposal types are supported. Do not use for service/package lookup. "
-        "Read-only: may run in parallel with load_skill or postgres schema/query tools."
+        "proposal types are supported. Do not use for service/package lookup — "
+        "use list_mdm_packages / search_mdm_services instead. "
+        "Read-only: may run in parallel with load_skill or MDM catalog tools."
     ),
 )
 def list_templates() -> dict[str, Any]:
@@ -197,8 +200,9 @@ def initialize_proposal_draft(
     name="get_proposal_draft",
     description=(
         "Read the editable proposal draft that renders the right-hand Proposal Preview. "
-        "Use before patching when you need exact section/table/row indexes or ids. "
-        "Panel labels like 2.2 are render-time only (not stored in draft); locate the "
+        "Use before patching when you need exact section/table/row indexes or ids, and "
+        "after draft write tools as the Reply gate truth source when verifying user intent "
+        "before replying. Panel labels like 2.2 are render-time only (not stored in draft); locate the "
         "underlying draft row/field via get_proposal_draft and proposal-composer skill "
         "preview-vs-draft principles before patch. "
         "Omit path for the full draft; pass a JSON Pointer for a subtree. "
@@ -229,7 +233,8 @@ def get_proposal_draft(
         "display edits: client facts, section content, package narrative content "
         "(/sections/{fee_index}/narratives/{n}/content), table titles, fee row service_name, "
         "scope_of_work, price.amount (numeric total), price.fee_raw (non-FIXED display text), "
-        "or row/table ordering. If adding an MDM package or "
+        "row/table ordering, or derived_section configuration on that section node "
+        "(read draft for config field names). If adding an MDM package or "
         "service, use add_package_to_proposal_draft/add_services_to_proposal_draft instead "
         "so catalog fields and provenance are materialized correctly. JSON Patch replace "
         "requires the target path to already exist; use add for new fields, and read the "
@@ -269,21 +274,28 @@ def patch_proposal_draft(
 @tool(
     name="add_package_to_proposal_draft",
     description=(
-        "Materialize a confirmed MDM package into the draft fee section from rows already "
-        "queried via MCP SQL. Pass the package row and its service rows, including description, "
-        "department_team, pricing_type, price_amount, fee_raw, and footnotes; this tool does not "
-        "query MDM. Do not use for renaming/editing an existing package table; patch the draft. "
+        "Materialize a confirmed MDM package into the draft fee section. Pass package_id "
+        "(or a package object with package_id); the tool loads all ACTIVE catalog services "
+        "server-side — do not pass a partial services list. Re-adding the same package "
+        "merges any missing SKUs into the existing table. "
+        "Do not use for renaming/editing an existing package table; patch the draft. "
         "Mutates draft: call sequentially; do not parallelize with other draft write tools. "
         "Multiple packages: add one at a time in order."
     ),
 )
 def add_package_to_proposal_draft(
-    package: Annotated[Any, "MDM package row object, including package_id and package_name."],
+    package_id: Annotated[
+        str | None,
+        "MDM package_id, e.g. PKG001. Required unless package includes package_id.",
+    ] = None,
+    package: Annotated[
+        Any | None,
+        "Optional MDM package row (package_id, package_name). Ignored when package_id is set.",
+    ] = None,
     services: Annotated[
-        Any,
-        "Array of MDM service row objects returned for this package. Each row must include fields "
-        "needed by the template fee_layout (typically description, department_team, pricing fields).",
-    ],
+        Any | None,
+        "Deprecated — ignored. Services are always loaded from MDM catalog server-side.",
+    ] = None,
 ) -> dict[str, Any]:
     ctx = get_run_proposal_state()
     if ctx is None:
@@ -291,11 +303,82 @@ def add_package_to_proposal_draft(
     if ctx.draft is None:
         return {"status": "error", "error": "Proposal draft is not initialized."}
     try:
-        package_row = _coerce_object(package, "package")
-        service_rows = _coerce_object_list(services, "services")
+        package_row = _coerce_object(package, "package") if package is not None else {}
+        resolved_package_id = (package_id or package_row.get("package_id") or "").strip()
+        if not resolved_package_id:
+            raise ValueError("package_id is required")
+
+        scope = resolve_catalog_scope()
+        catalog = run_catalog_query(
+            lambda session: get_package_services(session, scope, resolved_package_id)
+        )
+        package_row = catalog["package"]
+        service_rows = catalog.get("services") or []
+        if not service_rows:
+            return {
+                "status": "error",
+                "error": f"No ACTIVE services found for package {resolved_package_id} in catalog scope.",
+                "linked_sku_count": catalog.get("linked_sku_count", 0),
+                "missing_skus": catalog.get("missing_skus") or [],
+                "warnings": catalog.get("warnings") or [],
+            }
+
+        before_skus: set[str] = set()
+        fee_section = next(
+            (
+                section
+                for section in (ctx.draft.get("document") or {}).get("sections") or []
+                if isinstance(section, dict) and section.get("kind") == "fee_section"
+            ),
+            None,
+        )
+        if isinstance(fee_section, dict):
+            for table in fee_section.get("tables") or []:
+                if not isinstance(table, dict):
+                    continue
+                if str((table.get("source") or {}).get("package_id") or "").strip() != resolved_package_id:
+                    continue
+                for row in table.get("rows") or []:
+                    if isinstance(row, dict):
+                        sku = str((row.get("source") or {}).get("sku") or "").strip()
+                        if sku:
+                            before_skus.add(sku)
+
         ctx.draft = add_package_to_draft(ctx.draft, package_row, service_rows)
         ctx.mark_draft_dirty()
-        return {"status": "ok", "draft": copy.deepcopy(ctx.draft)}
+
+        after_skus: set[str] = set()
+        fee_section = next(
+            (
+                section
+                for section in (ctx.draft.get("document") or {}).get("sections") or []
+                if isinstance(section, dict) and section.get("kind") == "fee_section"
+            ),
+            None,
+        )
+        if isinstance(fee_section, dict):
+            for table in fee_section.get("tables") or []:
+                if not isinstance(table, dict):
+                    continue
+                if str((table.get("source") or {}).get("package_id") or "").strip() != resolved_package_id:
+                    continue
+                for row in table.get("rows") or []:
+                    if isinstance(row, dict):
+                        sku = str((row.get("source") or {}).get("sku") or "").strip()
+                        if sku:
+                            after_skus.add(sku)
+
+        return {
+            "status": "ok",
+            "package_id": resolved_package_id,
+            "catalog_service_count": len(service_rows),
+            "linked_sku_count": catalog.get("linked_sku_count", len(service_rows)),
+            "skus_in_draft": sorted(after_skus),
+            "services_added": len(after_skus - before_skus),
+            "missing_skus": catalog.get("missing_skus") or [],
+            "warnings": catalog.get("warnings") or [],
+            "draft": copy.deepcopy(ctx.draft),
+        }
     except Exception as exc:
         logger.exception("add_package_to_proposal_draft failed")
         return {"status": "error", "error": str(exc) or type(exc).__name__}
@@ -304,10 +387,11 @@ def add_package_to_proposal_draft(
 @tool(
     name="add_services_to_proposal_draft",
     description=(
-        "Materialize one or more confirmed MDM services/SKUs into the draft fee section from "
-        "rows already queried via MCP SQL. Pass services as an array of row objects with "
-        "pricing_type, price_amount, and fee_raw; a single service is represented as a one-item "
-        "array. This tool does not query MDM. Do not use for editing service name, SOW, or price "
+        "Materialize one or more confirmed MDM services/SKUs into the draft fee section. "
+        "Pass services as an array of row objects from search_mdm_services (or equivalent "
+        "catalog query), with pricing_type, price_amount, and fee_raw. "
+        "A single service is represented as a one-item array. This tool does not query MDM. "
+        "Do not use for editing service name, SOW, or price "
         "on rows already in the draft; patch instead. "
         "Mutates draft: one call with all services in the array; do not parallelize multiple calls."
     ),
@@ -335,10 +419,12 @@ def add_services_to_proposal_draft(
 @tool(
     name="enable_proposal_draft_section",
     description=(
-        "Enable or disable an optional draft section by section id, e.g. payment_options, "
-        "credentials, or appendix. Use for optional/derived sections that already exist in "
-        "the template. Do not use to create new arbitrary sections; patch or template changes "
-        "are required for that."
+        "Enable or disable an optional draft section by section id (e.g. payment_options, "
+        "credentials, appendix). Use only for sections already defined in the template. "
+        "For kind derived_section, enabling shows the platform default derivation only; "
+        "alternate variants require a follow-up patch_proposal_draft on that section's "
+        "config fields (read get_proposal_draft for field names). Do not use to create "
+        "new arbitrary sections."
     ),
 )
 def enable_proposal_draft_section(

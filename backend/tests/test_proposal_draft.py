@@ -58,6 +58,7 @@ def test_materialize_bvi_draft_from_template_sections():
     assert "introduction" in ids
     assert "solution_and_fees" in ids
     assert "additional_info" in ids
+    assert "appendix" in ids
 
 
 def test_add_package_materializes_editable_fee_rows():

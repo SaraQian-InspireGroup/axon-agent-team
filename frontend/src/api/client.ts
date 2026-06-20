@@ -1,12 +1,15 @@
 import type {
   Agent,
   Chat,
+  ChatAttachment,
   ChatSummary,
   MemoryDocument,
   Message,
   StreamEvent,
   User,
 } from '../types'
+import type { AttachmentLimits } from '../lib/attachments'
+import { DEFAULT_ATTACHMENT_LIMITS } from '../lib/attachments'
 import type { ProposalPreview } from '../types/proposalPreview'
 import type { ProposalDraftResponse } from '../types/proposalDraft'
 
@@ -38,6 +41,22 @@ export const api = {
       body: JSON.stringify({ agent_id: agentId }),
     }),
   listMessages: (chatId: string) => request<Message[]>(`/chats/${chatId}/messages`),
+
+  getAttachmentConfig: () =>
+    request<AttachmentLimits>('/config/attachments').catch(() => DEFAULT_ATTACHMENT_LIMITS),
+
+  uploadChatAttachment: async (chatId: string, file: File): Promise<ChatAttachment> => {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(`${API}/chats/${chatId}/attachments`, {
+      method: 'POST',
+      body: form,
+    })
+    if (!res.ok) {
+      throw new Error(await res.text())
+    }
+    return res.json() as Promise<ChatAttachment>
+  },
 
   getProposalPreview: (chatId: string, draft = true) =>
     request<ProposalPreview>(
@@ -92,11 +111,12 @@ export async function streamChat(
   content: string,
   onEvent: (ev: StreamEvent) => void,
   signal?: AbortSignal,
+  attachmentIds: string[] = [],
 ): Promise<void> {
   const res = await fetch(`${API}/chats/${chatId}/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, attachment_ids: attachmentIds }),
     signal,
   })
   if (!res.ok || !res.body) {

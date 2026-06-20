@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     # Fernet key for encrypting MCP credentials at rest in the database
     mcp_secrets_key: str | None = Field(default=None, validation_alias="MCP_SECRETS_KEY")
 
+    # Chat attachments (platform-wide, all agents)
+    attachment_max_files_per_message: int = Field(
+        default=5, validation_alias="ATTACHMENT_MAX_FILES_PER_MESSAGE"
+    )
+    attachment_max_bytes_per_file: int = Field(
+        default=50 * 1024 * 1024, validation_alias="ATTACHMENT_MAX_BYTES_PER_FILE"
+    )
+    attachment_max_total_bytes_per_message: int = Field(
+        default=50 * 1024 * 1024, validation_alias="ATTACHMENT_MAX_TOTAL_BYTES_PER_MESSAGE"
+    )
+
     app_name: str = "agent-platform"
     debug: bool = False
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"])

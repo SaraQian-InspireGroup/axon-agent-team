@@ -395,17 +395,34 @@ def add_package_to_draft(draft: dict[str, Any], package: dict[str, Any], service
         raise ValueError("services are required")
 
     fee_section = _first_fee_section(updated)
-    existing_packages = {
-        str((table.get("source") or {}).get("package_id") or "").strip()
-        for table in fee_section.get("tables") or []
-        if isinstance(table, dict)
-    }
-    if package_id in existing_packages:
-        return updated
-
     rows = [_draft_fee_row(service, package_id=package_id) for service in services]
     if not rows:
         return updated
+
+    existing_table: dict[str, Any] | None = None
+    for table in fee_section.get("tables") or []:
+        if not isinstance(table, dict):
+            continue
+        if str((table.get("source") or {}).get("package_id") or "").strip() == package_id:
+            existing_table = table
+            break
+
+    if existing_table is not None:
+        existing_skus = {
+            str((row.get("source") or {}).get("sku") or "").strip()
+            for row in existing_table.get("rows") or []
+            if isinstance(row, dict)
+        }
+        new_rows = [
+            row
+            for row in rows
+            if str((row.get("source") or {}).get("sku") or "").strip() not in existing_skus
+        ]
+        if new_rows:
+            existing_table.setdefault("rows", []).extend(new_rows)
+        from app.proposal.placeholders import sync_draft_template_placeholders
+
+        return sync_draft_template_placeholders(updated)
 
     template_id = str((updated.get("meta") or {}).get("template_id") or "").strip()
     from app.proposal.placeholders import build_package_narrative_block, sync_draft_template_placeholders

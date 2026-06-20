@@ -1,7 +1,2 @@
-# MCP servers for proposal-composer — read-only MDM catalog in PostgreSQL.
-servers:
-  postgres:
-    command: npx
-    args:
-      - -y
-      - mcp-postgres@latest
+# MCP servers for proposal-composer — unused; MDM catalog is queried via builtin tools.
+# See profile.yaml allowed_tools: list_mdm_packages, get_mdm_package_services, etc.

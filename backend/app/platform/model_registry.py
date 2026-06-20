@@ -1,7 +1,7 @@
 from enum import Enum
 
 from agent_framework import Agent
-from agent_framework.anthropic import AnthropicClient
+from app.platform.anthropic_client import FILES_API_BETA, PlatformAnthropicClient
 from agent_framework.openai import OpenAIChatClient
 
 from app.config import Settings, get_settings
@@ -45,14 +45,15 @@ class ModelProviderRegistry:
             api_version=api_version or s.azure_openai_api_version,
         )
 
-    def create_azure_anthropic_client(self, *, model: str | None = None) -> AnthropicClient:
+    def create_azure_anthropic_client(self, *, model: str | None = None) -> PlatformAnthropicClient:
         s = self._settings
         if not s.claude_azure_api_key or not s.claude_azure_foundry_endpoint:
             raise ValueError("Claude is not configured (CLAUDE_AZURE_* env vars)")
-        return AnthropicClient(
+        return PlatformAnthropicClient(
             api_key=s.claude_azure_api_key,
             model=model or s.claude_azure_foundry_model,
             base_url=s.claude_azure_foundry_endpoint.rstrip("/"),
+            additional_beta_flags=[FILES_API_BETA],
         )
 
     def create_agent(

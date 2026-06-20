@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { api, streamChat } from '../api/client'
 import { AgentIcon } from '../components/AgentIcon'
 import { ChatHistoryPanel } from '../components/ChatHistoryPanel'
@@ -13,8 +13,21 @@ import { NewChatIcon } from '../components/NewChatIcon'
 import { SidebarToggleIcon } from '../components/SidebarToggleIcon'
 import { UserIcon } from '../components/UserIcon'
 import { formatAgentSlugLabel } from '../lib/agentLabel'
+import {
+  DEFAULT_ATTACHMENT_LIMITS,
+  SUPPORTED_ATTACHMENT_ACCEPT,
+  SUPPORTED_ATTACHMENT_LABEL,
+  validatePendingAttachments,
+  pendingAttachmentFilename,
+  pendingAttachmentId,
+  pendingAttachmentSize,
+  pendingAttachmentsForValidation,
+  formatAttachmentLimitMb,
+  type AttachmentLimits,
+  type PendingAttachment,
+} from '../lib/attachments'
 import { formatApiError } from '../lib/apiErrorMessage'
-import { getStoredChatId, setStoredChatId } from '../lib/chatStorage'
+import { getStoredChatId, setStoredChatId, clearStoredChatId } from '../lib/chatStorage'
 import {
   applyStreamArtifact,
   applyStreamReasoning,
@@ -106,6 +119,12 @@ function readSidebarCollapsed(): boolean {
   }
 }
 
+function formatAttachmentSize(sizeBytes: number): string {
+  if (sizeBytes < 1024) return `${sizeBytes} B`
+  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export function ChatPage() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [agentsLoading, setAgentsLoading] = useState(true)
@@ -114,6 +133,9 @@ export function ChatPage() {
   const [chatId, setChatId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
+  const [attachmentUploading, setAttachmentUploading] = useState(false)
+  const [attachmentLimits, setAttachmentLimits] = useState<AttachmentLimits>(DEFAULT_ATTACHMENT_LIMITS)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed)
@@ -145,6 +167,7 @@ export function ChatPage() {
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const streamGenRef = useRef(0)
   const streamAbortRef = useRef<AbortController | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const reloadInFlightRef = useRef<Promise<void> | null>(null)
   /** True when SSE proposal_updated already applied preview for the current turn. */
   const previewFreshFromStreamRef = useRef(false)
@@ -234,6 +257,10 @@ export function ChatPage() {
   }, [])
 
   useEffect(() => {
+    void api.getAttachmentConfig().then(setAttachmentLimits)
+  }, [])
+
+  useEffect(() => {
     chatIdRef.current = chatId
   }, [chatId])
 
@@ -300,6 +327,31 @@ export function ChatPage() {
     }
   }, [])
 
+  const enterDraftMode = useCallback(() => {
+    setChatId(null)
+    setMessages([])
+    setInput('')
+    setPendingAttachments([])
+    setError(null)
+    invalidateProposalPanelFetches()
+    setProposalPreview(null)
+    setProposalPreviewError(null)
+    setProposalState(null)
+    setProposalStateFingerprint(null)
+    setProposalStateError(null)
+  }, [invalidateProposalPanelFetches])
+
+  const ensureChatId = useCallback(async (): Promise<string> => {
+    if (chatId) return chatId
+    if (!selectedId) throw new Error('No agent selected')
+    const chat = await api.createChat(selectedId)
+    setStoredChatId(selectedId, chat.id)
+    setChatId(chat.id)
+    chatIdRef.current = chat.id
+    await refreshChatHistory(selectedId)
+    return chat.id
+  }, [chatId, selectedId, refreshChatHistory])
+
   const openChatById = useCallback(async (agentId: string, id: string) => {
     setError(null)
     invalidateProposalPanelFetches()
@@ -311,6 +363,7 @@ export function ChatPage() {
     setProposalStateError(null)
     setStoredChatId(agentId, id)
     setInput('')
+    setPendingAttachments([])
     const rows = await api.listMessages(id)
     setMessages(rows)
   }, [invalidateProposalPanelFetches])
@@ -318,16 +371,21 @@ export function ChatPage() {
   const loadChat = useCallback(
     async (agentId: string) => {
       setError(null)
-      let id = getStoredChatId(agentId)
-      if (!id) {
-        const chat = await api.createChat(agentId)
-        id = chat.id
-        setStoredChatId(agentId, id)
-      }
-      await openChatById(agentId, id)
       await refreshChatHistory(agentId)
+
+      const storedId = getStoredChatId(agentId)
+      if (storedId) {
+        try {
+          await openChatById(agentId, storedId)
+          return
+        } catch {
+          clearStoredChatId(agentId)
+        }
+      }
+
+      enterDraftMode()
     },
-    [openChatById, refreshChatHistory],
+    [enterDraftMode, openChatById, refreshChatHistory],
   )
 
   const selectAgent = useCallback(
@@ -387,10 +445,17 @@ export function ChatPage() {
       setProposalStateError(null)
       return
     }
-    if (!chatId) return
-    invalidateProposalPanelFetches()
     setProposalPanelCollapsed(false)
     setProposalPanelTab('preview')
+    if (!chatId) {
+      setProposalPreview(null)
+      setProposalPreviewError(null)
+      setProposalState(null)
+      setProposalStateFingerprint(null)
+      setProposalStateError(null)
+      return
+    }
+    invalidateProposalPanelFetches()
     void fetchProposalPreview(chatId)
   }, [isProposalComposer, chatId, fetchProposalPreview, invalidateProposalPanelFetches])
 
@@ -419,6 +484,75 @@ export function ChatPage() {
     [refreshChatHistory, selectedId],
   )
 
+  const removePendingAttachment = (attachmentId: string) => {
+    setPendingAttachments((prev) =>
+      prev.filter((item) => pendingAttachmentId(item) !== attachmentId),
+    )
+  }
+
+  const handleAttachmentPick = () => {
+    if (
+      loading ||
+      chatSessionLoading ||
+      attachmentUploading ||
+      pendingAttachments.length >= attachmentLimits.max_files_per_message
+    ) {
+      return
+    }
+    fileInputRef.current?.click()
+  }
+
+  const handleAttachmentSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    const limitError = validatePendingAttachments(
+      pendingAttachmentsForValidation(pendingAttachments),
+      file.size,
+      attachmentLimits,
+    )
+    if (limitError) {
+      setError(limitError)
+      return
+    }
+
+    if (!chatId) {
+      setPendingAttachments((prev) => [
+        ...prev,
+        { kind: 'local', localId: `local-${Date.now()}`, file },
+      ])
+      return
+    }
+
+    setAttachmentUploading(true)
+    setError(null)
+    try {
+      const uploaded = await api.uploadChatAttachment(chatId, file)
+      setPendingAttachments((prev) => [...prev, { kind: 'uploaded', attachment: uploaded }])
+    } catch (e) {
+      setError(formatApiError(e, 'Failed to upload attachment'))
+    } finally {
+      setAttachmentUploading(false)
+    }
+  }
+
+  const resolveAttachmentIds = useCallback(
+    async (activeChatId: string, items: PendingAttachment[]): Promise<string[]> => {
+      const ids: string[] = []
+      for (const item of items) {
+        if (item.kind === 'uploaded') {
+          ids.push(item.attachment.id)
+          continue
+        }
+        const uploaded = await api.uploadChatAttachment(activeChatId, item.file)
+        ids.push(uploaded.id)
+      }
+      return ids
+    },
+    [],
+  )
+
   const stopStreaming = async () => {
     const runId = runIdRef.current ?? activeRunId
     if (!runId || !chatId) return
@@ -442,9 +576,13 @@ export function ChatPage() {
   }
 
   const send = async () => {
-    if (!chatId || !input.trim() || loading) return
+    if (loading || !selectedId) return
     const text = input.trim()
+    const sentAttachments = [...pendingAttachments]
+    if (!text && sentAttachments.length === 0) return
+
     setInput('')
+    setPendingAttachments([])
     setLoading(true)
     setProposalTurnSyncing(false)
     previewFreshFromStreamRef.current = false
@@ -461,15 +599,49 @@ export function ChatPage() {
       }
     }
 
+    let activeChatId: string
+    try {
+      activeChatId = await ensureChatId()
+    } catch (e) {
+      setLoading(false)
+      setError(e instanceof Error ? e.message : 'Failed to start conversation')
+      return
+    }
+
+    let attachmentIds: string[] = []
+    try {
+      attachmentIds = await resolveAttachmentIds(activeChatId, sentAttachments)
+    } catch (e) {
+      setLoading(false)
+      setError(formatApiError(e, 'Failed to upload attachments'))
+      return
+    }
+
     setMessages((prev) => {
       const nextSequence = prev.reduce((max, row) => Math.max(max, row.sequence), 0) + 1
       const optimistic: Message = {
         id: `tmp-${Date.now()}`,
-        chat_id: chatId,
+        chat_id: activeChatId,
         role: 'user',
         message_type: 'text',
         content: text,
-        metadata: {},
+        metadata:
+          sentAttachments.length > 0
+            ? {
+                attachments: sentAttachments.map((item) => ({
+                  id: pendingAttachmentId(item),
+                  filename: pendingAttachmentFilename(item),
+                  mime_type:
+                    item.kind === 'local'
+                      ? item.file.type || 'application/octet-stream'
+                      : item.attachment.mime_type,
+                  size_bytes: pendingAttachmentSize(item),
+                  provider: item.kind === 'uploaded' ? item.attachment.provider : '',
+                  provider_file_id:
+                    item.kind === 'uploaded' ? item.attachment.provider_file_id : '',
+                })),
+              }
+            : {},
         parent_id: null,
         sequence: nextSequence,
         created_at: new Date().toISOString(),
@@ -490,13 +662,13 @@ export function ChatPage() {
       if (generation !== streamGenRef.current || reloadedAfterStream) return
       reloadedAfterStream = true
       try {
-        const previewTasks: Promise<void>[] = [reloadMessagesAfterStream(chatId)]
-        if (isProposalComposer && chatId && !previewFreshFromStreamRef.current) {
-          previewTasks.push(fetchProposalPreview(chatId))
+        const previewTasks: Promise<void>[] = [reloadMessagesAfterStream(activeChatId)]
+        if (isProposalComposer && !previewFreshFromStreamRef.current) {
+          previewTasks.push(fetchProposalPreview(activeChatId))
         }
         await Promise.all(previewTasks)
-        if (isProposalComposer && chatId && proposalPanelTabRef.current === 'state') {
-          await fetchProposalState(chatId)
+        if (isProposalComposer && proposalPanelTabRef.current === 'state') {
+          await fetchProposalState(activeChatId)
         }
       } finally {
         if (generation === streamGenRef.current) {
@@ -510,7 +682,7 @@ export function ChatPage() {
 
     try {
       await streamChat(
-        chatId,
+        activeChatId,
         text,
         (ev) => {
           if (generation !== streamGenRef.current) return
@@ -533,26 +705,26 @@ export function ChatPage() {
             } else if (chunk) {
               segmentText += chunk
             }
-            setMessages((prev) => applyStreamText(prev, chatId, segmentText))
+            setMessages((prev) => applyStreamText(prev, activeChatId, segmentText))
           }
           if (ev.event === 'reasoning_done') {
             setMessages((prev) => finalizeStreamReasoning(prev))
           }
           if (ev.event === 'viz' && ev.data.spec && typeof ev.data.spec === 'object') {
             const spec = ev.data.spec as VizSpec
-            setMessages((prev) => applyStreamViz(prev, chatId, spec))
+            setMessages((prev) => applyStreamViz(prev, activeChatId, spec))
           }
           if (ev.event === 'artifact' && ev.data.spec && typeof ev.data.spec === 'object') {
             const spec = ev.data.spec as ArtifactSpec
-            setMessages((prev) => applyStreamArtifact(prev, chatId, spec))
+            setMessages((prev) => applyStreamArtifact(prev, activeChatId, spec))
           }
           if (ev.event === 'proposal_updated') {
             const preview = parseProposalPreview(ev.data)
             if (preview) {
-              applyProposalPreview(preview, chatId)
+              applyProposalPreview(preview, activeChatId)
             }
-            if (proposalPanelTabRef.current === 'state' && chatId) {
-              void fetchProposalState(chatId)
+            if (proposalPanelTabRef.current === 'state') {
+              void fetchProposalState(activeChatId)
             }
           }
           const proposalDraftWriteTools = new Set([
@@ -565,7 +737,6 @@ export function ChatPage() {
           if (
             ev.event === 'tool_result' &&
             proposalDraftWriteTools.has(String(ev.data?.tool_name || '')) &&
-            chatId &&
             isProposalComposer
           ) {
             const result = parseToolResultObject(ev.data?.result)
@@ -576,25 +747,26 @@ export function ChatPage() {
               }
             }
             if (proposalPanelTabRef.current === 'state') {
-              void fetchProposalState(chatId)
+              void fetchProposalState(activeChatId)
             }
           }
           if (ev.event === 'reasoning' && typeof ev.data.text === 'string') {
-            setMessages((prev) => applyStreamReasoning(prev, chatId, ev.data.text as string))
+            setMessages((prev) => applyStreamReasoning(prev, activeChatId, ev.data.text as string))
           }
           if (ev.event === 'tool_call' && ev.data) {
             segmentText = ''
-            setMessages((prev) => applyStreamToolCall(prev, chatId, ev.data))
+            setMessages((prev) => applyStreamToolCall(prev, activeChatId, ev.data))
           }
           if (ev.event === 'tool_result' && ev.data) {
             segmentText = ''
-            setMessages((prev) => applyStreamToolResult(prev, chatId, ev.data))
+            setMessages((prev) => applyStreamToolResult(prev, activeChatId, ev.data))
           }
           if (ev.event === 'error') {
             throw new Error(String(ev.data.error ?? 'stream error'))
           }
         },
         abortController.signal,
+        attachmentIds,
       )
 
       if (generation !== streamGenRef.current) return
@@ -604,7 +776,7 @@ export function ChatPage() {
       if (e instanceof Error && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : 'Failed to send message')
       try {
-        await reloadMessagesAfterStream(chatId)
+        await reloadMessagesAfterStream(activeChatId)
       } catch {
         /* ignore reload failure */
       }
@@ -622,27 +794,13 @@ export function ChatPage() {
   const startNewChat = async () => {
     if (!selectedId || loading || chatSessionLoading) return
     setHistoryOpen(false)
-    invalidateProposalPanelFetches()
-    setProposalPreview(null)
-    setProposalPreviewError(null)
-    setProposalState(null)
-    setProposalStateFingerprint(null)
-    setProposalStateError(null)
+    clearStoredChatId(selectedId)
+    enterDraftMode()
     setProposalPanelTab('preview')
-    setError(null)
-    setChatSessionLoading(true)
-    setMessages([])
-    setInput('')
-    try {
-      const chat = await api.createChat(selectedId)
-      setStoredChatId(selectedId, chat.id)
-      setChatId(chat.id)
-      await refreshChatHistory(selectedId)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to start new chat')
-    } finally {
-      setChatSessionLoading(false)
+    if (isProposalComposer) {
+      setProposalPanelCollapsed(false)
     }
+    await refreshChatHistory(selectedId)
   }
 
   const openHistoryChat = async (id: string) => {
@@ -874,6 +1032,39 @@ export function ChatPage() {
                 <div className="chat-composer-wrap">
                   <div className="chat-content-column">
                     <div className="chat-composer">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        accept={SUPPORTED_ATTACHMENT_ACCEPT}
+                        onChange={(e) => void handleAttachmentSelected(e)}
+                      />
+                      {pendingAttachments.length > 0 && (
+                        <div className="chat-composer-attachments">
+                          {pendingAttachments.map((item) => (
+                            <span
+                              key={pendingAttachmentId(item)}
+                              className="chat-composer-attachment-chip"
+                            >
+                              <span className="chat-composer-attachment-name">
+                                {pendingAttachmentFilename(item)}
+                              </span>
+                              <span className="chat-composer-attachment-size">
+                                {formatAttachmentSize(pendingAttachmentSize(item))}
+                              </span>
+                              <button
+                                type="button"
+                                className="chat-composer-attachment-remove"
+                                onClick={() => removePendingAttachment(pendingAttachmentId(item))}
+                                disabled={loading || attachmentUploading}
+                                aria-label={`Remove ${pendingAttachmentFilename(item)}`}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
@@ -893,18 +1084,32 @@ export function ChatPage() {
                       <div className="chat-composer-footer">
                         <button
                           type="button"
-                          className="chat-composer-add"
-                          disabled={loading || chatSessionLoading}
-                          aria-label="Add attachment"
-                          title="Coming soon"
+                          className={`chat-composer-add${attachmentUploading ? ' chat-composer-add-uploading' : ''}`}
+                          disabled={
+                            loading ||
+                            chatSessionLoading ||
+                            attachmentUploading ||
+                            pendingAttachments.length >= attachmentLimits.max_files_per_message
+                          }
+                          onClick={handleAttachmentPick}
+                          aria-busy={attachmentUploading}
+                          aria-label={attachmentUploading ? 'Uploading attachment' : 'Add attachment'}
+                          title={
+                            attachmentUploading
+                              ? 'Uploading…'
+                              : pendingAttachments.length >= attachmentLimits.max_files_per_message
+                                ? `Maximum ${attachmentLimits.max_files_per_message} files per message`
+                                : `Attach file (${SUPPORTED_ATTACHMENT_LABEL}, max ${attachmentLimits.max_files_per_message} files / ${formatAttachmentLimitMb(attachmentLimits.max_total_bytes_per_message)} MB total)`
+                          }
                         >
-                          +
+                          {attachmentUploading ? <LoadingSpinner size="sm" /> : '+'}
                         </button>
                         <button
                           type="button"
                           onClick={() => (loading ? void stopStreaming() : void send())}
                           disabled={
-                            chatSessionLoading || (loading ? !activeRunId : !input.trim())
+                            chatSessionLoading ||
+                            (loading ? !activeRunId : !input.trim() && pendingAttachments.length === 0)
                           }
                           className={`chat-send-btn${loading ? ' chat-send-btn-stop' : ''}`}
                           aria-label={loading ? 'Stop generating' : 'Send'}

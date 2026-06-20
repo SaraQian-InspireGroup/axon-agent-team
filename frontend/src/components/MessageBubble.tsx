@@ -1,12 +1,24 @@
-import type { Message } from '../types'
+import type { Message, MessageAttachmentMeta } from '../types'
 import { MarkdownContent } from './MarkdownContent'
 
 interface Props {
   message: Message
 }
 
+function messageAttachments(message: Message): MessageAttachmentMeta[] {
+  const raw = message.metadata?.attachments
+  if (!Array.isArray(raw)) return []
+  return raw.filter(
+    (item): item is MessageAttachmentMeta =>
+      !!item &&
+      typeof item === 'object' &&
+      typeof (item as MessageAttachmentMeta).filename === 'string',
+  )
+}
+
 export function MessageBubble({ message }: Props) {
   const isUser = message.role === 'user'
+  const attachments = messageAttachments(message)
 
   if (message.message_type === 'run_cancelled') {
     return (
@@ -50,7 +62,16 @@ export function MessageBubble({ message }: Props) {
         }`}
       >
         {isUser ? (
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          <>
+            {attachments.length > 0 && (
+              <ul className="msg-user-attachments">
+                {attachments.map((item) => (
+                  <li key={item.id}>{item.filename}</li>
+                ))}
+              </ul>
+            )}
+            {message.content ? <p className="whitespace-pre-wrap">{message.content}</p> : null}
+          </>
         ) : (
           <>
             <MarkdownContent content={message.content ?? ''} />

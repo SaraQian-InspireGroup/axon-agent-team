@@ -1,4 +1,10 @@
 from app.tools.builtin import platform_time
+from app.tools.mdm_catalog import (
+    get_mdm_package_services,
+    list_mdm_packages,
+    list_mdm_packages_for_services,
+    search_mdm_services,
+)
 from app.tools.proposal import (
     add_package_to_proposal_draft,
     add_services_to_proposal_draft,
@@ -18,6 +24,10 @@ BUILTIN_TOOLS = {
     "list_sql_results": list_sql_results,
     "suggest_visualization": suggest_visualization,
     "list_templates": list_templates,
+    "list_mdm_packages": list_mdm_packages,
+    "get_mdm_package_services": get_mdm_package_services,
+    "search_mdm_services": search_mdm_services,
+    "list_mdm_packages_for_services": list_mdm_packages_for_services,
     "read_knowledge": read_knowledge,
     "initialize_proposal_draft": initialize_proposal_draft,
     "get_proposal_draft": get_proposal_draft,
