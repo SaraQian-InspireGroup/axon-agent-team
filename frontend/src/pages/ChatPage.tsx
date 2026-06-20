@@ -831,14 +831,14 @@ export function ChatPage() {
         >
           <h1
             className="sidebar-brand"
-            aria-label="Agent Platform"
-            title={sidebarCollapsed ? 'Agent Platform' : undefined}
+            aria-label="Agent Team"
+            title={sidebarCollapsed ? 'Agent Team' : undefined}
           >
             <img src="/cow.png" alt="" className="sidebar-brand-icon" />
             {!sidebarCollapsed && (
               <>
                 <span className="sidebar-brand-agent">Agent</span>{' '}
-                <span className="sidebar-brand-platform">Platform</span>
+                <span className="sidebar-brand-team">Team</span>
               </>
             )}
           </h1>
