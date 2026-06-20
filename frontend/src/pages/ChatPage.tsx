@@ -138,6 +138,8 @@ export function ChatPage() {
   const streamGenRef = useRef(0)
   const streamAbortRef = useRef<AbortController | null>(null)
   const reloadInFlightRef = useRef<Promise<void> | null>(null)
+  /** True when SSE proposal_updated already applied preview for the current turn. */
+  const previewFreshFromStreamRef = useRef(false)
 
   const SCROLL_PIN_THRESHOLD_PX = 80
 
@@ -199,11 +201,13 @@ export function ChatPage() {
 
   const applyProposalPreview = useCallback((preview: ProposalPreview) => {
     ++proposalPreviewFetchGenRef.current
+    previewFreshFromStreamRef.current = true
     setProposalPreview((prev) =>
       shouldReplaceProposalPreview(prev, preview) ? preview : prev,
     )
     setProposalPreviewLoading(false)
     setProposalPreviewError(null)
+    setProposalTurnSyncing(false)
     if (preview.markdown) {
       setProposalPanelCollapsed(false)
     }
@@ -374,7 +378,7 @@ export function ChatPage() {
         const rows = await api.listMessages(id)
         setMessages((prev) => mergeMessagesFromApi(rows, prev))
         if (selectedId) {
-          await refreshChatHistory(selectedId)
+          void refreshChatHistory(selectedId)
         }
       })()
       reloadInFlightRef.current = task
@@ -417,6 +421,7 @@ export function ChatPage() {
     setInput('')
     setLoading(true)
     setProposalTurnSyncing(false)
+    previewFreshFromStreamRef.current = false
     pinToBottomRef.current = true
     setError(null)
 
@@ -458,16 +463,14 @@ export function ChatPage() {
     const finishTurnAfterStream = async () => {
       if (generation !== streamGenRef.current || reloadedAfterStream) return
       reloadedAfterStream = true
-      if (isProposalComposer) {
-        setProposalTurnSyncing(true)
-      }
       try {
-        await reloadMessagesAfterStream(chatId)
-        if (isProposalComposer && chatId) {
-          await fetchProposalPreview(chatId)
-          if (proposalPanelTabRef.current === 'state') {
-            await fetchProposalState(chatId)
-          }
+        const previewTasks: Promise<void>[] = [reloadMessagesAfterStream(chatId)]
+        if (isProposalComposer && chatId && !previewFreshFromStreamRef.current) {
+          previewTasks.push(fetchProposalPreview(chatId))
+        }
+        await Promise.all(previewTasks)
+        if (isProposalComposer && chatId && proposalPanelTabRef.current === 'state') {
+          await fetchProposalState(chatId)
         }
       } finally {
         if (generation === streamGenRef.current) {
@@ -546,7 +549,6 @@ export function ChatPage() {
                 setProposalState(draft as Record<string, unknown>)
               }
             }
-            void fetchProposalPreview(chatId)
             if (proposalPanelTabRef.current === 'state') {
               void fetchProposalState(chatId)
             }
@@ -561,9 +563,6 @@ export function ChatPage() {
           if (ev.event === 'tool_result' && ev.data) {
             segmentText = ''
             setMessages((prev) => applyStreamToolResult(prev, chatId, ev.data))
-          }
-          if (ev.event === 'stream_idle' && isProposalComposer) {
-            setProposalTurnSyncing(true)
           }
           if (ev.event === 'error') {
             throw new Error(String(ev.data.error ?? 'stream error'))
