@@ -2620,6 +2620,194 @@ body {
   max-height: none;
 }
 
+.proposal-draft-fee-table-body {
+  padding: 0.625rem 0.875rem 0.75rem;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.proposal-draft-fee-row-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.proposal-draft-fee-row-item {
+  padding: 0.5rem 0.625rem;
+  border-bottom: 1px solid var(--color-border);
+  background: #fff;
+}
+
+.proposal-draft-fee-row-item:last-child {
+  border-bottom: none;
+}
+
+.proposal-draft-fee-row-main {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: start;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.proposal-draft-fee-row-sku {
+  flex-shrink: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.6875rem;
+  color: var(--color-muted, #64748b);
+  padding-top: 0.125rem;
+}
+
+.proposal-draft-fee-row-label {
+  min-width: 0;
+  color: var(--color-ink, #1e293b);
+  word-break: break-word;
+}
+
+.proposal-draft-fee-row-amount {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--color-ink, #1e293b);
+  white-space: nowrap;
+}
+
+.proposal-draft-fee-row-amount-missing {
+  font-weight: 400;
+  color: var(--color-muted, #94a3b8);
+}
+
+.proposal-draft-fee-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.25rem;
+  font-size: 0.6875rem;
+  color: var(--color-muted, #64748b);
+}
+
+.proposal-draft-fee-row-meta span {
+  padding: 0.0625rem 0.375rem;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+}
+
+.proposal-draft-fee-row-meta .proposal-draft-bagel {
+  padding: 0.125rem 0.4375rem;
+  font-size: 9px;
+  font-weight: 500;
+  background: var(--color-surface, #f1f5f9);
+}
+
+.proposal-draft-fee-row-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  margin-top: 0.3125rem;
+}
+
+.proposal-draft-fee-row-text {
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.proposal-draft-fee-row-text-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  cursor: pointer;
+  list-style: none;
+  color: var(--color-muted, #64748b);
+}
+
+.proposal-draft-fee-row-text-summary::-webkit-details-marker {
+  display: none;
+}
+
+.proposal-draft-fee-row-text-summary::before {
+  content: '▸';
+  flex-shrink: 0;
+  width: 0.75rem;
+  font-size: 0.625rem;
+  color: #94a3b8;
+  transition: transform 0.12s ease;
+}
+
+.proposal-draft-fee-row-text[open] .proposal-draft-fee-row-text-summary::before {
+  transform: rotate(90deg);
+}
+
+.proposal-draft-fee-row-text-label {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-subtle, #94a3b8);
+}
+
+.proposal-draft-fee-row-text-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink, #334155);
+}
+
+.proposal-draft-fee-row-text[open] .proposal-draft-fee-row-text-preview {
+  display: none;
+}
+
+.proposal-draft-fee-row-text-body {
+  margin: 0.25rem 0 0 1.125rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.25rem;
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  color: var(--color-ink, #1e293b);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.proposal-draft-fee-row-footnote-flag {
+  color: #9a3412;
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.proposal-draft-fee-footnotes {
+  border-top: 1px dashed var(--color-border);
+  padding-top: 0.5rem;
+}
+
+.proposal-draft-fee-footnotes-title {
+  margin: 0 0 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-subtle, #64748b);
+}
+
+.proposal-draft-fee-footnotes-list {
+  margin: 0;
+  padding-left: 1.125rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-ink, #1e293b);
+}
+
+.proposal-draft-fee-footnotes-list li + li {
+  margin-top: 0.25rem;
+}
+
 .artifact-widget-frame-expanded {
   outline: 2px solid rgba(59, 130, 246, 0.35);
   outline-offset: 1px;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  collectFeeTableFootnotes,
   draftBlockKey,
   draftBlockTitle,
   draftExtraTopLevel,
@@ -11,11 +12,14 @@ import {
   draftTopLevelEntries,
   feeSectionIntroBlock,
   feeSectionMetadata,
+  formatBillingFrequencyLabel,
   formatDraftJson,
   isFeeSection,
+  isFeeTableBlock,
   isMarkdownBlockNode,
   isMarkdownBlockSection,
   markdownBlockContent,
+  summarizeFeeRow,
 } from '../lib/proposalDraftView'
 import { MarkdownContent } from './MarkdownContent'
 
@@ -133,6 +137,86 @@ function DraftMarkdownBlockBody({ block }: { block: Record<string, unknown> }) {
   )
 }
 
+function DraftFeeRowTextField({ label, text }: { label: string; text: string }) {
+  const preview = text.replace(/\s+/g, ' ').trim()
+  if (!preview) return null
+
+  return (
+    <details className="proposal-draft-fee-row-text">
+      <summary className="proposal-draft-fee-row-text-summary">
+        <span className="proposal-draft-fee-row-text-label">{label}</span>
+        <span className="proposal-draft-fee-row-text-preview">{preview}</span>
+      </summary>
+      <p className="proposal-draft-fee-row-text-body">{text}</p>
+    </details>
+  )
+}
+
+function DraftFeeTableBody({ table }: { table: Record<string, unknown> }) {
+  const rows = draftRecordList(table.rows)
+  const summaries = rows.map(summarizeFeeRow)
+  const footnotes = collectFeeTableFootnotes(rows)
+
+  return (
+    <div className="proposal-draft-fee-table-body">
+      {summaries.length > 0 ? (
+        <ul className="proposal-draft-fee-row-list">
+          {summaries.map((row) => (
+            <li key={row.id} className="proposal-draft-fee-row-item">
+              <div className="proposal-draft-fee-row-main">
+                {row.sku ? <span className="proposal-draft-fee-row-sku">{row.sku}</span> : null}
+                <span className="proposal-draft-fee-row-label">{row.label}</span>
+                {row.amount ? (
+                  <span className="proposal-draft-fee-row-amount">{row.amount}</span>
+                ) : (
+                  <span className="proposal-draft-fee-row-amount proposal-draft-fee-row-amount-missing">
+                    —
+                  </span>
+                )}
+              </div>
+              {(row.description || row.sow) && (
+                <div className="proposal-draft-fee-row-texts">
+                  {row.description ? (
+                    <DraftFeeRowTextField label="description" text={row.description} />
+                  ) : null}
+                  {row.sow ? <DraftFeeRowTextField label="sow" text={row.sow} /> : null}
+                </div>
+              )}
+              {(row.department || row.pricingType || row.billingFrequency || row.footnote) && (
+                <div className="proposal-draft-fee-row-meta">
+                  {row.department ? <span>{row.department}</span> : null}
+                  {row.pricingType ? <span>{row.pricingType}</span> : null}
+                  {row.billingFrequency ? (
+                    <span className="proposal-draft-bagel">
+                      {formatBillingFrequencyLabel(row.billingFrequency)}
+                    </span>
+                  ) : null}
+                  {row.footnote ? (
+                    <span className="proposal-draft-fee-row-footnote-flag">has footnote</span>
+                  ) : null}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="proposal-draft-markdown-empty">No rows</p>
+      )}
+
+      {footnotes.length > 0 ? (
+        <section className="proposal-draft-fee-footnotes">
+          <h5 className="proposal-draft-fee-footnotes-title">Footnotes</h5>
+          <ol className="proposal-draft-fee-footnotes-list">
+            {footnotes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+    </div>
+  )
+}
+
 function DraftBlockCollapsible({
   block,
   index,
@@ -148,6 +232,16 @@ function DraftBlockCollapsible({
           <DraftSectionSummary title={title} infoValue={block} />
         </summary>
         <DraftMarkdownBlockBody block={block} />
+      </details>
+    )
+  }
+  if (isFeeTableBlock(block)) {
+    return (
+      <details className="proposal-draft-section">
+        <summary className="proposal-draft-section-summary">
+          <DraftSectionSummary title={title} infoValue={block} />
+        </summary>
+        <DraftFeeTableBody table={block} />
       </details>
     )
   }

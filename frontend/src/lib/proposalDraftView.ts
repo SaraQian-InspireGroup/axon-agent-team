@@ -150,3 +150,117 @@ export function feeSectionIntroBlock(section: Record<string, unknown>): Record<s
 export function feeSectionHasIntro(section: Record<string, unknown>): boolean {
   return feeSectionIntroBlock(section) !== null
 }
+
+export function isFeeTableBlock(block: Record<string, unknown>): boolean {
+  return block.kind === 'fee_table'
+}
+
+export function feeTablePackageId(table: Record<string, unknown>): string | null {
+  const source = table.source
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return null
+  const packageId = (source as Record<string, unknown>).package_id
+  return typeof packageId === 'string' && packageId.trim() ? packageId.trim() : null
+}
+
+export type FeeRowSummary = {
+  id: string
+  sku: string
+  label: string
+  amount: string | null
+  description: string | null
+  sow: string | null
+  department: string | null
+  footnote: string | null
+  pricingType: string | null
+  billingFrequency: string | null
+}
+
+export function formatBillingFrequencyLabel(frequency: string): string {
+  const normalized = frequency.trim().toUpperCase()
+  const labels: Record<string, string> = {
+    ONE_TIME: 'one-time',
+    MONTHLY: 'monthly',
+    QUARTERLY: 'quarterly',
+    ANNUALLY: 'annually',
+  }
+  return labels[normalized] ?? frequency.trim().toLowerCase().replace(/_/g, ' ')
+}
+
+function formatDraftMoney(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+    }).format(amount)
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`
+  }
+}
+
+export function summarizeFeeRow(row: Record<string, unknown>): FeeRowSummary {
+  const source =
+    row.source && typeof row.source === 'object' && !Array.isArray(row.source)
+      ? (row.source as Record<string, unknown>)
+      : {}
+  const price =
+    row.price && typeof row.price === 'object' && !Array.isArray(row.price)
+      ? (row.price as Record<string, unknown>)
+      : {}
+
+  const sku = typeof source.sku === 'string' ? source.sku.trim() : ''
+  const serviceName = typeof row.service_name === 'string' ? row.service_name.trim() : ''
+  const description = typeof row.description === 'string' ? row.description.trim() : ''
+  const sow = typeof row.scope_of_work === 'string' ? row.scope_of_work.trim() : ''
+  const label = serviceName || description || sku || String(row.id || 'Row')
+
+  const currency = typeof price.currency === 'string' && price.currency.trim() ? price.currency : 'USD'
+  let amount: string | null = null
+  if (typeof price.amount === 'number' && !Number.isNaN(price.amount)) {
+    amount = formatDraftMoney(price.amount, currency)
+  } else if (typeof price.fee_raw === 'string' && price.fee_raw.trim()) {
+    amount = price.fee_raw.trim()
+  }
+
+  const footnote =
+    typeof row.footnotes === 'string' && row.footnotes.trim() ? row.footnotes.trim() : null
+  const department =
+    typeof row.department_team === 'string' && row.department_team.trim()
+      ? row.department_team.trim()
+      : null
+  const pricingType =
+    typeof price.pricing_type === 'string' && price.pricing_type.trim()
+      ? price.pricing_type.trim()
+      : null
+  const billingFrequency =
+    typeof price.frequency === 'string' && price.frequency.trim()
+      ? price.frequency.trim()
+      : typeof row.billing_frequency === 'string' && row.billing_frequency.trim()
+        ? row.billing_frequency.trim()
+        : null
+
+  return {
+    id: typeof row.id === 'string' ? row.id : sku || label,
+    sku,
+    label,
+    amount,
+    description: description || null,
+    sow: sow || null,
+    department,
+    footnote,
+    pricingType,
+    billingFrequency,
+  }
+}
+
+export function collectFeeTableFootnotes(rows: Record<string, unknown>[]): string[] {
+  const seen = new Set<string>()
+  const notes: string[] = []
+  for (const row of rows) {
+    const note = typeof row.footnotes === 'string' ? row.footnotes.trim() : ''
+    if (!note || seen.has(note)) continue
+    seen.add(note)
+    notes.push(note)
+  }
+  return notes
+}

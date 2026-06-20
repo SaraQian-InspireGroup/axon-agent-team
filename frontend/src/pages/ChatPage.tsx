@@ -354,18 +354,24 @@ export function ChatPage() {
 
   const openChatById = useCallback(async (agentId: string, id: string) => {
     setError(null)
-    invalidateProposalPanelFetches()
-    setChatId(id)
-    setProposalPreview(null)
-    setProposalPreviewError(null)
-    setProposalState(null)
-    setProposalStateFingerprint(null)
-    setProposalStateError(null)
-    setStoredChatId(agentId, id)
-    setInput('')
-    setPendingAttachments([])
-    const rows = await api.listMessages(id)
-    setMessages(rows)
+    setChatSessionLoading(true)
+    setMessages([])
+    try {
+      invalidateProposalPanelFetches()
+      setChatId(id)
+      setProposalPreview(null)
+      setProposalPreviewError(null)
+      setProposalState(null)
+      setProposalStateFingerprint(null)
+      setProposalStateError(null)
+      setStoredChatId(agentId, id)
+      setInput('')
+      setPendingAttachments([])
+      const rows = await api.listMessages(id)
+      setMessages(rows)
+    } finally {
+      setChatSessionLoading(false)
+    }
   }, [invalidateProposalPanelFetches])
 
   const loadChat = useCallback(
@@ -804,7 +810,7 @@ export function ChatPage() {
   }
 
   const openHistoryChat = async (id: string) => {
-    if (!selectedId || loading) return
+    if (!selectedId || loading || chatSessionLoading) return
     setHistoryOpen(false)
     try {
       await openChatById(selectedId, id)
