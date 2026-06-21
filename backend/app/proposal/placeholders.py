@@ -85,12 +85,16 @@ def apply_template_placeholders(
     return result
 
 
-def placeholder_context_for_section(section: dict[str, Any]) -> str | None:
+def placeholder_context_for_section(section: dict[str, Any], *, template_id: str = "") -> str | None:
     section_id = str(section.get("id") or "")
     if section_id == "introduction":
         return "introduction"
     if section.get("kind") == "fee_section":
         return "fee_table"
+    if template_id:
+        specs = load_template_yaml(template_id).get("placeholders") or {}
+        if section_id in specs:
+            return section_id
     return None
 
 
@@ -110,7 +114,7 @@ def resolve_section_source_content(
             content = read_static_block(template_id, str(file_ref))
         except OSError:
             content = str(section.get("content") or "")
-    context = placeholder_context_for_section(section)
+    context = placeholder_context_for_section(section, template_id=template_id)
     if context:
         content = apply_template_placeholders(content, draft, template_id, context)
     return content.strip()

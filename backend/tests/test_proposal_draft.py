@@ -36,6 +36,10 @@ def test_materialize_au_draft_from_template_sections():
     assert "introduction" in ids
     assert "solution_and_fees" in ids
     assert "terms" in ids
+    payment = next(s for s in draft["document"]["sections"] if s["id"] == "payment_options")
+    assert "agent_guidance" in payment
+    assert "overrides" in payment["agent_guidance"]
+    assert "agent_guidance" not in payment["derivation"]
 
 
 def test_materialize_draft_includes_optional_client_facts():
@@ -68,8 +72,38 @@ def test_materialize_bvi_draft_from_template_sections():
     assert appendices["kind"] == "collection"
     assert appendices.get("blocks") == []
     assert appendices.get("collection") == {"child_kind": "markdown_block"}
+    required = next(s for s in draft["document"]["sections"] if s["id"] == "required_documents")
+    assert "agent_guidance" not in required
     fee = next(s for s in draft["document"]["sections"] if s["id"] == "solution_and_fees")
     assert "intro" not in fee
+
+
+def test_materialize_copies_section_agent_guidance():
+    from app.proposal.draft import _collection_section
+
+    section = _collection_section(
+        {
+            "id": "appendices",
+            "title": "Appendices",
+            "agent_guidance": "Each block title must start with Appendix.",
+            "collection": {"child_kind": "markdown_block"},
+        }
+    )
+    assert section["agent_guidance"] == "Each block title must start with Appendix."
+
+
+def test_materialize_skips_blank_section_agent_guidance():
+    from app.proposal.draft import _collection_section
+
+    section = _collection_section(
+        {
+            "id": "appendices",
+            "title": "Appendices",
+            "agent_guidance": "   ",
+            "collection": {"child_kind": "markdown_block"},
+        }
+    )
+    assert "agent_guidance" not in section
 
 
 def test_materialize_au_fee_section_intro_is_markdown_block():

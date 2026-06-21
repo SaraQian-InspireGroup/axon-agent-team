@@ -62,12 +62,6 @@ sections:
       source_section: solution_and_fees
       compose_skill_resource: references/required-docs-compose.md
       catalog_skill_resource: references/required-docs-harneys-catalog.md
-    agent_guidance: >
-      Enable toggles visibility only. Compose via proposal-composer skill:
-      read compose_skill_resource, then catalog_skill_resource, select blocks from
-      fee tables, read_knowledge body_root/content_file for selected blocks only,
-      patch content + composition. Do not paste catalog agent_notes into proposal.
-      Empty fee tables → placeholder content (pending_packages), not full bodies.
 
   - id: additional_info
     kind: static_block

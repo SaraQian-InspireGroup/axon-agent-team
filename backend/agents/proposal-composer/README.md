@@ -39,3 +39,4 @@ knowledge/
 |-------------|----------|------|
 | `harneys-bvi` | `jurisdiction=BVI`, `bu=Harneys` | draft `fee_section` |
 | `au-advisory` | `jurisdiction=AU`, `bu=Incorp AU` | draft `fee_section` + optional `payment_options` derived section |
+| `sg-incorp` | `jurisdiction=SG`, `bu=Incorp SG` | draft `fee_section` + optional `first_invoice` derived section |

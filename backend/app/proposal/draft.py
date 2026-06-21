@@ -13,6 +13,8 @@ from typing import Any
 import jsonpatch
 
 from app.proposal.fee_row import (
+    first_invoice_row_amount,
+    is_adhoc_fee_row,
     materialize_mdm_fee_row,
     render_row_dto,
     resolve_fee_row_display,
@@ -22,6 +24,7 @@ from app.proposal.fee_row import (
 from app.proposal.fee_table import render_frequency_table, render_simple_table
 from app.proposal.fee_table import (
     payment_summary_footer,
+    render_first_invoice_table,
     render_payment_options_table,
     row_total_annualized,
     sum_group_columns,
@@ -129,11 +132,20 @@ def _section_policy(spec: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _copy_section_agent_guidance(section: dict[str, Any], spec: dict[str, Any]) -> None:
+    guidance = spec.get("agent_guidance")
+    if guidance is None:
+        return
+    text = str(guidance).strip()
+    if text:
+        section["agent_guidance"] = text
+
+
 def _static_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
     source = dict(spec.get("source") or {})
     if not source and spec.get("file"):
         source = {"type": "template_file", "file": spec.get("file")}
-    return {
+    section = {
         "id": str(spec["id"]),
         "kind": "static_block",
         "title": str(spec.get("title") or spec["id"]),
@@ -142,6 +154,8 @@ def _static_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
         "source": source,
         "policy": _section_policy({**spec, "editable": False}),
     }
+    _copy_section_agent_guidance(section, spec)
+    return section
 
 
 def _markdown_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
@@ -153,7 +167,7 @@ def _markdown_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
             content = read_static_block(template_id, str(file_ref))
         except OSError:
             content = ""
-    return {
+    section = {
         "id": str(spec["id"]),
         "kind": "markdown_block",
         "title": str(spec.get("title") or spec["id"]),
@@ -164,6 +178,8 @@ def _markdown_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
         "content": content,
         "edit_state": {"content": "source" if content else "empty"},
     }
+    _copy_section_agent_guidance(section, spec)
+    return section
 
 
 def _build_intro_markdown_block(
@@ -223,6 +239,7 @@ def _fee_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
     intro_block = _build_intro_markdown_block(template_id, spec.get("intro") or {})
     if intro_block:
         section["intro"] = intro_block
+    _copy_section_agent_guidance(section, spec)
     return section
 
 
@@ -251,6 +268,7 @@ def _collection_section(spec: dict[str, Any]) -> dict[str, Any]:
         section["blocks"] = []
     else:
         section["items"] = []
+    _copy_section_agent_guidance(section, spec)
     return section
 
 
@@ -277,6 +295,8 @@ def new_collection_markdown_block(
 
 
 def _derived_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
+    derivation = dict(spec.get("derivation") or {})
+    derivation.pop("agent_guidance", None)
     section: dict[str, Any] = {
         "id": str(spec["id"]),
         "kind": "derived_section",
@@ -289,12 +309,13 @@ def _derived_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
             "removable": not bool(spec.get("required")),
             "regenerable": True,
         },
-        "derivation": dict(spec.get("derivation") or {}),
+        "derivation": derivation,
         "overrides": {},
     }
     intro_block = _build_intro_markdown_block(template_id, spec.get("intro") or {})
     if intro_block:
         section["intro"] = intro_block
+    _copy_section_agent_guidance(section, spec)
     return section
 
 
@@ -330,17 +351,17 @@ def materialize_draft(
         elif kind == "derived_section":
             materialized.append(_derived_section(template_id, spec))
         else:
-            materialized.append(
-                {
-                    "id": str(spec["id"]),
-                    "kind": str(kind or "section"),
-                    "title": str(spec.get("title") or spec["id"]),
-                    "enabled": bool(spec.get("default_enabled", spec.get("required", False))),
-                    "required": bool(spec.get("required")),
-                    "source": dict(spec.get("source") or {}),
-                    "policy": _section_policy(spec),
-                }
-            )
+            section = {
+                "id": str(spec["id"]),
+                "kind": str(kind or "section"),
+                "title": str(spec.get("title") or spec["id"]),
+                "enabled": bool(spec.get("default_enabled", spec.get("required", False))),
+                "required": bool(spec.get("required")),
+                "source": dict(spec.get("source") or {}),
+                "policy": _section_policy(spec),
+            }
+            _copy_section_agent_guidance(section, spec)
+            materialized.append(section)
     draft["document"]["sections"] = materialized
     return draft
 
@@ -824,9 +845,55 @@ def _render_collection(
     return f"# {title}\n\n" + "\n\n".join(body) if body else ""
 
 
+def _derive_first_invoice_lines(
+    draft: dict[str, Any],
+    fee_section: dict[str, Any],
+    section: dict[str, Any],
+) -> list[dict[str, Any]]:
+    layout = _effective_fee_layout(draft, fee_section)
+    exclude_cfg = (section.get("derivation") or {}).get("exclude") or {}
+    lines: list[dict[str, Any]] = []
+    for table in fee_section.get("tables") or []:
+        if not isinstance(table, dict):
+            continue
+        for row in table.get("rows") or []:
+            if not isinstance(row, dict):
+                continue
+            if is_adhoc_fee_row(row, exclude_cfg if isinstance(exclude_cfg, dict) else {}):
+                continue
+            amount = first_invoice_row_amount(row, layout)
+            if amount is None or amount <= 0:
+                continue
+            display = row.get("display") if isinstance(row.get("display"), dict) else {}
+            label = str(display.get("preview_primary") or "").strip()
+            if not label:
+                source = row.get("source") if isinstance(row.get("source"), dict) else {}
+                label = str(source.get("service_name") or row.get("id") or "").strip()
+            if not label:
+                continue
+            lines.append({"label": label, "price": amount})
+    return lines
+
+
 def _render_derived_section(draft: dict[str, Any], section: dict[str, Any]) -> str:
     derivation = section.get("derivation") or {}
-    if derivation.get("type") != "payment_options_from_fee_tables":
+    deriv_type = str(derivation.get("type") or "").strip()
+
+    if deriv_type == "first_invoice_from_fee_tables":
+        source_section_id = str(derivation.get("source_section") or "solution_and_fees")
+        fee_section = find_section(draft, source_section_id)
+        if not fee_section or fee_section.get("kind") != "fee_section":
+            return ""
+        lines = _derive_first_invoice_lines(draft, fee_section, section)
+        title = str(section.get("title") or "Estimated first invoice value")
+        layout = _effective_fee_layout(draft, fee_section)
+        currency = str(layout.get("currency") or "")
+        tax = derivation.get("tax") if isinstance(derivation.get("tax"), dict) else {}
+        parts = [f"# {title}", ""]
+        parts.append(render_first_invoice_table(lines, currency=currency, tax=tax))
+        return "\n".join(part for part in parts if part != "").strip()
+
+    if deriv_type != "payment_options_from_fee_tables":
         return ""
 
     source_section_id = str(derivation.get("source_section") or "solution_and_fees")

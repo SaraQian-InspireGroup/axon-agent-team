@@ -35,6 +35,7 @@ description: >-
    | `sections[].fee_layout` | 表样式、列、分组、脚注、列宽等 render 规则 |
    | `sections[].package_briefs.index` | package_id → brief 模板路径 |
    | `sections[].derivation` | `derived_section` 专用：`type`、`source_section`；决定推导与配置语义 |
+   | `sections[].agent_guidance` | 该 section 的 agent 操作说明（materialize 后出现在 draft 同名字段） |
    | `sections[].knowledge` | Required documents 等：`category`、`body_root`、`source_section`、skill resource 路径 |
    | `placeholders` | introduction 等处的占位符解析规则 |
 
@@ -162,11 +163,11 @@ JSON Pointer 示例：`/document/sections/{i}/tables/{t}/rows/{r}/display/previe
 
 **workflow（适用所有 `derived_section`，无论 template）**：
 
-1. **发现** — 读 template（`read_knowledge("templates/{id}/template.yaml")`），找到 `kind: derived_section` 的 node；注意 `derivation.type`、`derivation.source_section`、`default_enabled`，以及 **`derivation.agent_guidance`**（若存在，里面有 default_behavior、config_slots、格式说明和示例）。**不要凭 skill 记哪个 template 有哪些 derived_section**——template 会增加，skill 不跟实例走。
+1. **发现** — `get_proposal_draft` 定位该 node（或读 template）；看 `kind`、`derivation.type`、`derivation.source_section`、`default_enabled`，以及 `agent_guidance`（若存在：default 行为、配置 slot 格式与示例）。**不要凭 skill 记哪个 template 有哪些 derived_section**——template 会增加，skill 不跟实例走。
 2. **读配置现状** — `get_proposal_draft` 定位该 node；看 **该 node 上实际有哪些配置字段**（以返回 JSON 为准，不猜 schema）。
 3. **Enable** — 若 `default_enabled: false`，先 `enable_proposal_draft_section`。停在这里，**不要向用户宣称已完成**。
 4. **判断 default 是否够用** — 对照用户意图与 default 推导结果：够用则止，不够则继续。
-5. **Patch 配置** — 用户要超出 default 的变体/配置时，`patch_proposal_draft` 写入该 section 的配置 slot。**配置格式以 template.yaml 里 `derivation.agent_guidance.config_slots` 为准**（platform 读 `type`/`source_section`，`agent_guidance` 只给 agent 看）。**不要发明字段**——只用 template 文档里出现的 key 和结构。
+5. **Patch 配置** — 用户要超出 default 的变体/配置时，`patch_proposal_draft` 写入该 section 的配置 slot。**配置格式以 draft 上该 section 的 `agent_guidance` 为准（若有）**（platform 读 `derivation.type`/`source_section`，`agent_guidance` 只给 agent 看）。**不要发明字段**——只用 guidance 里出现的 key 和结构。
 6. **Reply gate** — 在回复之前，Scope 维逐条确认用户指名的每个变体在 draft 配置里都存在（见 Reply gate）。
 
 **勿 patch 生成结果** — `policy.editable: false` 时不要 replace 渲染出的 markdown；改 **配置 slot** 或 `intro.content`（若 template 标记 editable）。
@@ -174,6 +175,8 @@ JSON Pointer 示例：`/document/sections/{i}/tables/{t}/rows/{r}/display/previe
 **与普通 optional section 的本质区别**：普通 optional（`markdown_block`、`collection` 等）enable 之后即显示已有内容，用户要改就改内容字段；`derived_section` enable 后内容来自推导，用户要「第二套方案」类需求时 **enable 不够，必须 patch 推导配置**。同一个 tool `enable_proposal_draft_section`，两类语义不同——遇到 `derived_section` 必须额外问：**default 推导是否已覆盖用户的全部意图？**
 
 *例*：au-advisory `payment_options`（`payment_options_from_fee_tables`）默认推导单套汇总方案；用户要月付 Option B 时 enable 不够，需 patch 该 node 的配置字段（字段名从 `get_proposal_draft` 读，不从 skill 查表）。
+
+*例*：sg-incorp `first_invoice`（`first_invoice_from_fee_tables`）enable 即可；platform 从 fee rows 推导首票表（排除 adhoc、用 display 价、template `derivation.tax` 算 GST），fee 变更后自动重算，**勿 patch 表格**。
 
 ### Required documents（knowledge category + compose）
 

@@ -647,6 +647,82 @@ def remove_fee_rows_by_sku(draft: dict[str, Any], skus: list[str]) -> dict[str, 
         raise ValueError(f"No fee rows matched skus: {', '.join(sorted(targets))}")
     return updated
 
+DEFAULT_ADHOC_EXCLUDE_PATTERN = r"(?i)(?<![a-z-])ad[\s-]?hoc(?![a-z])"
+DEFAULT_ADHOC_EXCLUDE_FIELDS = (
+    "preview_primary",
+    "scope_of_work_display",
+    "service_name",
+    "description",
+    "scope_of_work",
+)
+
+
+def _exclude_field_text(row: dict[str, Any], field: str) -> str:
+    display = row.get("display") if isinstance(row.get("display"), dict) else {}
+    source = row.get("source") if isinstance(row.get("source"), dict) else {}
+    if field == "preview_primary":
+        return str(display.get("preview_primary") or "").strip()
+    if field == "scope_of_work_display":
+        return str(display.get("scope_of_work_display") or "").strip()
+    if field in ("service_name", "description", "scope_of_work"):
+        value = source.get(field)
+        if value not in (None, ""):
+            return str(value).strip()
+        if field == "service_name":
+            return str(display.get("preview_primary") or "").strip()
+    return ""
+
+
+def is_adhoc_fee_row(row: dict[str, Any], exclude_cfg: dict[str, Any] | None = None) -> bool:
+    """True when row text matches template derivation.exclude adhoc pattern."""
+    cfg = exclude_cfg or {}
+    pattern = str(cfg.get("pattern") or DEFAULT_ADHOC_EXCLUDE_PATTERN)
+    fields = cfg.get("fields") or list(DEFAULT_ADHOC_EXCLUDE_FIELDS)
+    try:
+        regex = re.compile(pattern)
+    except re.error:
+        regex = re.compile(DEFAULT_ADHOC_EXCLUDE_PATTERN)
+    for field in fields:
+        text = _exclude_field_text(row, str(field))
+        if text and regex.search(text):
+            return True
+    return False
+
+
+def first_invoice_row_amount(row: dict[str, Any], layout: dict[str, Any] | None) -> float | None:
+    """First-invoice price from draft display fields (not source catalog amounts)."""
+    layout = layout or {}
+    style = str(layout.get("table_style") or "simple").strip().lower()
+    display = row.get("display") if isinstance(row.get("display"), dict) else {}
+
+    if style == "one_off_recurring":
+        once_off = parse_amount_display(str(display.get("once_off_display") or ""))
+        recurring = parse_amount_display(str(display.get("recurring_display") or ""))
+        parts = [value for value in (once_off, recurring) if value is not None]
+        if not parts:
+            return None
+        return float(sum(parts))
+
+    if style == "frequency_columns":
+        freq_cols = display.get("frequency_columns_display")
+        if isinstance(freq_cols, dict):
+            once_off = parse_amount_display(str(freq_cols.get("once_off") or ""))
+            if once_off is not None:
+                return once_off
+            for key in ("monthly", "quarterly", "annual"):
+                parsed = parse_amount_display(str(freq_cols.get(key) or ""))
+                if parsed is not None:
+                    return parsed
+        amount = effective_pricing(row).get("amount")
+        return float(amount) if amount is not None else None
+
+    parsed = parse_amount_display(str(display.get("amount_display") or ""))
+    if parsed is not None:
+        return parsed
+    amount = effective_pricing(row).get("amount")
+    return float(amount) if amount is not None else None
+
+
 def validate_fee_row_patches(patch: list[dict[str, Any]]) -> None:
     from app.proposal.draft import DraftPatchError
 

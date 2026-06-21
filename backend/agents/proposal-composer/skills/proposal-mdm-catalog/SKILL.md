@@ -61,6 +61,7 @@ Tool 可能在 `warnings` 里提示 catalog 行缺少展示所需定价（如 FI
 |----------|----------------|------|
 | `harneys-bvi` | `BVI` | `Harneys` |
 | `au-advisory` | `AU` | `Incorp AU` |
+| `sg-incorp` | `SG` | `Incorp SG` |
 
 无 draft 时传 `template_id`；有 draft 时可省略（从 `meta.template_id` 推断）。
 

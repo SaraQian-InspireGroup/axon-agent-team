@@ -672,6 +672,63 @@ def render_simple_table(
     return "\n".join(parts).strip()
 
 
+def render_first_invoice_table(
+    lines: list[dict[str, Any]],
+    *,
+    currency: str = "",
+    tax: dict[str, Any] | None = None,
+) -> str:
+    if not lines:
+        return "_No eligible services for first invoice estimate._"
+
+    tax_cfg = tax or {}
+    rate = float(tax_cfg.get("rate") or 0.0)
+    tax_label = str(tax_cfg.get("label") or "GST").strip() or "GST"
+    rate_display = str(tax_cfg.get("rate_display") or f"{rate * 100:g}%").strip()
+    currency_suffix = f" ({currency})" if currency else ""
+
+    parts: list[str] = [
+        '<table class="proposal-fee-table proposal-first-invoice-table">',
+        "<thead><tr>",
+        "<th>Services</th>",
+        f"<th>Price{currency_suffix}</th>",
+        f"<th>{escape_html(tax_label)}{escape_html(currency_suffix)} ({escape_html(rate_display)})</th>",
+        f"<th>Total{currency_suffix}</th>",
+        "</tr></thead><tbody>",
+    ]
+
+    total_price = 0.0
+    total_gst = 0.0
+    total_grand = 0.0
+    for line in lines:
+        price = float(line.get("price") or 0)
+        gst = round(price * rate, 2)
+        row_total = round(price + gst, 2)
+        total_price += price
+        total_gst += gst
+        total_grand += row_total
+        service = str(line.get("label") or "").strip()
+        parts.append(
+            "<tr>"
+            f"<td>{escape_html(service)}</td>"
+            f"<td class=\"proposal-fee-amount\">{escape_html(format_money(price, currency, include_currency=False))}</td>"
+            f"<td class=\"proposal-fee-amount\">{escape_html(format_money(gst, currency, include_currency=False))}</td>"
+            f"<td class=\"proposal-fee-amount\">{escape_html(format_money(row_total, currency, include_currency=False))}</td>"
+            "</tr>"
+        )
+
+    parts.append(
+        "<tr class=\"proposal-fee-summary\">"
+        f"<td><strong>Total</strong></td>"
+        f"<td class=\"proposal-fee-amount\"><strong>{escape_html(format_money(total_price, currency, include_currency=False))}</strong></td>"
+        f"<td class=\"proposal-fee-amount\"><strong>{escape_html(format_money(total_gst, currency, include_currency=False))}</strong></td>"
+        f"<td class=\"proposal-fee-amount\"><strong>{escape_html(format_money(total_grand, currency, include_currency=False))}</strong></td>"
+        "</tr>"
+    )
+    parts.append("</tbody></table>")
+    return "\n".join(parts)
+
+
 def render_payment_options_table(options: list[dict[str, Any]], *, currency: str = "") -> str:
     if not options:
         return "_No payment options configured._"
