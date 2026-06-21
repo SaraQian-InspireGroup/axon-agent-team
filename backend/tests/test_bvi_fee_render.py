@@ -1,5 +1,5 @@
 from app.proposal.draft import add_package_to_draft, build_draft_preview, materialize_draft
-from app.proposal.fee_table import build_fee_service_cell_html, service_column_flags
+from app.proposal.fee_table import build_fee_service_cell_html, build_service_cell_from_display, service_column_flags
 
 
 def test_bvi_service_columns_show_name_and_description_not_sow():
@@ -12,16 +12,17 @@ def test_bvi_service_columns_show_name_and_description_not_sow():
             }
         }
     )
-    html = build_fee_service_cell_html(
+    html = build_service_cell_from_display(
         {
-            "service_name": "Approved Manager",
-            "description": "Registered Office/Registered Agent Fee",
-            "scope_of_work": "Should not appear",
+            "display": {
+                "preview_primary": "Approved Manager",
+                "scope_of_work_display": "Should not appear",
+            },
+            "sku": "AM001",
         },
         columns,
     )
     assert "Approved Manager" in html
-    assert "Registered Office/Registered Agent Fee" in html
     assert "Should not appear" not in html
 
 
@@ -35,11 +36,13 @@ def test_au_service_columns_show_name_and_sow_not_description():
             }
         }
     )
-    html = build_fee_service_cell_html(
+    html = build_service_cell_from_display(
         {
-            "service_name": "Land Title Search",
-            "description": "Registry description",
-            "scope_of_work": "Search and report",
+            "display": {
+                "preview_primary": "Land Title Search",
+                "scope_of_work_display": "Search and report",
+            },
+            "sku": "LTS01",
         },
         columns,
     )
@@ -163,5 +166,5 @@ def test_bvi_template_column_widths_apply_to_grouped_tables():
         ],
     )
     markdown = build_draft_preview(updated)["markdown"]
-    assert markdown.count('width="70%"') >= 2
-    assert markdown.count('width="30%"') >= 2
+    assert markdown.count('width="75%"') >= 2
+    assert markdown.count('width="25%"') >= 2

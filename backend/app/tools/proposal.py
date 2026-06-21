@@ -24,6 +24,7 @@ from app.proposal.draft import (
     patch_draft,
     render_draft_markdown,
 )
+from app.proposal.fee_row import remove_fee_rows_by_sku
 from app.proposal.loaders import load_templates, read_knowledge_file
 from app.proposal.paths import KNOWLEDGE_ROOT, PERIPHERAL_ROOT, TEMPLATES_ROOT
 from app.proposal.storage import new_artifact_id, save_markdown
@@ -230,15 +231,16 @@ def get_proposal_draft(
     name="patch_proposal_draft",
     description=(
         "Apply RFC 6902 JSON Patch to existing proposal draft nodes. Use for visible "
-        "display edits: client facts, section content, package narrative content "
-        "(/sections/{fee_index}/narratives/{n}/content), table titles, fee row service_name, "
-        "scope_of_work, price.amount (numeric total), price.fee_raw (non-FIXED display text), "
-        "row/table ordering, or derived_section configuration on that section node "
-        "(read draft for config field names). If adding an MDM package or "
-        "service, use add_package_to_proposal_draft/add_services_to_proposal_draft instead "
-        "so catalog fields and provenance are materialized correctly. JSON Patch replace "
-        "requires the target path to already exist; use add for new fields, and read the "
-        "draft first with get_proposal_draft when unsure."
+        "display edits: client facts, section content, package brief content "
+        "(/sections/{fee_index}/tables/{t}/brief/content), table titles, fee row "
+        "display.preview_primary, display.amount_display (simple layout), "
+        "display.frequency_columns_display / display.total_display (frequency layout), "
+        "display.footnotes_display, row/table ordering, or derived_section configuration. "
+        "fee_row.source is immutable — use add_package/add_services to materialize MDM rows "
+        "and remove_fee_rows_from_proposal_draft to delete by SKU. "
+        "If adding an MDM package or service, use add_package_to_proposal_draft/"
+        "add_services_to_proposal_draft instead so catalog fields materialize correctly. "
+        "JSON Patch replace requires the target path to already exist; use add for new fields."
     ),
 )
 def patch_proposal_draft(
@@ -391,8 +393,8 @@ def add_package_to_proposal_draft(
         "Pass services as an array of row objects from search_mdm_services (or equivalent "
         "catalog query), with pricing_type, price_amount, and fee_raw. "
         "A single service is represented as a one-item array. This tool does not query MDM. "
-        "Do not use for editing service name, SOW, or price "
-        "on rows already in the draft; patch instead. "
+        "Do not use for editing display fields on rows already in the draft; patch display.* "
+        "instead, or remove_fee_rows_from_proposal_draft to delete rows by SKU. "
         "Mutates draft: one call with all services in the array; do not parallelize multiple calls."
     ),
 )
@@ -413,6 +415,32 @@ def add_services_to_proposal_draft(
         return {"status": "ok", "draft": copy.deepcopy(ctx.draft)}
     except Exception as exc:
         logger.exception("add_services_to_proposal_draft failed")
+        return {"status": "error", "error": str(exc) or type(exc).__name__}
+
+
+@tool(
+    name="remove_fee_rows_from_proposal_draft",
+    description=(
+        "Remove fee rows from the draft by source SKU. Use when the user asks to drop "
+        "specific services from the proposal. Match rows by display.preview_primary for "
+        "user-facing language, but pass source SKUs to this tool. "
+        "Mutates draft: do not parallelize with other draft write tools."
+    ),
+)
+def remove_fee_rows_from_proposal_draft(
+    skus: Annotated[list[str], "SKUs to remove (source.sku values), e.g. ['TA01', 'CSS23']."],
+) -> dict[str, Any]:
+    ctx = get_run_proposal_state()
+    if ctx is None:
+        return {"status": "error", "error": "Proposal context unavailable for this run."}
+    if ctx.draft is None:
+        return {"status": "error", "error": "Proposal draft is not initialized."}
+    try:
+        ctx.draft = remove_fee_rows_by_sku(ctx.draft, skus)
+        ctx.mark_draft_dirty()
+        return {"status": "ok", "removed_skus": skus, "draft": copy.deepcopy(ctx.draft)}
+    except Exception as exc:
+        logger.exception("remove_fee_rows_from_proposal_draft failed")
         return {"status": "error", "error": str(exc) or type(exc).__name__}
 
 

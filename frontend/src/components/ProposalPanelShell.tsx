@@ -15,7 +15,7 @@ export type ProposalPanelTab = 'preview' | 'state'
 
 const TAB_LABELS: Record<ProposalPanelTab, string> = {
   preview: 'Proposal Preview',
-  state: 'Draft',
+  state: 'Section View',
 }
 
 function readStoredWidth(): number {

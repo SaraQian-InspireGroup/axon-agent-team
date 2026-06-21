@@ -46,7 +46,7 @@
 - **业务与字段**：draft 语义 → **`proposal-composer`** skill；MDM catalog → **`proposal-mdm-catalog`** skill（`list_mdm_packages` / `get_mdm_package_services` / `search_mdm_services` / `list_mdm_packages_for_services`，**禁止**对 MDM 写 SQL）。
 - **会话真相**：`proposal_draft`；确认服务项数以 draft fee tables/rows 为准，不以对话历史为准。
 - **只读可并行**：同一轮内可同时调用多个 **不改 draft** 的 tool（`load_skill`、`list_templates`、`read_knowledge`、`get_proposal_draft`、四个 **MDM catalog** tools）。MDM 查询与 add/patch **分开**；多个无依赖的 catalog 查询可同一轮并行。
-- **写 draft 不并发**：会修改 draft 的 tool **顺序**调用——`initialize_proposal_draft`、`patch_proposal_draft`、`add_package_to_proposal_draft`、`add_services_to_proposal_draft`、`enable_proposal_draft_section`、`generate_document`。多个 package **逐个** `add_package`（禁止并行 add）；多个 service **一次** `add_services` 的 `services` array。
+- **写 draft 不并发**：会修改 draft 的 tool **顺序**调用——`initialize_proposal_draft`、`patch_proposal_draft`、`add_package_to_proposal_draft`、`add_services_to_proposal_draft`、`remove_fee_rows_from_proposal_draft`、`enable_proposal_draft_section`、`generate_document`。多个 package **逐个** `add_package`（禁止并行 add）；多个 service **一次** `add_services` 的 `services` array；删行用 `remove_fee_rows_from_proposal_draft(skus=[...])`（用户说服务名，draft 里用 `display.preview_primary` 定位，tool 传 `source.sku`）。
 - **Reply gate（回复前强制检视）**：凡本轮 **写过 draft** 或回复里要 **声称已完成某改动**，发送用户可见文字 **之前** 必须执行 skill 中的 Reply gate——用最后一笔写 tool 返回的 `draft` 或 `get_proposal_draft`，对照 **用户意图 ↔ draft ↔ 你将要说的**（Scope / Fidelity / Honesty）。对不上则继续 tool 或改口，不得空头 Done。
 
 ## 硬性约束

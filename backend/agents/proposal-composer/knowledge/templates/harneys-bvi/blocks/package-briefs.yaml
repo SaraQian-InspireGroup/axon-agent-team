@@ -1,5 +1,6 @@
-# Maps MDM package_id → solution narrative block materialized into draft fee_section.narratives[].
-# add_package_to_proposal_draft seeds/syncs these blocks; agent may patch /sections/.../narratives/N/content.
+# Maps MDM package_id → solution brief materialized into fee_section.tables[].brief.
+# add_package_to_proposal_draft seeds brief on each fee_table; patch via
+# /document/sections/{i}/tables/{t}/brief/content.
 
 PKG001:
   package_name: Incorporation

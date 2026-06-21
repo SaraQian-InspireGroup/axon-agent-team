@@ -33,13 +33,13 @@ description: >-
    | `sections[].default_enabled` / `required` | 初始可见性 / 能否关闭 |
    | `sections[].editable` | 是否允许 patch 可见内容 |
    | `sections[].fee_layout` | 表样式、列、分组、脚注、列宽等 render 规则 |
-   | `sections[].package_narratives.index` | package_id → narrative 模板路径 |
+   | `sections[].package_briefs.index` | package_id → brief 模板路径 |
    | `sections[].derivation` | `derived_section` 专用：`type`、`source_section`；决定推导与配置语义 |
    | `placeholders` | introduction 等处的占位符解析规则 |
 
    静态正文在 `blocks/*.md`；结构规则在 `template.yaml`。Catalog 价格与 SKU 不在 template 里。
 
-5. **Platform 会重算的不要重复做** — `edit_state: source` 的块、add_package 触发的 narratives/占位符；只为销售明确要的差异 patch，必要时锁定 edit_state。patch 销售定制文案后，若不应再被 placeholder 覆盖，确认该 node 的 edit_state 语义再决定是否一并调整。
+5. **Platform 会重算的不要重复做** — `edit_state: source` 的块、add_package 触发的 brief/占位符；只为销售明确要的差异 patch，必要时锁定 edit_state。patch 销售定制文案后，若不应再被 placeholder 覆盖，确认该 node 的 edit_state 语义再决定是否一并调整。
 
 6. **Readiness 只约束导出** — live preview / 改单无步骤锁。
 
@@ -55,7 +55,7 @@ description: >-
 2. **读 draft 真相** — 优先用 **最后一笔写 draft tool 返回的 `draft`**；不够再 `get_proposal_draft`（或 `path` 查相关 subtree）。**不要**仅凭 tool 成功或自己的计划下结论。
 3. **三维对照**（逐条问，不限于 fee / payment）：
    - **Scope**：用户要的每一块在 draft 里是否 **存在且 enabled**（含 derived 的配置是否够，不是只有 default）？
-   - **Fidelity**：名称、SKU、金额、optional 内容是否与用户指定一致（报价仍看 fee rows 的 `price.amount`）？
+   - **Fidelity**：名称、SKU、金额、optional 内容是否与用户指定一致（报价看 fee row **`display.*`**，MDM 原价在 **`source.*`**）？
    - **Honesty**：准备写的回复，是否 **每一条完成态表述** 都能在上一步 draft 里找到依据？说不清就改 draft 或改口（部分完成 / 还差什么）。
 4. **推导 / 聚合 render** — 若意图涉及 `derived_section`、footnote 聚合、分组表等，draft 字段对了仍可能和 panel 不一致时，再 `render_preview` 或让用户看 panel；**panel 与 draft 冲突以 draft 为准去 patch**。
 5. **Fail closed** — 对不上：**继续 patch / enable / materialize**，或 **明确告知未完成项**；禁止「Done + 右侧面板将会显示…」式空头承诺。
@@ -94,25 +94,44 @@ Draft 内按 **语义槽** 组织（非独立 sub-section id）：
 | 槽 | 存什么 | Preview 里大致对应 |
 |----|--------|-------------------|
 | `intro` | 定价区引导文案（`kind: markdown_block`） | Solution 开头段落 |
-| `narratives[]` | 每个 package 的 solution 叙事块（`kind: markdown_block`） | package 说明段落（在 fee 表 **之前**） |
-| `tables[].rows[]` | 计费行（SKU、展示字段、price、footnotes 等） | Fee tables（在叙事 **之后**） |
+| `tables[].brief` | 每个 package 的 solution 说明（`kind: markdown_block`；à-la-carte 表无 brief） | package 说明段落（在 fee 表 **之前**，按 `tables[]` 顺序拼接） |
+| `tables[].rows[]` | 计费行（`source` 快照 + `display` 渲染字段） | Fee tables（在 brief **之后**） |
 
-**Preview 顺序**（intro → narratives → fee 表标题 → tables → 可选脚注区）由 platform render + `fee_layout` 决定，不是 draft 里再嵌一层 section tree。
+**Preview 顺序**（intro → 各 table 的 brief 拼接 → fee 表标题 → tables → 可选脚注区）由 platform render + `fee_layout` 决定，不是 draft 里再嵌一层 section tree。
 
-`add_package` 同时往 `narratives[]` 和 `tables[]` 写入；改 package 叙事 patch narrative 的 `content`，改价 patch 对应 row 的 price 字段。
+`add_package` 在 `tables[]` 写入带 `brief` 的 fee_table；改 package 说明 patch `tables/{t}/brief/content`；改展示 patch 对应 row 的 **`display.*`**；删行用 **`remove_fee_rows_from_proposal_draft(skus=[...])`**（用户说服务名，draft 里用 `display.preview_primary` 定位，tool 传 `source.sku`）。
 
-### Row 级字段：按语义找，不按 jurisdiction 记路径
+### Fee row：`source` + `display`
 
-Fee row 是 **结构化业务对象**，常见语义类别：
+每行 **固定形状**：
 
-| 类别 | 含义 | patch 场景 |
-|------|------|------------|
-| **identity / provenance** | `source.sku`, `source.package_id`, `id` | 定位用，少改 |
-| **display text** | `service_name`, `description`, `scope_of_work` | 销售改展示、SOW |
-| **pricing** | `price.amount`, `price.fee_raw`, `pricing_type` | 改总价 / 规则文案 |
-| **footnotes** | `footnotes`（行级文本） | 改脚注 **正文** |
+| 部分 | 可 patch？ | 含义 |
+|------|----------|------|
+| **`source`** | **否** | MDM 入库快照（`type: mdm_service` + sku、price_amount、department_team、footnotes 等 catalog 字段） |
+| **`display`** | **是** | Preview / 销售指称的展示真相；render **只贴 display** |
 
-JSON Pointer 模式：`/document/sections/{i}/…`，其中 `{i}` 下具体 key 名 **以 draft 为准**（如 `tables/{t}/rows/{r}/footnotes`）。不必 memorized 每张表的路径。
+**`display` 字段（按 `fee_layout.table_style`）**：
+
+| `table_style` | display 字段 |
+|---------------|----------------|
+| `simple` | `preview_primary`, `amount_display`, `footnotes_display?` |
+| `frequency_columns` | `preview_primary`, `scope_of_work_display?`, `frequency_columns_display`, `total_display`, `footnotes_display?` |
+
+- 改价：**simple** patch `display.amount_display`；**frequency** patch 对应 `display.frequency_columns_display.{monthly|quarterly|annual|once_off}` 与/或 `display.total_display`。
+- 改标题/服务名展示：patch `display.preview_primary`（勿 patch `source.service_name`）。
+- 脚注正文：patch `display.footnotes_display`（聚合编号仍由 render 处理）。
+- **`department_team` 只在 `source`**，供 `group_by: department`；不进 display。
+
+JSON Pointer 示例：`/document/sections/{i}/tables/{t}/rows/{r}/display/preview_primary`。
+
+### Custom 行（非 catalog）
+
+**不需要单独 add tool** — 与改价一样走 **`patch_proposal_draft`**，对 `tables/{t}/rows/-` 做 **`add`**，append 完整 `fee_row` node：
+
+- `source`: `{ "type": "custom_service", "sku": "CUSTOM_n" }`（sku 唯一，add 前读 draft 分配 `CUSTOM_1`、`CUSTOM_2`…）
+- `display`: agent 直接写 `preview_primary` + 按 `table_style` 写金额字段（无 MDM resolve）
+
+详见 [preview-vs-draft.md](references/preview-vs-draft.md#custom-行非-mdm)。**勿**用 `add_services_to_proposal_draft`（仅 MDM）。
 
 ### `fee_layout`：只改显示，不改存储路径
 
@@ -120,10 +139,10 @@ JSON Pointer 模式：`/document/sections/{i}/…`，其中 `{i}` 下具体 key 
 
 | layout 开关 | 存储 | Preview |
 |-------------|------|---------|
-| `footnotes: aggregate` | 仍在 **每行** `rows[].footnotes` | 全文去重、统一编号、section 末一次渲染 |
-| `group_by: department` | rows 仍在 tables 内 | render 时按 `department_team` 拆多张表 |
-| `service_columns` | 各字段仍在 row 上 | 决定 Service 单元格展示哪些列 |
-| `table_style` | — | 是否显示 `2.2` 行号等 |
+| `footnotes: aggregate` | 仍在 **每行** `source.footnotes` / `display.footnotes_display` | 全文去重、统一编号、section 末一次渲染 |
+| `group_by: department` | `department_team` 在 **source** | render 时按 department 拆多张表 |
+| `service_columns` | resolve 时决定 `display.preview_primary` / `scope_of_work_display` | 决定 Service 单元格展示哪些列 |
+| `table_style` | — | `simple` vs `frequency_columns`（Section View 同样两种 layout） |
 
 未来非 aggregate 脚注模式：row 路径仍相同，仅 render 不同。
 
@@ -155,7 +174,7 @@ JSON Pointer 模式：`/document/sections/{i}/…`，其中 `{i}` 下具体 key 
 ## 用户指称 → 思考方式
 
 - **某行 / 某价 / SOW / 脚注** → 在 `fee_section` 的 `tables[].rows[]` 里按 sku/名称定位 → patch 对应 **语义字段**。
-- **某 package 方案说明** → `narratives[]` 里按 `package_id` 定位 → patch `content`。
+- **某 package 方案说明** → `tables[]` 里按 `source.package_id` 定位 → patch `brief/content`。
 - **客户 / 公司** → `facts.client.*`。
 - **`derived_section`**（需要 enable 的推导型章节）→ 先读 template 确认 `derivation.type`；enable ≠ 全部变体；读 draft 发现配置字段 → patch。
 - **其他 optional 章节**（`markdown_block`、`static_block`、`collection` 等）→ enable 后 patch 该 kind 的内容字段（`content`、`items[]`…）。

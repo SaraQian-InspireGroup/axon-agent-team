@@ -12,7 +12,14 @@ from typing import Any
 
 import jsonpatch
 
-from app.proposal.fee_table import render_frequency_table, render_simple_table, row_frequency_columns
+from app.proposal.fee_row import (
+    materialize_mdm_fee_row,
+    render_row_dto,
+    resolve_fee_row_display,
+    remove_fee_rows_by_sku,
+    validate_fee_row_patches,
+)
+from app.proposal.fee_table import render_frequency_table, render_simple_table
 from app.proposal.fee_table import (
     payment_summary_footer,
     render_payment_options_table,
@@ -210,8 +217,7 @@ def _fee_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
             "regenerable": True,
         },
         "fee_layout": dict(spec.get("fee_layout") or {}),
-        "package_narratives": dict(spec.get("package_narratives") or {}),
-        "narratives": [],
+        "package_briefs": dict(spec.get("package_briefs") or {}),
         "tables": [],
     }
     intro_block = _build_intro_markdown_block(template_id, spec.get("intro") or {})
@@ -328,16 +334,6 @@ def _first_fee_section(draft: dict[str, Any]) -> dict[str, Any]:
     raise ValueError("Draft has no fee_section")
 
 
-_STANDARD_OFFER_RE = re.compile(r"\s*\((?:standard offer|standard fee|pricing)[^)]+\)\s*$", re.I)
-
-
-def _normalize_department(value: Any) -> str:
-    dept = str(value or "").strip()
-    if not dept or dept.lower() == "nan":
-        return "Services"
-    return dept
-
-
 def template_fee_section_spec(template_id: str, section_id: str) -> dict[str, Any]:
     tpl = load_template_yaml(template_id)
     for spec in tpl.get("sections") or []:
@@ -357,55 +353,27 @@ def _effective_fee_layout(draft: dict[str, Any], section: dict[str, Any]) -> dic
     return {**draft_layout, **tpl_layout}
 
 
-def _display_service_name(service: dict[str, Any]) -> str:
-    raw = str(service.get("service_name") or service["sku"])
-    return _STANDARD_OFFER_RE.sub("", raw).strip() or raw
+def _catalog_scope_for_draft(draft: dict[str, Any]) -> tuple[str | None, str | None]:
+    template_id = str((draft.get("meta") or {}).get("template_id") or "").strip()
+    if not template_id:
+        return None, None
+    try:
+        from app.mdm.catalog_scope import resolve_catalog_scope
+
+        scope = resolve_catalog_scope(template_id=template_id)
+        return scope.get("jurisdiction"), scope.get("bu")
+    except Exception:
+        return None, None
 
 
-def _draft_fee_row(service: dict[str, Any], *, package_id: str | None = None) -> dict[str, Any]:
-    from app.proposal.pricing_rules import coerce_price_amount, normalize_pricing_type
+def _refresh_draft_fee_row_displays(draft: dict[str, Any]) -> dict[str, Any]:
+    from app.proposal.fee_row import iter_fee_rows
 
-    amount = coerce_price_amount(service.get("price_amount"))
-    pricing_type = normalize_pricing_type(service.get("pricing_type"))
-    description = str(service.get("description") or "").strip()
-    scope = str(service.get("scope_of_work") or "").strip()
-
-    return {
-        "id": f"fee_{service['sku']}",
-        "kind": "fee_row",
-        "source": {
-            "type": "mdm_service",
-            "sku": service["sku"],
-            **({"package_id": package_id} if package_id else {}),
-        },
-        "service_name": _display_service_name(service),
-        "description": description or None,
-        "department_team": _normalize_department(service.get("department_team")),
-        "scope_of_work": scope,
-        "footnotes": _normalize_draft_footnote(service.get("footnotes")),
-        "price": {
-            "amount": amount,
-            "fee_raw": service.get("fee_raw"),
-            "currency": service.get("price_currency"),
-            "frequency": service.get("billing_frequency"),
-            "recurring": service.get("recurring"),
-            "source_amount": amount,
-            "source": "mdm",
-            "pricing_type": pricing_type,
-        },
-        "edit_state": {
-            "service_name": "source",
-            "scope_of_work": "source",
-            "footnotes": "source",
-            "price": "source",
-        },
-    }
-
-
-def _normalize_draft_footnote(text: Any) -> str | None:
-    from app.proposal.footnotes import normalize_footnote
-
-    return normalize_footnote(text)
+    updated = copy.deepcopy(draft)
+    for section, _table, row in iter_fee_rows(updated):
+        layout = _effective_fee_layout(updated, section)
+        row["display"] = resolve_fee_row_display(row, layout=layout)
+    return updated
 
 
 def add_package_to_draft(draft: dict[str, Any], package: dict[str, Any], services: list[dict[str, Any]]) -> dict[str, Any]:
@@ -417,7 +385,18 @@ def add_package_to_draft(draft: dict[str, Any], package: dict[str, Any], service
         raise ValueError("services are required")
 
     fee_section = _first_fee_section(updated)
-    rows = [_draft_fee_row(service, package_id=package_id) for service in services]
+    layout = _effective_fee_layout(updated, fee_section)
+    jurisdiction, bu = _catalog_scope_for_draft(updated)
+    rows = [
+        materialize_mdm_fee_row(
+            service,
+            package_id=package_id,
+            layout=layout,
+            jurisdiction=jurisdiction,
+            bu=bu,
+        )
+        for service in services
+    ]
     if not rows:
         return updated
 
@@ -442,40 +421,49 @@ def add_package_to_draft(draft: dict[str, Any], package: dict[str, Any], service
         ]
         if new_rows:
             existing_table.setdefault("rows", []).extend(new_rows)
+        if existing_table.get("brief") is None:
+            template_id = str((updated.get("meta") or {}).get("template_id") or "").strip()
+            from app.proposal.placeholders import build_table_brief
+
+            brief_block = build_table_brief(
+                updated,
+                fee_section,
+                template_id=template_id,
+                package_id=package_id,
+                package_name=str(package.get("package_name") or package_id),
+            )
+            if brief_block:
+                existing_table["brief"] = brief_block
         from app.proposal.placeholders import sync_draft_template_placeholders
 
         return sync_draft_template_placeholders(updated)
 
     template_id = str((updated.get("meta") or {}).get("template_id") or "").strip()
-    from app.proposal.placeholders import build_package_narrative_block, sync_draft_template_placeholders
+    from app.proposal.placeholders import build_table_brief, sync_draft_template_placeholders
 
-    narratives = fee_section.setdefault("narratives", [])
-    if not any(str(n.get("package_id") or "") == package_id for n in narratives if isinstance(n, dict)):
-        narrative_block = build_package_narrative_block(
-            updated,
-            fee_section,
-            template_id=template_id,
-            package_id=package_id,
-            package_name=str(package.get("package_name") or package_id),
-        )
-        if narrative_block:
-            narratives.append(narrative_block)
-
-    fee_section.setdefault("tables", []).append(
-        {
-            "id": f"table_{package_id}",
-            "kind": "fee_table",
-            "title": package.get("package_name") or package_id,
-            "source": {"type": "mdm_package", "package_id": package_id},
-            "policy": {
-                "editable": True,
-                "removable": True,
-                "row_addable": True,
-                "row_removable": True,
-            },
-            "rows": rows,
-        }
+    table: dict[str, Any] = {
+        "id": f"table_{package_id}",
+        "kind": "fee_table",
+        "title": package.get("package_name") or package_id,
+        "source": {"type": "mdm_package", "package_id": package_id},
+        "policy": {
+            "editable": True,
+            "removable": True,
+            "row_addable": True,
+            "row_removable": True,
+        },
+        "rows": rows,
+    }
+    brief_block = build_table_brief(
+        updated,
+        fee_section,
+        template_id=template_id,
+        package_id=package_id,
+        package_name=str(package.get("package_name") or package_id),
     )
+    if brief_block:
+        table["brief"] = brief_block
+    fee_section.setdefault("tables", []).append(table)
     return sync_draft_template_placeholders(updated)
 
 
@@ -489,12 +477,22 @@ def add_services_to_draft(
     updated = copy.deepcopy(draft)
     if not services:
         raise ValueError("services are required")
+    fee_section = _first_fee_section(updated)
+    layout = _effective_fee_layout(updated, fee_section)
+    jurisdiction, bu = _catalog_scope_for_draft(updated)
     rows = []
     for service in services:
         if not service.get("sku"):
             raise ValueError("service.sku is required")
-        rows.append(_draft_fee_row(service))
-    fee_section = _first_fee_section(updated)
+        rows.append(
+            materialize_mdm_fee_row(
+                service,
+                package_id=None,
+                layout=layout,
+                jurisdiction=jurisdiction,
+                bu=bu,
+            )
+        )
     tables = fee_section.setdefault("tables", [])
     target = None
     if table_id:
@@ -538,12 +536,13 @@ def enable_draft_section(draft: dict[str, Any], section_id: str, enabled: bool =
 def patch_draft(draft: dict[str, Any], patch: list[dict[str, Any]]) -> dict[str, Any]:
     if not isinstance(patch, list):
         raise DraftPatchError("Patch must be a JSON Patch array")
+    validate_fee_row_patches(patch)
     try:
         updated = jsonpatch.JsonPatch(patch).apply(copy.deepcopy(draft), in_place=False)
     except jsonpatch.JsonPatchException as exc:
         raise DraftPatchError(str(exc)) from exc
     _validate_draft_policy(updated)
-    return updated
+    return _refresh_draft_fee_row_displays(updated)
 
 
 def _validate_draft_policy(draft: dict[str, Any]) -> None:
@@ -553,32 +552,6 @@ def _validate_draft_policy(draft: dict[str, Any]) -> None:
             raise DraftPatchError(f"Required section cannot be disabled: {section.get('id')}")
         if policy.get("editable") is False and "content" in section:
             raise DraftPatchError(f"Section is not editable: {section.get('id')}")
-
-
-def _row_for_fee_table(row: dict[str, Any], layout: dict[str, Any] | None = None) -> dict[str, Any]:
-    from app.proposal.fee_table import format_money
-    from app.proposal.pricing_rules import coerce_price_amount, fee_table_amount_display
-
-    price = row.get("price") or {}
-    amount = coerce_price_amount(price.get("amount"))
-    converted = {
-        "sku": (row.get("source") or {}).get("sku") or row.get("id"),
-        "label": row.get("service_name") or row.get("id"),
-        "service_name": row.get("service_name"),
-        "description": row.get("description"),
-        "amount": amount,
-        "currency": price.get("currency"),
-        "pricing_type": price.get("pricing_type"),
-        "status": "computed" if amount is not None else "missing_facts",
-        "recurring": price.get("recurring"),
-        "billing_frequency": price.get("frequency"),
-        "scope_of_work": row.get("scope_of_work"),
-        "footnotes": row.get("footnotes"),
-        "department_team": row.get("department_team"),
-        "amount_display": fee_table_amount_display(price, format_money=format_money),
-    }
-    converted["frequency_columns"] = row_frequency_columns(converted)
-    return converted
 
 
 def _render_titled_section(section: dict[str, Any], content: str) -> str:
@@ -639,7 +612,7 @@ def _fee_table_render_groups(draft: dict[str, Any], section: dict[str, Any]) -> 
         rows = list(table.get("rows") or [])
         if not rows:
             continue
-        render_rows = [_row_for_fee_table(row, layout) for row in rows]
+        render_rows = [render_row_dto(row) for row in rows]
         package_title = str(table.get("title") or table.get("id") or "Services")
 
         if group_by != "department":
@@ -655,7 +628,7 @@ def _fee_table_render_groups(draft: dict[str, Any], section: dict[str, Any]) -> 
         dept_order: list[str] = []
         dept_rows: dict[str, list[dict[str, Any]]] = {}
         for row in render_rows:
-            dept = _normalize_department(row.get("department_team"))
+            dept = str(row.get("department_team") or "Services").strip() or "Services"
             if dept not in dept_rows:
                 dept_order.append(dept)
                 dept_rows[dept] = []
@@ -710,11 +683,11 @@ def _render_fee_section(draft: dict[str, Any], section: dict[str, Any]) -> str:
     if intro:
         parts.extend([intro, ""])
     template_id = str((draft.get("meta") or {}).get("template_id") or "")
-    from app.proposal.placeholders import render_fee_section_narratives
+    from app.proposal.placeholders import render_fee_section_briefs
 
-    narratives = render_fee_section_narratives(draft, template_id=template_id, fee_section=section)
-    if narratives:
-        parts.extend([narratives, ""])
+    briefs = render_fee_section_briefs(draft, template_id=template_id, fee_section=section)
+    if briefs:
+        parts.extend([briefs, ""])
     tables_heading = str(layout.get("tables_heading") or "").strip()
     if tables_heading:
         parts.extend([f"## {tables_heading}", ""])
@@ -801,7 +774,7 @@ def _derive_payment_options(
     default_rows: list[dict[str, Any]] = []
     layout = _effective_fee_layout(draft, fee_section)
     for index, table in enumerate(fee_section.get("tables") or [], 1):
-        fee_rows = [_row_for_fee_table(row, layout) for row in table.get("rows") or []]
+        fee_rows = [render_row_dto(row) for row in table.get("rows") or []]
         if not fee_rows:
             continue
         totals = sum_group_columns(fee_rows)

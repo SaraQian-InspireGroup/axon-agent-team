@@ -593,3 +593,14 @@ export function shouldShowPendingIndicator(loading: boolean, messages: Message[]
   return true
 }
 
+/** Clear streaming markers on optimistic local rows once the model stream finishes. */
+export function finalizeStreamLocalMessages(messages: Message[]): Message[] {
+  return messages.map((message) => {
+    if (message.metadata?.streaming !== true) return message
+    return {
+      ...message,
+      metadata: { ...message.metadata, streaming: false },
+    }
+  })
+}
+

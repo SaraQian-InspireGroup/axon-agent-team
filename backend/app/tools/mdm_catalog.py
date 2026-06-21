@@ -24,16 +24,18 @@ logger = logging.getLogger(__name__)
 @tool(
     name="list_mdm_packages",
     description=(
-        "List ACTIVE MDM packages in the current proposal template catalog scope "
+        "List ACTIVE MDM packages in the proposal template catalog scope "
         "(jurisdiction + bu from template_id or initialized draft). Use to discover "
         "packages or filter by keyword/package_ids. Read-only; does not modify draft. "
-        "Package is a common bundle shortcut — services can also be added individually."
+        "Pass template_id when proposal draft is not initialized; otherwise scope "
+        "defaults to draft meta.template_id. Package is a common bundle shortcut — "
+        "services can also be added individually."
     ),
 )
 def list_mdm_packages(
     template_id: Annotated[
         str | None,
-        "Proposal template id (e.g. harneys-bvi). Defaults to the initialized draft template.",
+        "Proposal template id (e.g. harneys-bvi). Required when draft is not initialized.",
     ] = None,
     keyword: Annotated[
         str | None,
@@ -72,14 +74,15 @@ def list_mdm_packages(
     description=(
         "Load one ACTIVE MDM package and all ACTIVE services linked to it in catalog scope. "
         "Returns package metadata plus service rows shaped for add_package_to_proposal_draft "
-        "(query only — call add separately after sales confirmation). Read-only."
+        "(query only — call add separately after sales confirmation). Read-only. Pass "
+        "template_id when proposal draft is not initialized."
     ),
 )
 def get_mdm_package_services(
     package_id: Annotated[str, "MDM package_id, e.g. PKG006."],
     template_id: Annotated[
         str | None,
-        "Proposal template id. Defaults to the initialized draft template.",
+        "Proposal template id (e.g. harneys-bvi). Required when draft is not initialized.",
     ] = None,
 ) -> dict[str, Any]:
     try:
@@ -101,13 +104,14 @@ def get_mdm_package_services(
         "Search ACTIVE MDM services in catalog scope by sku list, keyword, department_team, "
         "and/or package_id filter. Returns service rows shaped for "
         "add_services_to_proposal_draft (query only). Service and package are equally valid "
-        "paths — pick whichever matches the sale. Read-only."
+        "paths — pick whichever matches the sale. Read-only. Pass template_id when proposal "
+        "draft is not initialized."
     ),
 )
 def search_mdm_services(
     template_id: Annotated[
         str | None,
-        "Proposal template id. Defaults to the initialized draft template.",
+        "Proposal template id (e.g. harneys-bvi). Required when draft is not initialized.",
     ] = None,
     skus: Annotated[list[str] | None, "Optional exact SKU list."] = None,
     keyword: Annotated[
@@ -151,14 +155,15 @@ def search_mdm_services(
         "For given SKUs, list which ACTIVE MDM packages include each service in catalog scope. "
         "Use when starting from services to see bundle shortcuts — does not add to draft. "
         "A SKU in multiple packages is informational only; choose package or à-la-carte services "
-        "based on the sale, not platform rules. Read-only."
+        "based on the sale, not platform rules. Read-only. Pass template_id when proposal "
+        "draft is not initialized."
     ),
 )
 def list_mdm_packages_for_services(
     skus: Annotated[list[str], "One or more MDM SKUs to look up."],
     template_id: Annotated[
         str | None,
-        "Proposal template id. Defaults to the initialized draft template.",
+        "Proposal template id (e.g. harneys-bvi). Required when draft is not initialized.",
     ] = None,
 ) -> dict[str, Any]:
     try:

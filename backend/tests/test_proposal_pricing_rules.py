@@ -173,7 +173,10 @@ def test_materialized_fee_row_stores_fee_raw() -> None:
         ],
     )
     row = updated["document"]["sections"][1]["tables"][0]["rows"][0]
-    assert row["price"]["amount"] == 4500.0
-    assert row["price"]["fee_raw"] == "4500 per round of R&D Financing"
-    assert normalize_pricing_type(row["price"]["pricing_type"]) == "UNIT_RATE"
-    assert coerce_price_amount(row["price"]["amount"]) == 4500.0
+    source = row["source"]
+    display = row["display"]
+    assert source["price_amount"] == 4500.0
+    assert source["fee_raw"] == "4500 per round of R&D Financing"
+    assert normalize_pricing_type(source["pricing_type"]) == "UNIT_RATE"
+    assert coerce_price_amount(source["price_amount"]) == 4500.0
+    assert "4500 per round" in str(display["frequency_columns_display"]["once_off"])

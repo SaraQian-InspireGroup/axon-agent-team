@@ -90,6 +90,11 @@ def build_fee_service_cell_html(
     *,
     numbered_prefix: str | None = None,
 ) -> str:
+    """Build service cell HTML from a render DTO (display-driven) or legacy flat row."""
+    display = row.get("display") if isinstance(row.get("display"), dict) else {}
+    if display.get("preview_primary") or display.get("scope_of_work_display"):
+        return build_service_cell_from_display(row, columns, numbered_prefix=numbered_prefix)
+
     name = str(row.get("service_name") or row.get("label") or "").strip()
     desc = str(row.get("description") or "").strip()
     sow = str(row.get("scope_of_work") or "").strip()
@@ -107,6 +112,32 @@ def build_fee_service_cell_html(
 
     if columns.get("description") and desc and desc != heading:
         parts.append(f"<p>{escape_html(desc)}</p>")
+    if columns.get("scope_of_work") and sow:
+        scope_html = format_scope_html(sow)
+        if scope_html:
+            parts.append(scope_html)
+
+    result = "".join(parts)
+    footnote_num = row.get("footnote_num")
+    if footnote_num:
+        from app.proposal.footnotes import footnote_superscript_html
+
+        result += footnote_superscript_html(int(footnote_num))
+    return result
+
+
+def build_service_cell_from_display(
+    row: dict[str, Any],
+    columns: dict[str, bool],
+    *,
+    numbered_prefix: str | None = None,
+) -> str:
+    display = row.get("display") if isinstance(row.get("display"), dict) else {}
+    heading = str(display.get("preview_primary") or row.get("preview_primary") or row.get("sku") or "").strip()
+    sow = str(display.get("scope_of_work_display") or "").strip()
+
+    title = f"{numbered_prefix} {heading}" if numbered_prefix else heading
+    parts = [f"<strong>{escape_html(title)}</strong>"]
     if columns.get("scope_of_work") and sow:
         scope_html = format_scope_html(sow)
         if scope_html:
@@ -284,18 +315,34 @@ def _active_frequency_column(billing_frequency: str | None) -> str:
     return "once_off"
 
 
-def _frequency_row_display(row: dict[str, Any]) -> tuple[dict[str, float | None], str | None, float | None]:
-    """Return numeric frequency columns, optional fee_raw text for the active column, and annualised total."""
+def _frequency_row_display(row: dict[str, Any]) -> tuple[dict[str, str | None], str | None, str | None]:
+    """Return display frequency columns, optional active-column fee_raw text, and total display."""
+    display = row.get("display") if isinstance(row.get("display"), dict) else {}
+    freq_display = display.get("frequency_columns_display")
+    if isinstance(freq_display, dict):
+        return (
+            {key: str(freq_display.get(key) or "").strip() or None for key in ("monthly", "quarterly", "annual", "once_off")},
+            None,
+            str(display.get("total_display") or row.get("amount_display") or "").strip() or None,
+        )
+
     from app.proposal.pricing_rules import normalize_pricing_type, uses_fee_raw_display
 
     cols = row.get("frequency_columns") or row_frequency_columns(row)
-    annualized_total = row_annualized_total_amount(row)
     fee_raw_text = None
     if uses_fee_raw_display(normalize_pricing_type(row.get("pricing_type"))):
-        display = str(row.get("amount_display") or "").strip()
-        if display:
-            fee_raw_text = display
-    return cols, fee_raw_text, annualized_total
+        display_text = str(row.get("amount_display") or "").strip()
+        if display_text:
+            fee_raw_text = display_text
+    total = str(row.get("amount_display") or "").strip() or None
+    return (
+        {
+            key: None
+            for key in ("monthly", "quarterly", "annual", "once_off")
+        },
+        fee_raw_text,
+        total,
+    )
 
 
 def _fee_table_colgroup(service_width: str, amount_width: str) -> str:
@@ -386,7 +433,11 @@ def render_frequency_table(
         parts.append(_fee_table_head("Service", service_width, amount_width))
         sub = 1
         for row in group.get("rows") or []:
-            cols, fee_raw_text, annualized_total = _frequency_row_display(row)
+            freq_display, fee_raw_text, total_display = _frequency_row_display(row)
+            display = row.get("display") if isinstance(row.get("display"), dict) else {}
+            freq_display_map = display.get("frequency_columns_display")
+            use_display_only = isinstance(freq_display_map, dict)
+
             active_col = _active_frequency_column(row.get("billing_frequency"))
             row_currency = str(row.get("currency") or currency)
             service_html = build_fee_service_cell_html(
@@ -396,10 +447,14 @@ def render_frequency_table(
             )
 
             def _frequency_cell(column: str) -> str:
+                if use_display_only:
+                    text = freq_display.get(column)
+                    return _text_amount_cell(text, compact_layout=True, col_width=amount_width)
                 if fee_raw_text and column == active_col:
                     return _text_amount_cell(fee_raw_text, compact_layout=True, col_width=amount_width)
                 if fee_raw_text:
                     return _text_amount_cell(None, compact_layout=True, col_width=amount_width)
+                cols = row.get("frequency_columns") or row_frequency_columns(row)
                 return _amount_cell(
                     cols.get(column),
                     row_currency,
@@ -408,15 +463,19 @@ def render_frequency_table(
                     col_width=amount_width,
                 )
 
-            total_display = _format_amount_cell_text(
-                format_money(
-                    annualized_total,
-                    row_currency,
-                    include_currency=bool(row_currency),
-                ).strip()
-                if annualized_total is not None
-                else "",
-            )
+            if total_display:
+                total_cell = _format_amount_cell_text(total_display)
+            else:
+                annualized_total = row_annualized_total_amount(row)
+                total_cell = _format_amount_cell_text(
+                    format_money(
+                        annualized_total,
+                        row_currency,
+                        include_currency=bool(row_currency),
+                    ).strip()
+                    if annualized_total is not None
+                    else "",
+                )
             parts.append(
                 "<tr>"
                 f"<td width=\"{service_width}\" class=\"proposal-fee-service\" "
@@ -427,7 +486,7 @@ def render_frequency_table(
                 + _frequency_cell("once_off")
                 + (
                     f"<td width=\"{amount_width}\" class=\"proposal-fee-amount\" "
-                    f"style=\"width:{amount_width}\">{total_display or '&nbsp;'}</td>"
+                    f"style=\"width:{amount_width}\">{total_cell or '&nbsp;'}</td>"
                 )
                 + "</tr>"
             )
@@ -469,19 +528,15 @@ def render_simple_table(
             "</tr></thead><tbody>"
         )
         for row in group.get("rows") or []:
-            amount_display = row.get("amount_display")
-            amount = row.get("amount")
-            if amount_display:
-                amount_text = str(amount_display)
-            elif amount is None:
-                amount_text = str(row.get("status") or "TBD")
-            else:
-                row_currency = row.get("currency") or ""
-                amount_text = format_money(float(amount), row_currency, include_currency=bool(row_currency)).strip()
-            label = str(row.get("service_name") or row.get("label") or row.get("sku"))
-            if show_recurring and row.get("recurring") == "RECURRING":
-                label = f"{label} ({str(row.get('billing_frequency', 'recurring')).lower()})"
-                row = {**row, "service_name": label}
+            display = row.get("display") if isinstance(row.get("display"), dict) else {}
+            amount_text = str(display.get("amount_display") or row.get("amount_display") or "").strip()
+            if not amount_text:
+                amount = row.get("amount")
+                if amount is None:
+                    amount_text = str(row.get("status") or "TBD")
+                else:
+                    row_currency = row.get("currency") or ""
+                    amount_text = format_money(float(amount), row_currency, include_currency=bool(row_currency)).strip()
             service_html = build_fee_service_cell_html(row, columns)
             amount_html = _format_amount_cell_text(amount_text)
             parts.append(

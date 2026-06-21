@@ -15,6 +15,7 @@ from app.tools.proposal import (
     list_templates,
     patch_proposal_draft,
     read_knowledge,
+    remove_fee_rows_from_proposal_draft,
     render_preview,
 )
 from app.tools.viz import list_sql_results, suggest_visualization
@@ -34,6 +35,7 @@ BUILTIN_TOOLS = {
     "patch_proposal_draft": patch_proposal_draft,
     "add_package_to_proposal_draft": add_package_to_proposal_draft,
     "add_services_to_proposal_draft": add_services_to_proposal_draft,
+    "remove_fee_rows_from_proposal_draft": remove_fee_rows_from_proposal_draft,
     "enable_proposal_draft_section": enable_proposal_draft_section,
     "render_preview": render_preview,
     "generate_document": generate_document,

@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { LoadingSpinner } from './LoadingSpinner'
 import { MarkdownContent } from './MarkdownContent'
 import { ArtifactDownloadIcon } from './ArtifactDownloadIcon'
 import type { ProposalPreview } from '../types/proposalPreview'
@@ -127,7 +128,10 @@ export function ProposalLivePanel({
         </div>
         <div className="artifact-side-panel-scroll">
           {loading && !preview?.markdown && (
-            <p className="proposal-live-panel-placeholder">Loading proposal…</p>
+            <div className="proposal-panel-loading" aria-live="polite" aria-label="Loading proposal">
+              <LoadingSpinner size="lg" />
+              <p className="proposal-live-panel-placeholder">Loading proposal…</p>
+            </div>
           )}
           {error && <p className="proposal-live-panel-error">{error}</p>}
           {!loading && !error && !preview?.markdown && !preview?.message && (

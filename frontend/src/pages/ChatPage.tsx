@@ -35,9 +35,11 @@ import {
   applyStreamToolCall,
   applyStreamToolResult,
   applyStreamViz,
+  finalizeStreamLocalMessages,
   finalizeStreamReasoning,
   mergeMessagesFromApi,
 } from '../lib/messageActivity'
+import { turnSyncStatusLabel, type TurnSyncPhase } from '../lib/turnSync'
 import type { ArtifactSpec } from '../types/artifact'
 import type { VizSpec } from '../types/viz'
 import type { ProposalPreview } from '../types/proposalPreview'
@@ -151,6 +153,7 @@ export function ChatPage() {
   const [proposalPreview, setProposalPreview] = useState<ProposalPreview | null>(null)
   const [proposalPreviewLoading, setProposalPreviewLoading] = useState(false)
   const [proposalTurnSyncing, setProposalTurnSyncing] = useState(false)
+  const [turnSyncPhase, setTurnSyncPhase] = useState<TurnSyncPhase | null>(null)
   const [proposalPreviewError, setProposalPreviewError] = useState<string | null>(null)
   const [proposalState, setProposalState] = useState<Record<string, unknown> | null>(null)
   const [proposalStateFingerprint, setProposalStateFingerprint] = useState<string | null>(null)
@@ -186,6 +189,8 @@ export function ChatPage() {
     if (!el || !pinToBottomRef.current) return
     el.scrollTop = el.scrollHeight
   }, [])
+
+  const turnSyncHint = turnSyncStatusLabel(turnSyncPhase)
 
   const selected = agents.find((a) => a.id === selectedId) ?? null
   const isProposalComposer = selected?.slug === PROPOSAL_COMPOSER_SLUG
@@ -251,6 +256,7 @@ export function ChatPage() {
     setProposalPreviewLoading(false)
     setProposalPreviewError(null)
     setProposalTurnSyncing(false)
+    setTurnSyncPhase(null)
     if (preview.markdown) {
       setProposalPanelCollapsed(false)
     }
@@ -576,9 +582,22 @@ export function ChatPage() {
     } finally {
       setLoading(false)
       setProposalTurnSyncing(false)
+      setTurnSyncPhase(null)
       setActiveRunId(null)
       runIdRef.current = null
     }
+  }
+
+  const beginTurnSync = () => {
+    setTurnSyncPhase('saving-messages')
+    if (isProposalComposer) {
+      setProposalTurnSyncing(true)
+    }
+  }
+
+  const finishTurnSync = () => {
+    setTurnSyncPhase(null)
+    setProposalTurnSyncing(false)
   }
 
   const send = async () => {
@@ -591,6 +610,7 @@ export function ChatPage() {
     setPendingAttachments([])
     setLoading(true)
     setProposalTurnSyncing(false)
+    setTurnSyncPhase(null)
     previewFreshFromStreamRef.current = false
     pinToBottomRef.current = true
     setError(null)
@@ -661,6 +681,7 @@ export function ChatPage() {
 
     let segmentText = ''
     let reloadedAfterStream = false
+    let streamIdleSeen = false
     runIdRef.current = null
     setActiveRunId(null)
 
@@ -668,17 +689,26 @@ export function ChatPage() {
       if (generation !== streamGenRef.current || reloadedAfterStream) return
       reloadedAfterStream = true
       try {
-        const previewTasks: Promise<void>[] = [reloadMessagesAfterStream(activeChatId)]
-        if (isProposalComposer && !previewFreshFromStreamRef.current) {
-          previewTasks.push(fetchProposalPreview(activeChatId))
+        if (!streamIdleSeen) {
+          setLoading(false)
+          setActiveRunId(null)
+          runIdRef.current = null
+          setMessages((prev) => finalizeStreamLocalMessages(prev))
+          beginTurnSync()
         }
-        await Promise.all(previewTasks)
+        setTurnSyncPhase('saving-messages')
+        await reloadMessagesAfterStream(activeChatId)
+        if (isProposalComposer && !previewFreshFromStreamRef.current) {
+          setTurnSyncPhase('updating-preview')
+          await fetchProposalPreview(activeChatId)
+        }
         if (isProposalComposer && proposalPanelTabRef.current === 'state') {
+          setTurnSyncPhase('refreshing-draft')
           await fetchProposalState(activeChatId)
         }
       } finally {
         if (generation === streamGenRef.current) {
-          setProposalTurnSyncing(false)
+          finishTurnSync()
           setLoading(false)
           setActiveRunId(null)
           runIdRef.current = null
@@ -767,6 +797,14 @@ export function ChatPage() {
             segmentText = ''
             setMessages((prev) => applyStreamToolResult(prev, activeChatId, ev.data))
           }
+          if (ev.event === 'stream_idle') {
+            streamIdleSeen = true
+            setLoading(false)
+            setActiveRunId(null)
+            runIdRef.current = null
+            setMessages((prev) => finalizeStreamLocalMessages(prev))
+            beginTurnSync()
+          }
           if (ev.event === 'error') {
             throw new Error(String(ev.data.error ?? 'stream error'))
           }
@@ -787,6 +825,7 @@ export function ChatPage() {
         /* ignore reload failure */
       }
       setProposalTurnSyncing(false)
+      setTurnSyncPhase(null)
       setLoading(false)
       setActiveRunId(null)
       runIdRef.current = null
@@ -1023,6 +1062,7 @@ export function ChatPage() {
                         <ChatMessageList
                           messages={messages}
                           loading={loading}
+                          turnSyncHint={turnSyncHint}
                           liveProposalOpen={isProposalComposer && !proposalPanelCollapsed}
                           onExpandArtifact={handleExpandArtifact}
                         />
@@ -1173,7 +1213,7 @@ export function ChatPage() {
                     open
                     embedded
                     preview={proposalPreview}
-                    loading={proposalPreviewLoading}
+                    loading={proposalPreviewLoading || chatSessionLoading}
                     syncing={proposalTurnSyncing}
                     error={proposalPreviewError}
                     onCollapse={collapseProposalPanel}
@@ -1187,7 +1227,7 @@ export function ChatPage() {
                     embedded
                     state={proposalState}
                     fingerprint={proposalStateFingerprint}
-                    loading={proposalStateLoading}
+                    loading={proposalStateLoading || chatSessionLoading}
                     syncing={proposalTurnSyncing}
                     error={proposalStateError}
                     onCollapse={collapseProposalPanel}

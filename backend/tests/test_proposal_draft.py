@@ -6,6 +6,7 @@ from app.proposal.draft import (
     materialize_draft,
     patch_draft,
 )
+from tests.proposal_fee_fixtures import make_mdm_fee_row
 
 
 AU_SERVICE = {
@@ -85,8 +86,8 @@ def test_add_package_materializes_editable_fee_rows():
     fee = next(s for s in updated["document"]["sections"] if s["kind"] == "fee_section")
     row = fee["tables"][0]["rows"][0]
     assert fee["tables"][0]["title"] == "Tax Package 2"
-    assert row["service_name"] == "Application - Substituted Accounting Period"
-    assert row["price"]["amount"] == 600.0
+    assert row["display"]["preview_primary"] == "Application - Substituted Accounting Period"
+    assert row["source"]["price_amount"] == 600.0
 
 
 def test_add_services_materializes_multiple_rows_atomically():
@@ -103,32 +104,28 @@ def test_add_services_materializes_multiple_rows_atomically():
     fee = next(s for s in updated["document"]["sections"] if s["kind"] == "fee_section")
     rows = fee["tables"][0]["rows"]
     assert [row["source"]["sku"] for row in rows] == ["TA01", "CSS23"]
-    assert rows[1]["price"]["amount"] == 1500.0
+    assert rows[1]["source"]["price_amount"] == 1500.0
 
 
 def test_patch_draft_updates_display_row_and_preview():
     draft = materialize_draft(template_id="au-advisory")
     fee = next(s for s in draft["document"]["sections"] if s["kind"] == "fee_section")
+    row = make_mdm_fee_row(
+        {
+            **AU_SERVICE,
+            "service_name": "Old name",
+            "price_amount": 500.0,
+        }
+    )
+    row["display"] = {
+        **row["display"],
+        "preview_primary": "Old name",
+    }
     fee["tables"] = [
         {
             "id": "table_1",
             "title": "Services",
-            "rows": [
-                {
-                    "id": "fee_TA01",
-                    "kind": "fee_row",
-                    "source": {"type": "mdm_service", "sku": "TA01"},
-                    "service_name": "Old name",
-                    "scope_of_work": "Scope.",
-                    "price": {
-                        "amount": 500.0,
-                        "currency": "AUD",
-                        "frequency": "ONE_TIME",
-                        "recurring": "ONE_OFF",
-                    },
-                    "edit_state": {},
-                }
-            ],
+            "rows": [row],
         }
     ]
 
@@ -137,13 +134,18 @@ def test_patch_draft_updates_display_row_and_preview():
         [
             {
                 "op": "replace",
-                "path": "/document/sections/1/tables/0/rows/0/service_name",
+                "path": "/document/sections/1/tables/0/rows/0/display/preview_primary",
                 "value": "Application - Substituted Accounting Period",
             },
             {
                 "op": "replace",
-                "path": "/document/sections/1/tables/0/rows/0/price/amount",
-                "value": 600.0,
+                "path": "/document/sections/1/tables/0/rows/0/display/frequency_columns_display/once_off",
+                "value": "AUD $600.00",
+            },
+            {
+                "op": "replace",
+                "path": "/document/sections/1/tables/0/rows/0/display/total_display",
+                "value": "AUD $600.00",
             },
         ],
     )
@@ -161,40 +163,34 @@ def test_payment_options_derived_from_fee_tables_when_enabled():
             "id": "table_setup",
             "title": "Setup of Xero",
             "rows": [
-                {
-                    "id": "fee_XERO",
-                    "kind": "fee_row",
-                    "source": {"type": "mdm_service", "sku": "XERO"},
-                    "service_name": "Setup of Xero",
-                    "scope_of_work": "",
-                    "price": {
-                        "amount": 500.0,
-                        "currency": "AUD",
-                        "frequency": "ONE_TIME",
+                make_mdm_fee_row(
+                    {
+                        "sku": "XERO",
+                        "service_name": "Setup of Xero",
+                        "scope_of_work": "",
+                        "price_amount": 500.0,
+                        "price_currency": "AUD",
+                        "billing_frequency": "ONE_TIME",
                         "recurring": "ONE_OFF",
-                    },
-                    "edit_state": {},
-                }
+                        "pricing_type": "FIXED",
+                    }
+                )
             ],
         },
         {
             "id": "table_tax",
             "title": "Tax Package 2",
             "rows": [
-                {
-                    "id": "fee_TA01",
-                    "kind": "fee_row",
-                    "source": {"type": "mdm_service", "sku": "TA01"},
-                    "service_name": "Application",
-                    "scope_of_work": "",
-                    "price": {
-                        "amount": 400.0,
-                        "currency": "AUD",
-                        "frequency": "MONTHLY",
+                make_mdm_fee_row(
+                    {
+                        **AU_SERVICE,
+                        "service_name": "Application",
+                        "scope_of_work": "",
+                        "price_amount": 400.0,
+                        "billing_frequency": "MONTHLY",
                         "recurring": "RECURRING",
-                    },
-                    "edit_state": {},
-                }
+                    }
+                )
             ],
         },
     ]
@@ -220,34 +216,30 @@ def test_payment_options_render_multiple_configured_options():
             "id": "table_css",
             "title": "CSS Package 2",
             "rows": [
-                {
-                    "id": "fee_COMPANY",
-                    "kind": "fee_row",
-                    "source": {"type": "mdm_service", "sku": "COMPANY"},
-                    "service_name": "Company Incorporation",
-                    "scope_of_work": "",
-                    "price": {
-                        "amount": 2500.0,
-                        "currency": "AUD",
-                        "frequency": "ONE_TIME",
+                make_mdm_fee_row(
+                    {
+                        "sku": "COMPANY",
+                        "service_name": "Company Incorporation",
+                        "scope_of_work": "",
+                        "price_amount": 2500.0,
+                        "price_currency": "AUD",
+                        "billing_frequency": "ONE_TIME",
                         "recurring": "ONE_OFF",
-                    },
-                    "edit_state": {},
-                },
-                {
-                    "id": "fee_AUDIT",
-                    "kind": "fee_row",
-                    "source": {"type": "mdm_service", "sku": "AUDIT"},
-                    "service_name": "Application for Audit Relief",
-                    "scope_of_work": "",
-                    "price": {
-                        "amount": 900.0,
-                        "currency": "AUD",
-                        "frequency": "ONE_TIME",
+                        "pricing_type": "FIXED",
+                    }
+                ),
+                make_mdm_fee_row(
+                    {
+                        "sku": "AUDIT",
+                        "service_name": "Application for Audit Relief",
+                        "scope_of_work": "",
+                        "price_amount": 900.0,
+                        "price_currency": "AUD",
+                        "billing_frequency": "ONE_TIME",
                         "recurring": "ONE_OFF",
-                    },
-                    "edit_state": {},
-                }
+                        "pricing_type": "FIXED",
+                    }
+                ),
             ],
         }
     ]
@@ -298,20 +290,18 @@ def test_payment_options_render_override_only_options():
             "id": "table_css",
             "title": "CSS Package 2",
             "rows": [
-                {
-                    "id": "fee_COMPANY",
-                    "kind": "fee_row",
-                    "source": {"type": "mdm_service", "sku": "COMPANY"},
-                    "service_name": "Company Incorporation",
-                    "scope_of_work": "",
-                    "price": {
-                        "amount": 2500.0,
-                        "currency": "AUD",
-                        "frequency": "ONE_TIME",
+                make_mdm_fee_row(
+                    {
+                        "sku": "COMPANY",
+                        "service_name": "Company Incorporation",
+                        "scope_of_work": "",
+                        "price_amount": 2500.0,
+                        "price_currency": "AUD",
+                        "billing_frequency": "ONE_TIME",
                         "recurring": "ONE_OFF",
-                    },
-                    "edit_state": {},
-                }
+                        "pricing_type": "FIXED",
+                    }
+                )
             ],
         }
     ]
@@ -369,38 +359,32 @@ def test_payment_options_annualizes_mixed_unit_rate_and_monthly_services() -> No
             "id": "table_additional_services",
             "title": "Additional Services",
             "rows": [
-                {
-                    "id": "fee_PEN01",
-                    "kind": "fee_row",
-                    "source": {"type": "mdm_service", "sku": "PEN01"},
-                    "service_name": "Pension Paperwork",
-                    "scope_of_work": "",
-                    "price": {
-                        "amount": 400.0,
+                make_mdm_fee_row(
+                    {
+                        "sku": "PEN01",
+                        "service_name": "Pension Paperwork",
+                        "scope_of_work": "",
+                        "price_amount": 400.0,
                         "fee_raw": "400 per pension stream",
-                        "currency": "AUD",
-                        "frequency": "ANNUALLY",
+                        "price_currency": "AUD",
+                        "billing_frequency": "ANNUALLY",
                         "recurring": "RECURRING",
                         "pricing_type": "UNIT_RATE",
-                    },
-                    "edit_state": {},
-                },
-                {
-                    "id": "fee_FF09",
-                    "kind": "fee_row",
-                    "source": {"type": "mdm_service", "sku": "FF09"},
-                    "service_name": "Monthly Payroll Processing",
-                    "scope_of_work": "",
-                    "price": {
-                        "amount": 1000.0,
+                    }
+                ),
+                make_mdm_fee_row(
+                    {
+                        "sku": "FF09",
+                        "service_name": "Monthly Payroll Processing",
+                        "scope_of_work": "",
+                        "price_amount": 1000.0,
                         "fee_raw": "1000",
-                        "currency": "AUD",
-                        "frequency": "MONTHLY",
+                        "price_currency": "AUD",
+                        "billing_frequency": "MONTHLY",
                         "recurring": "RECURRING",
                         "pricing_type": "FIXED",
-                    },
-                    "edit_state": {},
-                },
+                    }
+                ),
             ],
         }
     ]
@@ -418,27 +402,24 @@ def test_payment_options_annualizes_mixed_unit_rate_and_monthly_services() -> No
 def test_au_frequency_table_includes_scope_of_work_from_layout() -> None:
     draft = materialize_draft(template_id="au-advisory")
     fee = next(s for s in draft["document"]["sections"] if s["kind"] == "fee_section")
-    assert fee["fee_layout"].get("include_scope_of_work") is True
+    assert fee["fee_layout"]["service_columns"]["scope_of_work"] is True
     fee["tables"] = [
         {
             "id": "table_smsf",
             "title": "SMSF Services",
             "rows": [
-                {
-                    "id": "fee_SETUP",
-                    "kind": "fee_row",
-                    "source": {"type": "mdm_service", "sku": "SETUP"},
-                    "service_name": "Setup - SMSF",
-                    "scope_of_work": "Establish SMSF deed and register with the ATO.",
-                    "price": {
-                        "amount": 3500.0,
-                        "currency": "AUD",
-                        "frequency": "ONE_TIME",
+                make_mdm_fee_row(
+                    {
+                        "sku": "SETUP",
+                        "service_name": "Setup - SMSF",
+                        "scope_of_work": "Establish SMSF deed and register with the ATO.",
+                        "price_amount": 3500.0,
+                        "price_currency": "AUD",
+                        "billing_frequency": "ONE_TIME",
                         "recurring": "ONE_OFF",
                         "pricing_type": "FIXED",
-                    },
-                    "edit_state": {},
-                }
+                    }
+                )
             ],
         }
     ]

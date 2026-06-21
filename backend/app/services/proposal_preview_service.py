@@ -20,6 +20,7 @@ _DRAFT_RESULT_TOOLS = {
     "patch_proposal_draft",
     "add_package_to_proposal_draft",
     "add_services_to_proposal_draft",
+    "remove_fee_rows_from_proposal_draft",
     "enable_proposal_draft_section",
 }
 

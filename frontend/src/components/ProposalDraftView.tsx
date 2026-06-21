@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  CLIENT_FACT_FIELDS,
   collectFeeTableFootnotes,
   draftBlockKey,
   draftBlockTitle,
   draftExtraTopLevel,
+  draftFactsEntries,
   draftRecordList,
   draftSectionFlags,
   draftSectionKey,
@@ -11,15 +13,18 @@ import {
   draftSectionTitle,
   draftTopLevelEntries,
   feeSectionIntroBlock,
-  feeSectionMetadata,
-  formatBillingFrequencyLabel,
+  feeSectionTableStyle,
+  feeTableBriefBlock,
+  formatClientFactFieldValue,
   formatDraftJson,
+  isClientFactRecord,
   isFeeSection,
   isFeeTableBlock,
   isMarkdownBlockNode,
   isMarkdownBlockSection,
   markdownBlockContent,
   summarizeFeeRow,
+  type FeeTableLayout,
 } from '../lib/proposalDraftView'
 import { MarkdownContent } from './MarkdownContent'
 
@@ -152,49 +157,110 @@ function DraftFeeRowTextField({ label, text }: { label: string; text: string }) 
   )
 }
 
-function DraftFeeTableBody({ table }: { table: Record<string, unknown> }) {
+function FeeRowLayoutSimple({ row }: { row: ReturnType<typeof summarizeFeeRow> }) {
+  return (
+    <>
+      <div className="proposal-draft-fee-row-main">
+        {row.sku ? <span className="proposal-draft-fee-row-sku">{row.sku}</span> : null}
+        <span className="proposal-draft-fee-row-label">{row.label}</span>
+        {row.amount ? (
+          <span className="proposal-draft-fee-row-amount">{row.amount}</span>
+        ) : (
+          <span className="proposal-draft-fee-row-amount proposal-draft-fee-row-amount-missing">
+            —
+          </span>
+        )}
+      </div>
+      {row.sow ? (
+        <div className="proposal-draft-fee-row-texts">
+          <DraftFeeRowTextField label="scope" text={row.sow} />
+        </div>
+      ) : null}
+      {row.footnote ? (
+        <div className="proposal-draft-fee-row-meta">
+          <span className="proposal-draft-fee-row-footnote-flag">has footnote</span>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+const FREQUENCY_COLUMN_LABELS: Record<string, string> = {
+  monthly: 'Monthly',
+  quarterly: 'Quarterly',
+  annual: 'Annual',
+  once_off: 'Once-off',
+}
+
+function FeeRowLayoutFrequency({ row }: { row: ReturnType<typeof summarizeFeeRow> }) {
+  const columns = row.frequencyColumns
+  return (
+    <>
+      <div className="proposal-draft-fee-row-main">
+        {row.sku ? <span className="proposal-draft-fee-row-sku">{row.sku}</span> : null}
+        <span className="proposal-draft-fee-row-label">{row.label}</span>
+        {row.totalDisplay ? (
+          <span className="proposal-draft-fee-row-amount">{row.totalDisplay}</span>
+        ) : (
+          <span className="proposal-draft-fee-row-amount proposal-draft-fee-row-amount-missing">
+            —
+          </span>
+        )}
+      </div>
+      {row.sow ? (
+        <div className="proposal-draft-fee-row-texts">
+          <DraftFeeRowTextField label="scope" text={row.sow} />
+        </div>
+      ) : null}
+      {columns ? (
+        <dl className="proposal-draft-fee-frequency-cols">
+          {Object.entries(FREQUENCY_COLUMN_LABELS).map(([key, label]) =>
+            columns[key] ? (
+              <div key={key} className="proposal-draft-fee-frequency-col">
+                <dt>{label}</dt>
+                <dd>{columns[key]}</dd>
+              </div>
+            ) : null,
+          )}
+        </dl>
+      ) : null}
+      {row.footnote ? (
+        <div className="proposal-draft-fee-row-meta">
+          <span className="proposal-draft-fee-row-footnote-flag">has footnote</span>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
+function DraftFeeTableBody({
+  table,
+  layout,
+}: {
+  table: Record<string, unknown>
+  layout: FeeTableLayout
+}) {
+  const briefBlock = feeTableBriefBlock(table)
   const rows = draftRecordList(table.rows)
-  const summaries = rows.map(summarizeFeeRow)
+  const summaries = rows.map((row) => summarizeFeeRow(row, layout))
   const footnotes = collectFeeTableFootnotes(rows)
 
   return (
     <div className="proposal-draft-fee-table-body">
+      {briefBlock ? (
+        <section className="proposal-draft-fee-table-brief">
+          <h5 className="proposal-draft-root-label">brief</h5>
+          <DraftMarkdownBlockBody block={briefBlock} />
+        </section>
+      ) : null}
       {summaries.length > 0 ? (
         <ul className="proposal-draft-fee-row-list">
           {summaries.map((row) => (
             <li key={row.id} className="proposal-draft-fee-row-item">
-              <div className="proposal-draft-fee-row-main">
-                {row.sku ? <span className="proposal-draft-fee-row-sku">{row.sku}</span> : null}
-                <span className="proposal-draft-fee-row-label">{row.label}</span>
-                {row.amount ? (
-                  <span className="proposal-draft-fee-row-amount">{row.amount}</span>
-                ) : (
-                  <span className="proposal-draft-fee-row-amount proposal-draft-fee-row-amount-missing">
-                    —
-                  </span>
-                )}
-              </div>
-              {(row.description || row.sow) && (
-                <div className="proposal-draft-fee-row-texts">
-                  {row.description ? (
-                    <DraftFeeRowTextField label="description" text={row.description} />
-                  ) : null}
-                  {row.sow ? <DraftFeeRowTextField label="sow" text={row.sow} /> : null}
-                </div>
-              )}
-              {(row.department || row.pricingType || row.billingFrequency || row.footnote) && (
-                <div className="proposal-draft-fee-row-meta">
-                  {row.department ? <span>{row.department}</span> : null}
-                  {row.pricingType ? <span>{row.pricingType}</span> : null}
-                  {row.billingFrequency ? (
-                    <span className="proposal-draft-bagel">
-                      {formatBillingFrequencyLabel(row.billingFrequency)}
-                    </span>
-                  ) : null}
-                  {row.footnote ? (
-                    <span className="proposal-draft-fee-row-footnote-flag">has footnote</span>
-                  ) : null}
-                </div>
+              {layout === 'frequency_columns' ? (
+                <FeeRowLayoutFrequency row={row} />
+              ) : (
+                <FeeRowLayoutSimple row={row} />
               )}
             </li>
           ))}
@@ -241,7 +307,7 @@ function DraftBlockCollapsible({
         <summary className="proposal-draft-section-summary">
           <DraftSectionSummary title={title} infoValue={block} />
         </summary>
-        <DraftFeeTableBody table={block} />
+        <DraftFeeTableBody table={block} layout="simple" />
       </details>
     )
   }
@@ -261,44 +327,100 @@ function DraftJsonCollapsible({ title, value }: { title: string; value: unknown 
   )
 }
 
-function DraftBlockGroup({
-  label,
-  blocks,
-}: {
-  label: string
-  blocks: Record<string, unknown>[]
-}) {
-  if (blocks.length === 0) return null
+function ClientFactDraftView({ client }: { client: Record<string, unknown> }) {
   return (
-    <section className="proposal-draft-sections-wrap proposal-draft-nested-group">
-      <h4 className="proposal-draft-root-label">{label}</h4>
-      <div className="proposal-draft-section-list proposal-draft-section-list-nested">
-        {blocks.map((block, index) => (
-          <DraftBlockCollapsible
-            key={draftBlockKey(block, index)}
-            block={block}
-            index={index}
-          />
-        ))}
+    <details className="proposal-draft-section">
+      <summary className="proposal-draft-section-summary">
+        <DraftSectionSummary title="client" infoValue={client} />
+      </summary>
+      <dl className="proposal-draft-fact-fields">
+        {CLIENT_FACT_FIELDS.map((field) => {
+          const value = formatClientFactFieldValue(client[field])
+          const empty = value === '—'
+          return (
+            <div key={field} className="proposal-draft-fact-field">
+              <dt className="proposal-draft-fact-field-label">{field}</dt>
+              <dd
+                className={`proposal-draft-fact-field-value${empty ? ' proposal-draft-fact-field-value-empty' : ''}`}
+              >
+                {value}
+              </dd>
+            </div>
+          )
+        })}
+      </dl>
+    </details>
+  )
+}
+
+function FactGroupDraftView({ name, value }: { name: string; value: unknown }) {
+  if (name === 'client' && isClientFactRecord(value)) {
+    return <ClientFactDraftView client={value} />
+  }
+  return <DraftJsonCollapsible title={name} value={value} />
+}
+
+function FactsDraftView({ facts }: { facts: Record<string, unknown> }) {
+  const entries = draftFactsEntries(facts)
+
+  return (
+    <details className="proposal-draft-section">
+      <summary className="proposal-draft-section-summary">
+        <DraftSectionSummary title="facts" infoValue={facts} />
+      </summary>
+      <div className="proposal-draft-facts-wrap">
+        {entries.length > 0 ? (
+          <div className="proposal-draft-section-list proposal-draft-section-list-nested">
+            {entries.map(({ key, value }) => (
+              <FactGroupDraftView key={key} name={key} value={value} />
+            ))}
+          </div>
+        ) : (
+          <p className="proposal-draft-markdown-empty">No facts</p>
+        )}
       </div>
-    </section>
+    </details>
+  )
+}
+
+function FeeTableDraftView({
+  table,
+  layout,
+  index,
+}: {
+  table: Record<string, unknown>
+  layout: FeeTableLayout
+  index: number
+}) {
+  const title = draftBlockTitle(table, index)
+  return (
+    <details className="proposal-draft-section">
+      <summary className="proposal-draft-section-summary">
+        <DraftSectionSummary title={title} infoValue={table} />
+      </summary>
+      <DraftFeeTableBody table={table} layout={layout} />
+    </details>
   )
 }
 
 function FeeSectionDraftView({ section }: { section: Record<string, unknown> }) {
-  const metadata = feeSectionMetadata(section)
-  const narratives = draftRecordList(section.narratives)
   const tables = draftRecordList(section.tables)
   const introBlock = feeSectionIntroBlock(section)
+  const layout = feeSectionTableStyle(section)
 
   return (
     <div className="proposal-draft-fee-section">
-      {Object.keys(metadata).length > 0 ? (
-        <DraftJsonCollapsible title="section config" value={metadata} />
-      ) : null}
       {introBlock ? <DraftBlockCollapsible block={introBlock} index={0} /> : null}
-      <DraftBlockGroup label="narratives" blocks={narratives} />
-      <DraftBlockGroup label="Fees" blocks={tables} />
+      {tables.length > 0 ? (
+        <section className="proposal-draft-sections-wrap proposal-draft-nested-group">
+          <h4 className="proposal-draft-root-label">Fees</h4>
+          <div className="proposal-draft-section-list proposal-draft-section-list-nested">
+            {tables.map((table, index) => (
+              <FeeTableDraftView key={draftBlockKey(table, index)} table={table} layout={layout} index={index} />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   )
 }
@@ -354,9 +476,13 @@ export function ProposalDraftView({ draft }: Props) {
   return (
     <div className="proposal-draft-view">
       <div className="proposal-draft-section-list">
-        {topLevel.map(({ key, value }) => (
-          <DraftJsonCollapsible key={key} title={key} value={value} />
-        ))}
+        {topLevel.map(({ key, value }) =>
+          key === 'facts' && isClientFactRecord(value) ? (
+            <FactsDraftView key={key} facts={value} />
+          ) : (
+            <DraftJsonCollapsible key={key} title={key} value={value} />
+          ),
+        )}
 
         {extra ? <DraftJsonCollapsible title="extra" value={extra} /> : null}
       </div>

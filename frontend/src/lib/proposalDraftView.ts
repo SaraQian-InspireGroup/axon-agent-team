@@ -1,5 +1,16 @@
 const TOP_LEVEL_KEYS = ['version', 'meta', 'facts'] as const
 
+export const CLIENT_FACT_FIELDS = [
+  'company_name',
+  'short_name',
+  'address',
+  'contract_name',
+  'contract_title',
+  'contract_email',
+] as const
+
+export type ClientFactField = (typeof CLIENT_FACT_FIELDS)[number]
+
 export type DraftTopLevelKey = (typeof TOP_LEVEL_KEYS)[number]
 
 export function formatDraftJson(value: unknown): string {
@@ -18,6 +29,25 @@ export function draftTopLevelEntries(
     key,
     value: draft[key],
   }))
+}
+
+export function draftFactsEntries(
+  facts: Record<string, unknown>,
+): Array<{ key: string; value: unknown }> {
+  return Object.entries(facts).map(([key, value]) => ({ key, value }))
+}
+
+export function isClientFactRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+export function formatClientFactFieldValue(value: unknown): string {
+  if (value === null || value === undefined) return '—'
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || '—'
+  }
+  return String(value)
 }
 
 export function draftExtraTopLevel(draft: Record<string, unknown>): Record<string, unknown> | null {
@@ -69,11 +99,10 @@ export function isFeeSection(section: Record<string, unknown>): boolean {
 }
 
 export function isMarkdownBlockNode(node: Record<string, unknown>): boolean {
-  const kind = node.kind
-  return kind === 'markdown_block' || kind === 'package_narrative'
+  return node.kind === 'markdown_block'
 }
 
-/** Document-level markdown section (same shape as fee_section.narratives[] items). */
+/** Document-level markdown section (same shape as fee_section.tables[].brief). */
 export function isMarkdownBlockSection(section: Record<string, unknown>): boolean {
   return isMarkdownBlockNode(section)
 }
@@ -103,15 +132,6 @@ export function draftRecordList(value: unknown): Record<string, unknown>[] {
     (item): item is Record<string, unknown> =>
       Boolean(item) && typeof item === 'object' && !Array.isArray(item),
   )
-}
-
-export function feeSectionMetadata(section: Record<string, unknown>): Record<string, unknown> {
-  const metadata: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(section)) {
-    if (key === 'intro' || key === 'narratives' || key === 'tables') continue
-    metadata[key] = value
-  }
-  return metadata
 }
 
 export function feeSectionIntroBlock(section: Record<string, unknown>): Record<string, unknown> | null {
@@ -151,6 +171,13 @@ export function feeSectionHasIntro(section: Record<string, unknown>): boolean {
   return feeSectionIntroBlock(section) !== null
 }
 
+export function feeTableBriefBlock(table: Record<string, unknown>): Record<string, unknown> | null {
+  const brief = table.brief
+  if (!brief || typeof brief !== 'object' || Array.isArray(brief)) return null
+  const block = brief as Record<string, unknown>
+  return isMarkdownBlockNode(block) ? block : null
+}
+
 export function isFeeTableBlock(block: Record<string, unknown>): boolean {
   return block.kind === 'fee_table'
 }
@@ -167,89 +194,88 @@ export type FeeRowSummary = {
   sku: string
   label: string
   amount: string | null
-  description: string | null
   sow: string | null
-  department: string | null
   footnote: string | null
-  pricingType: string | null
-  billingFrequency: string | null
+  frequencyColumns: Record<string, string> | null
+  totalDisplay: string | null
 }
 
-export function formatBillingFrequencyLabel(frequency: string): string {
-  const normalized = frequency.trim().toUpperCase()
-  const labels: Record<string, string> = {
-    ONE_TIME: 'one-time',
-    MONTHLY: 'monthly',
-    QUARTERLY: 'quarterly',
-    ANNUALLY: 'annually',
-  }
-  return labels[normalized] ?? frequency.trim().toLowerCase().replace(/_/g, ' ')
+export type FeeTableLayout = 'simple' | 'frequency_columns'
+
+export function feeSectionTableStyle(section: Record<string, unknown>): FeeTableLayout {
+  const layout = section.fee_layout
+  if (!layout || typeof layout !== 'object' || Array.isArray(layout)) return 'simple'
+  const style = String((layout as Record<string, unknown>).table_style || 'simple')
+    .trim()
+    .toLowerCase()
+  return style === 'frequency_columns' ? 'frequency_columns' : 'simple'
 }
 
-function formatDraftMoney(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-    }).format(amount)
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`
-  }
+function readDisplay(row: Record<string, unknown>): Record<string, unknown> {
+  const display = row.display
+  if (!display || typeof display !== 'object' || Array.isArray(display)) return {}
+  return display as Record<string, unknown>
 }
 
-export function summarizeFeeRow(row: Record<string, unknown>): FeeRowSummary {
+export function summarizeFeeRow(
+  row: Record<string, unknown>,
+  layout: FeeTableLayout = 'simple',
+): FeeRowSummary {
   const source =
     row.source && typeof row.source === 'object' && !Array.isArray(row.source)
       ? (row.source as Record<string, unknown>)
       : {}
-  const price =
-    row.price && typeof row.price === 'object' && !Array.isArray(row.price)
-      ? (row.price as Record<string, unknown>)
-      : {}
+  const display = readDisplay(row)
 
   const sku = typeof source.sku === 'string' ? source.sku.trim() : ''
-  const serviceName = typeof row.service_name === 'string' ? row.service_name.trim() : ''
-  const description = typeof row.description === 'string' ? row.description.trim() : ''
-  const sow = typeof row.scope_of_work === 'string' ? row.scope_of_work.trim() : ''
-  const label = serviceName || description || sku || String(row.id || 'Row')
-
-  const currency = typeof price.currency === 'string' && price.currency.trim() ? price.currency : 'USD'
-  let amount: string | null = null
-  if (typeof price.amount === 'number' && !Number.isNaN(price.amount)) {
-    amount = formatDraftMoney(price.amount, currency)
-  } else if (typeof price.fee_raw === 'string' && price.fee_raw.trim()) {
-    amount = price.fee_raw.trim()
-  }
+  const previewPrimary =
+    typeof display.preview_primary === 'string' ? display.preview_primary.trim() : ''
+  const label = previewPrimary || sku || String(row.id || 'Row')
 
   const footnote =
-    typeof row.footnotes === 'string' && row.footnotes.trim() ? row.footnotes.trim() : null
-  const department =
-    typeof row.department_team === 'string' && row.department_team.trim()
-      ? row.department_team.trim()
+    typeof display.footnotes_display === 'string' && display.footnotes_display.trim()
+      ? display.footnotes_display.trim()
       : null
-  const pricingType =
-    typeof price.pricing_type === 'string' && price.pricing_type.trim()
-      ? price.pricing_type.trim()
+  const sow =
+    typeof display.scope_of_work_display === 'string' && display.scope_of_work_display.trim()
+      ? display.scope_of_work_display.trim()
       : null
-  const billingFrequency =
-    typeof price.frequency === 'string' && price.frequency.trim()
-      ? price.frequency.trim()
-      : typeof row.billing_frequency === 'string' && row.billing_frequency.trim()
-        ? row.billing_frequency.trim()
+
+  let amount: string | null = null
+  let frequencyColumns: Record<string, string> | null = null
+  let totalDisplay: string | null = null
+
+  if (layout === 'frequency_columns') {
+    const rawCols = display.frequency_columns_display
+    if (rawCols && typeof rawCols === 'object' && !Array.isArray(rawCols)) {
+      frequencyColumns = {}
+      for (const [key, value] of Object.entries(rawCols as Record<string, unknown>)) {
+        const text = typeof value === 'string' ? value.trim() : ''
+        if (text) frequencyColumns[key] = text
+      }
+      if (Object.keys(frequencyColumns).length === 0) frequencyColumns = null
+    }
+    totalDisplay =
+      typeof display.total_display === 'string' && display.total_display.trim()
+        ? display.total_display.trim()
         : null
+    amount = totalDisplay
+  } else {
+    amount =
+      typeof display.amount_display === 'string' && display.amount_display.trim()
+        ? display.amount_display.trim()
+        : null
+  }
 
   return {
     id: typeof row.id === 'string' ? row.id : sku || label,
     sku,
     label,
     amount,
-    description: description || null,
-    sow: sow || null,
-    department,
+    sow,
     footnote,
-    pricingType,
-    billingFrequency,
+    frequencyColumns,
+    totalDisplay,
   }
 }
 
@@ -257,7 +283,9 @@ export function collectFeeTableFootnotes(rows: Record<string, unknown>[]): strin
   const seen = new Set<string>()
   const notes: string[] = []
   for (const row of rows) {
-    const note = typeof row.footnotes === 'string' ? row.footnotes.trim() : ''
+    const display = readDisplay(row)
+    const note =
+      typeof display.footnotes_display === 'string' ? display.footnotes_display.trim() : ''
     if (!note || seen.has(note)) continue
     seen.add(note)
     notes.push(note)

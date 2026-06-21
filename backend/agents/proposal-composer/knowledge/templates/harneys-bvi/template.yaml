@@ -5,7 +5,7 @@ catalog_filter:
   bu: Harneys
 
 # Placeholders: resolved by platform from draft facts + fee tables (see placeholders.* below).
-# Package solution prose: fee_section.package_narratives → blocks/package-narratives.yaml.
+# Package solution prose: fee_section.package_briefs → blocks/package-briefs.yaml.
 placeholders:
   introduction:
     - token: "{{client.contract_name}}"
@@ -30,8 +30,8 @@ sections:
     required: true
     materializer: mdm_fee_tables
     # Platform injects blocks/solutions/*.md before fee tables when packages are added.
-    package_narratives:
-      index: blocks/package-narratives.yaml
+    package_briefs:
+      index: blocks/package-briefs.yaml
     fee_layout:
       group_by: department
       table_style: simple
