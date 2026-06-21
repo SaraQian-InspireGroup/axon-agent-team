@@ -120,7 +120,31 @@ def _recurring_suffix(billing_frequency: str) -> str:
         "QUARTERLY": "Quarterly",
         "ANNUALLY": "Annual",
     }
-    return labels.get(freq, "")
+    if freq in labels:
+        return labels[freq]
+    raw = str(billing_frequency or "").strip()
+    if not raw or freq == "ONE_TIME":
+        return ""
+    return raw
+
+
+def _append_billing_frequency_to_amount(
+    amount_text: str,
+    billing_frequency: str,
+    *,
+    layout: dict[str, Any],
+) -> str:
+    text = str(amount_text or "").strip()
+    if not text:
+        return text
+    if not layout.get("show_billing_frequency"):
+        return text
+    if str(layout.get("table_style") or "simple").strip().lower() != "simple":
+        return text
+    suffix = _recurring_suffix(billing_frequency)
+    if not suffix or suffix.lower() in text.lower():
+        return text
+    return f"{text} {suffix}"
 
 
 def _build_once_off_recurring_displays(price: dict[str, Any], *, currency: str) -> tuple[str, str]:
@@ -189,7 +213,11 @@ def _build_canonical_display_fields(
 
     amount_text = fee_table_amount_display(price, format_money=format_money)
     if amount_text:
-        display["amount_display"] = amount_text
+        display["amount_display"] = _append_billing_frequency_to_amount(
+            amount_text,
+            str(price.get("frequency") or "ONE_TIME"),
+            layout=layout,
+        )
 
     once_off, recurring = _build_once_off_recurring_displays(price, currency=currency)
     display["once_off_display"] = once_off
@@ -249,7 +277,12 @@ def _apply_display_overrides(
         parsed = parse_amount_display(str(display.get("amount_display") or ""))
         if parsed is not None:
             price = {**price, "amount": parsed}
-            merged["amount_display"] = fee_table_amount_display(price, format_money=format_money) or display["amount_display"]
+        formatted = fee_table_amount_display(price, format_money=format_money) or display["amount_display"]
+        merged["amount_display"] = _append_billing_frequency_to_amount(
+            formatted,
+            str(price.get("frequency") or "ONE_TIME"),
+            layout=layout,
+        )
 
     if isinstance(display.get("frequency_columns_display"), dict):
         freq_patch = display["frequency_columns_display"]
@@ -353,7 +386,11 @@ def _normalize_custom_display(display: dict[str, Any], *, layout: dict[str, Any]
             if parsed is not None:
                 normalized["total_display"] = format_money(parsed, currency, include_currency=bool(currency)).strip()
     elif amount_text:
-        normalized["amount_display"] = amount_text
+        normalized["amount_display"] = _append_billing_frequency_to_amount(
+            amount_text,
+            "ONE_TIME",
+            layout=layout,
+        )
     return normalized
 
 

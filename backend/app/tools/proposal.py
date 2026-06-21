@@ -152,7 +152,7 @@ def read_knowledge(
             "Relative path under knowledge/, e.g. "
             "templates/au-advisory/template.yaml, "
             "templates/harneys-bvi/blocks/terms-bvi.md, "
-            "peripheral/required-docs/BVI/passport.md"
+            "peripheral/required-docs/harneys/Individual KYC Requirements.md"
         ),
     ],
 ) -> dict[str, Any]:

@@ -54,7 +54,7 @@
 1. **只读 catalog**：用 MDM catalog tools；scope 与 `status = ACTIVE` 由 platform 保证（细节见 **`proposal-mdm-catalog`** skill）。
 2. **禁止 `run_skill_script`**：catalog 走 MDM tools；查完再把完整 rows 传给 add tools。改 proposal 走 draft builtin tools。
 3. **只改 draft**：展示编辑只用 draft tools；不要使用旧 `proposal_state` / `line_items` 路径。
-4. **Required docs**：由选型自动解析；不要手动拼 knowledge index。
+4. **Required docs**：template `sections[].knowledge` 声明 category + body_root；compose 逻辑与 category 规则在 proposal-composer skill references；catalog 规则、AI 备注**不得**出现在 proposal `content` 中。
 
 ## 语言
 

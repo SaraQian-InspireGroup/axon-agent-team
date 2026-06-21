@@ -99,6 +99,8 @@ def test_bvi_fee_table_groups_by_department():
     assert "Approval Manager — AEOI Services" in markdown
     assert "Formation fee" in markdown
     assert "AML Officer: Provision of MLRO to BVI Approved Manager" in markdown
+    assert "USD $200.00 Annual" in markdown
+    assert "USD $100.00 Annual" not in markdown
     assert "AM001" not in markdown
 
 

@@ -97,6 +97,19 @@ Patch 成功后 platform 会 **refresh 该行 display**（MDM 行在保留你已
 
 **删行**不用 patch：用 **`remove_fee_rows_from_proposal_draft(skus=[...])`**。
 
+## Required documents（knowledge category）
+
+Template `sections[].knowledge` 指向 **category catalog**（skill reference）+ **`body_root`**（`read_knowledge` 正文）。
+
+| 存什么 | 路径 / 说明 |
+|--------|-------------|
+| 客户可见清单 | `required_documents.content`（agent compose 后 patch） |
+| 选型快照 | `required_documents.composition`（可选：`category`, `status`, `block_ids`, `source_snapshot`） |
+| 触发规则 | **不在 draft** — skill `references/required-docs-{category}-catalog.md` |
+| 泛化流程 | skill `references/required-docs-compose.md` |
+
+`enable` 只切 `enabled`；**enable ≠ 清单已写入**。fee tables 为空时 content 应为 placeholder（`composition.status: pending_packages`）。
+
 ## Custom 行（非 MDM）
 
 **不必单独 tool**：新增 custom 行 = **`patch_proposal_draft` 的 `add` op** 往 `tables/{t}/rows/-` 追加一行。

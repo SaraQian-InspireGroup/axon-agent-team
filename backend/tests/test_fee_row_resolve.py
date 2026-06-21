@@ -63,6 +63,42 @@ def test_resolve_bvi_simple_display_uses_description():
     assert "scope_of_work_display" not in display
 
 
+def test_resolve_bvi_simple_display_appends_billing_frequency():
+    source = build_mdm_source(
+        {
+            "sku": "AM022",
+            "service_name": "Approved Manager",
+            "description": "Annual fee",
+            "price_amount": 200.0,
+            "price_currency": "USD",
+            "billing_frequency": "ANNUALLY",
+            "pricing_type": "FIXED",
+        }
+    )
+    display = resolve_fee_row(source, layout=_bvi_layout())
+    assert display["amount_display"] == "USD $200.00 Annual"
+
+
+def test_resolve_bvi_simple_display_monthly_suffix():
+    layout = {
+        **(_bvi_layout()),
+        "show_billing_frequency": True,
+        "table_style": "simple",
+    }
+    source = build_mdm_source(
+        {
+            "sku": "X01",
+            "description": "Payroll",
+            "price_amount": 100.0,
+            "price_currency": "AUD",
+            "billing_frequency": "MONTHLY",
+            "pricing_type": "FIXED",
+        }
+    )
+    display = resolve_fee_row(source, layout=layout)
+    assert display["amount_display"] == "AUD $100.00 Monthly"
+
+
 def test_resolve_recurring_once_off_recurring_canonical():
     source = build_mdm_source(
         {

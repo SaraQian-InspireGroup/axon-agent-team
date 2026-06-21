@@ -15,11 +15,11 @@ BD/销售跨 jurisdiction 出具 Proposal 的 agent（draft-first proposal compo
 
 ```
 knowledge/
-  knowledge-index.yaml         # 选型 → required doc / credential（极简）
   templates/{template_id}/
     template.yaml              # draft sections 契约
     blocks/*.md                # static 片段
   peripheral/                  # 知识正文（required-docs、credentials、team-bios）
+    required-docs/{category}/  # 客户可见正文（选型规则在 skill catalog）
 ```
 
 | 数据 | 来源 |
@@ -27,7 +27,9 @@ knowledge/
 | 产品 SKU / package | PostgreSQL `mdm_*` via **MDM catalog builtin tools** (see `proposal-mdm-catalog` skill) |
 | Template 入口、catalog filter、draft sections | `templates/{id}/template.yaml` |
 | Agent 读模版契约 | `read_knowledge("templates/{template_id}/template.yaml")` — 见 skill `references/template-contract.md` |
-| 触发型知识 | `knowledge-index.yaml` → `peripheral/` |
+| Required docs 选型规则 | skill `references/required-docs-{category}-catalog.md` |
+| Required docs 正文 | `read_knowledge("peripheral/required-docs/{category}/…")` |
+| Required docs compose 流程 | skill `references/required-docs-compose.md`（category 无关） |
 
 设计说明：[docs/PROPOSAL_COMPOSER_DESIGN.md](../../../docs/PROPOSAL_COMPOSER_DESIGN.md)
 

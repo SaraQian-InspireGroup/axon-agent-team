@@ -6,7 +6,7 @@ from app.tools.proposal import _validate_read_path
 @pytest.mark.parametrize(
     "path",
     [
-        "peripheral/required-docs/BVI/passport.md",
+        "peripheral/required-docs/harneys/Individual KYC Requirements.md",
         "peripheral/credentials/AU/audit-clients.csv",
         "templates/au-advisory/template.yaml",
         "templates/au-advisory/blocks/terms-au-advisory.md",

@@ -1,4 +1,4 @@
-"""Load categories, templates, and knowledge index from agent knowledge files."""
+"""Load templates and knowledge files for proposal-composer."""
 
 from __future__ import annotations
 
@@ -8,11 +8,7 @@ from typing import Any
 
 import yaml
 
-from app.proposal.paths import (
-    KNOWLEDGE_INDEX_PATH,
-    KNOWLEDGE_ROOT,
-    TEMPLATES_ROOT,
-)
+from app.proposal.paths import KNOWLEDGE_ROOT, TEMPLATES_ROOT
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -47,11 +43,6 @@ def load_templates() -> list[dict[str, Any]]:
             }
         )
     return templates
-
-
-@lru_cache(maxsize=1)
-def load_knowledge_index() -> dict[str, Any]:
-    return _load_yaml(KNOWLEDGE_INDEX_PATH)
 
 
 def read_knowledge_file(relative_path: str) -> str:

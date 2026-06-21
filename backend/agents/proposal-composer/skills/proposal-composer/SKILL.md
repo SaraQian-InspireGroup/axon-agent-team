@@ -35,6 +35,7 @@ description: >-
    | `sections[].fee_layout` | 表样式、列、分组、脚注、列宽等 render 规则 |
    | `sections[].package_briefs.index` | package_id → brief 模板路径 |
    | `sections[].derivation` | `derived_section` 专用：`type`、`source_section`；决定推导与配置语义 |
+   | `sections[].knowledge` | Required documents 等：`category`、`body_root`、`source_section`、skill resource 路径 |
    | `placeholders` | introduction 等处的占位符解析规则 |
 
    静态正文在 `blocks/*.md`；结构规则在 `template.yaml`。Catalog 价格与 SKU 不在 template 里。
@@ -145,6 +146,7 @@ JSON Pointer 示例：`/document/sections/{i}/tables/{t}/rows/{r}/display/previe
 | `footnotes: aggregate` | 仍在 **每行** `source.footnotes` / `display.footnotes_display` | 全文去重、统一编号、section 末一次渲染 |
 | `group_by: department` | `department_team` 在 **source** | render 时按 department 拆多张表 |
 | `service_columns` | resolve 时决定 `display.preview_primary` / `scope_of_work_display` | 决定 Service 单元格展示哪些列 |
+| `show_billing_frequency` | resolve 时写入 **`display.amount_display`**（仅 `table_style: simple`） | simple 价列追加 `Monthly` / `Quarterly` / `Annual`（ONE_TIME 不加；未知 enum 保留 DB 原值） |
 | `table_style` | — | `simple` / `frequency_columns` / `one_off_recurring`（Section View 同样三种 layout） |
 
 **实例级展示**：`fee_section.fee_layout.table_style` 等 presentation 字段在 **新建 draft 时从 template 复制**，之后 **draft 实例优先于 template**（历史 load 用 session 里存的 layout + display，不会被 template 覆盖）。切换展示：patch `fee_section.fee_layout.table_style`，无需改 template yaml。
@@ -172,6 +174,33 @@ JSON Pointer 示例：`/document/sections/{i}/tables/{t}/rows/{r}/display/previe
 
 *例*：au-advisory `payment_options`（`payment_options_from_fee_tables`）默认推导单套汇总方案；用户要月付 Option B 时 enable 不够，需 patch 该 node 的配置字段（字段名从 `get_proposal_draft` 读，不从 skill 查表）。
 
+### Required documents（knowledge category + compose）
+
+**概念**：`required_documents` 等章节的正文由 **category catalog 选型 + body 文件拼接** 组成；catalog 规则在 skill reference，客户在 proposal 里只看到 patch 后的 `content`。
+
+**与 `derived_section` 的区别**：platform **不**自动 compose；agent 读 compose reference + category catalog 并 patch。`enable_proposal_draft_section` 只切可见性 — **enable ≠ 清单已写好**。
+
+**Template 契约**（`sections[].knowledge`，以 yaml 为准）：
+
+| 字段 | 含义 |
+|------|------|
+| `category` | catalog 名，如 `harneys` → `references/required-docs-{category}-catalog.md` |
+| `body_root` | `read_knowledge` 前缀，如 `peripheral/required-docs/harneys` |
+| `source_section` | 选型来源 fee_section id，通常 `solution_and_fees` |
+| `compose_skill_resource` | 泛化流程，默认 `references/required-docs-compose.md` |
+
+**Routing**
+
+| template / category | Catalog resource |
+|---------------------|------------------|
+| `harneys-bvi` → `harneys` | [required-docs-harneys-catalog.md](references/required-docs-harneys-catalog.md) |
+
+**Compose 行为**：读 compose reference（`references/required-docs-compose.md`）了解不变量与选型逻辑；读 category catalog 获取具体规则；按 fee tables 选 block，只读选中 body 文件。fee tables 为空时 patch 占位文案，不读 body。
+
+**Refresh**：fee tables 变化后若 section enabled，对照 `composition.source_snapshot` 判断是否需要 recompose；用户手改过（`edit_state.content === "user"`）时先确认再覆盖。
+
+**Reply gate**：对用户说 required documents 已齐之前，确认 draft 里 `content` 非空且 `composition.status` 为 `ready`，或如实说明 `pending_packages` / `pending_structure`。
+
 ### Facts 与 placeholders
 
 `facts.client` 是跨 section 输入；template `placeholders` 在 render 时注入 markdown 块。Patch client facts 即可；勿为 `{{client.*}}` 去 patch introduction 全文（除非销售要 override 且 edit_state 允许）。
@@ -183,6 +212,7 @@ JSON Pointer 示例：`/document/sections/{i}/tables/{t}/rows/{r}/display/previe
 - **客户 / 公司** → `facts.client.*`。
 - **`derived_section`**（需要 enable 的推导型章节）→ 先读 template 确认 `derivation.type`；enable ≠ 全部变体；读 draft 发现配置字段 → patch。
 - **其他 optional 章节**（`markdown_block`、`static_block`、`collection` 等）→ enable 后 patch 该 kind 的内容字段（`content`、`items[]`…）。
+- **Required documents（knowledge category）** → template `sections[].knowledge` 声明 category；读 compose reference + category catalog，按 fee tables 选型 → 只读选中 body → patch `content` + `composition`（见下）。
 - **加/换 catalog 项** → catalog 查询 → materialize；只改已有 draft → patch。
 
 Path 不确定：**读 draft**，不要猜数组下标。
@@ -192,3 +222,5 @@ Path 不确定：**读 draft**，不要猜数组下标。
 | 主题 | Resource |
 |------|----------|
 | Preview vs draft、指称解析 | [preview-vs-draft.md](references/preview-vs-draft.md) |
+| Required documents compose（泛化） | [required-docs-compose.md](references/required-docs-compose.md) |
+| Required documents catalog（Harneys） | [required-docs-harneys-catalog.md](references/required-docs-harneys-catalog.md) |
