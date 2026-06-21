@@ -102,7 +102,8 @@ def test_bvi_fee_table_groups_by_department():
     assert "AM001" not in markdown
 
 
-def test_stale_draft_fee_layout_does_not_override_template():
+def test_draft_instance_fee_layout_overrides_template():
+    """Draft fee_layout presentation keys win over template defaults."""
     draft = materialize_draft(template_id="harneys-bvi")
     fee_section = next(
         section for section in draft["document"]["sections"] if section.get("kind") == "fee_section"
@@ -133,8 +134,8 @@ def test_stale_draft_fee_layout_does_not_override_template():
     )
     preview = build_draft_preview(updated)
     markdown = preview["markdown"]
-    assert "Formation fee" in markdown
-    assert "<strong>Approved Manager</strong>" not in markdown
+    assert "<strong>Approved Manager</strong>" in markdown
+    assert "Formation fee" not in markdown
 
 
 def test_bvi_template_column_widths_apply_to_grouped_tables():

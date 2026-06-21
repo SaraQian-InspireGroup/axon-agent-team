@@ -30,6 +30,11 @@ proposal_draft  +  template.yaml (fee_layout, placeholders, section kinds)
 |---------------|-------------------|
 | `simple` | `preview_primary`, `amount_display`, `footnotes_display?` |
 | `frequency_columns` | `preview_primary`, `scope_of_work_display?`, `frequency_columns_display`, `total_display`, `footnotes_display?` |
+| `one_off_recurring` | `preview_primary`, `scope_of_work_display?`, `once_off_display`, `recurring_display`, `footnotes_display?` |
+
+Materialize 时 platform 写入 **layout-agnostic canonical display**（含 `once_off_display`、`recurring_display`、`frequency_columns_display` 等）；切换 `table_style` 只换 renderer。
+
+**实例级 layout**：`fee_section.fee_layout` 的 `table_style`、`service_columns` 等 **draft 实例字段优先于 template**；历史 session load 用存盘 draft，不会被 template yaml 覆盖。
 
 MDM 入库字段（`price_amount`、`department_team` 等）在 **`source`**；改 panel 上的价/名 **只 patch `display.*`**，不要 patch `source.*`。
 
@@ -83,6 +88,8 @@ JSON Pointer 用的是 draft 数组的 **物理下标**（0-based）。从用户
 | 改展示名 | `.../rows/{r}/display/preview_primary` |
 | 改价（simple） | `.../rows/{r}/display/amount_display` |
 | 改价（frequency） | `.../rows/{r}/display/frequency_columns_display/once_off` 等 |
+| 改价（one_off_recurring） | `.../rows/{r}/display/once_off_display` / `recurring_display` |
+| 切换展示模式 | `.../fee_layout/table_style`（实例级，不改 template） |
 | 改 SOW（frequency） | `.../rows/{r}/display/scope_of_work_display` |
 | 改脚注 | `.../rows/{r}/display/footnotes_display` |
 

@@ -116,8 +116,11 @@ Draft 内按 **语义槽** 组织（非独立 sub-section id）：
 |---------------|----------------|
 | `simple` | `preview_primary`, `amount_display`, `footnotes_display?` |
 | `frequency_columns` | `preview_primary`, `scope_of_work_display?`, `frequency_columns_display`, `total_display`, `footnotes_display?` |
+| `one_off_recurring` | `preview_primary`, `scope_of_work_display?`, `once_off_display`, `recurring_display`, `footnotes_display?` |
 
-- 改价：**simple** patch `display.amount_display`；**frequency** patch 对应 `display.frequency_columns_display.{monthly|quarterly|annual|once_off}` 与/或 `display.total_display`。
+Materialize 时 platform 会写 **canonical display**（含上述全部金额字段）；换 `table_style` 只换 renderer，不必重跑 MDM。
+
+- 改价：**simple** patch `display.amount_display`；**frequency** patch 对应 `display.frequency_columns_display.{monthly|quarterly|annual|once_off}` 与/或 `display.total_display`；**one_off_recurring** patch `display.once_off_display` / `display.recurring_display`。
 - 改标题/服务名展示：patch `display.preview_primary`（勿 patch `source.service_name`）。
 - 脚注正文：patch `display.footnotes_display`（聚合编号仍由 render 处理）。
 - **`department_team` 只在 `source`**，供 `group_by: department`；不进 display。
@@ -142,7 +145,9 @@ JSON Pointer 示例：`/document/sections/{i}/tables/{t}/rows/{r}/display/previe
 | `footnotes: aggregate` | 仍在 **每行** `source.footnotes` / `display.footnotes_display` | 全文去重、统一编号、section 末一次渲染 |
 | `group_by: department` | `department_team` 在 **source** | render 时按 department 拆多张表 |
 | `service_columns` | resolve 时决定 `display.preview_primary` / `scope_of_work_display` | 决定 Service 单元格展示哪些列 |
-| `table_style` | — | `simple` vs `frequency_columns`（Section View 同样两种 layout） |
+| `table_style` | — | `simple` / `frequency_columns` / `one_off_recurring`（Section View 同样三种 layout） |
+
+**实例级展示**：`fee_section.fee_layout.table_style` 等 presentation 字段在 **新建 draft 时从 template 复制**，之后 **draft 实例优先于 template**（历史 load 用 session 里存的 layout + display，不会被 template 覆盖）。切换展示：patch `fee_section.fee_layout.table_style`，无需改 template yaml。
 
 未来非 aggregate 脚注模式：row 路径仍相同，仅 render 不同。
 

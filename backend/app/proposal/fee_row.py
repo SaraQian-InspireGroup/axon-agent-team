@@ -113,13 +113,41 @@ def _format_frequency_column_display(amount: float | None, currency: str) -> str
     return format_money(amount, currency, include_currency=bool(currency)).strip()
 
 
-def resolve_fee_row(source: dict[str, Any], *, layout: dict[str, Any]) -> dict[str, Any]:
+def _recurring_suffix(billing_frequency: str) -> str:
+    freq = str(billing_frequency or "ONE_TIME").upper()
+    labels = {
+        "MONTHLY": "Monthly",
+        "QUARTERLY": "Quarterly",
+        "ANNUALLY": "Annual",
+    }
+    return labels.get(freq, "")
+
+
+def _build_once_off_recurring_displays(price: dict[str, Any], *, currency: str) -> tuple[str, str]:
+    """Split fee text into one-off vs recurring display strings (layout-agnostic canonical)."""
+    freq = str(price.get("frequency") or "ONE_TIME").upper()
+    amount_text = fee_table_amount_display(price, format_money=format_money) or ""
+    if freq == "ONE_TIME":
+        return amount_text, ""
+    suffix = _recurring_suffix(freq)
+    if amount_text and suffix and suffix.lower() not in amount_text.lower():
+        recurring = f"{amount_text} {suffix}".strip()
+    else:
+        recurring = amount_text
+    return "", recurring
+
+
+def _build_canonical_display_fields(
+    source: dict[str, Any],
+    *,
+    layout: dict[str, Any],
+) -> dict[str, Any]:
+    """Layout-agnostic display snapshot — all table styles read from this."""
     from app.proposal.fee_table import service_column_flags
 
     columns = service_column_flags(layout)
     price = _price_object_from_source(source)
     currency = str(price.get("currency") or "")
-    table_style = str(layout.get("table_style") or "simple").strip().lower()
 
     display: dict[str, Any] = {
         "preview_primary": _preview_primary(source, layout),
@@ -129,45 +157,49 @@ def resolve_fee_row(source: dict[str, Any], *, layout: dict[str, Any]) -> dict[s
     if footnotes:
         display["footnotes_display"] = footnotes
 
-    if columns.get("scope_of_work"):
-        sow = str(source.get("scope_of_work") or "").strip()
-        if sow:
-            display["scope_of_work_display"] = sow
+    sow = str(source.get("scope_of_work") or "").strip()
+    if sow and (columns.get("scope_of_work") or sow):
+        display["scope_of_work_display"] = sow
 
-    if table_style == "frequency_columns":
-        amount = price.get("amount")
-        freq_cols = row_frequency_columns(
-            {
-                "amount": amount,
-                "billing_frequency": price.get("frequency"),
-            }
-        )
-        display["frequency_columns_display"] = {
-            key: _format_frequency_column_display(freq_cols.get(key), currency)
-            for key in ("monthly", "quarterly", "annual", "once_off")
+    amount = price.get("amount")
+    freq_cols = row_frequency_columns(
+        {"amount": amount, "billing_frequency": price.get("frequency")}
+    )
+    display["frequency_columns_display"] = {
+        key: _format_frequency_column_display(freq_cols.get(key), currency)
+        for key in ("monthly", "quarterly", "annual", "once_off")
+    }
+    fee_raw = fee_table_amount_display(price, format_money=format_money)
+    if fee_raw and normalize_pricing_type(price.get("pricing_type")) != "FIXED":
+        active = str(price.get("frequency") or "ONE_TIME").upper()
+        col_map = {
+            "MONTHLY": "monthly",
+            "QUARTERLY": "quarterly",
+            "ANNUALLY": "annual",
         }
-        total = row_total_annualized(freq_cols) if amount is not None else None
-        display["total_display"] = (
-            format_money(total, currency, include_currency=bool(currency)).strip()
-            if total is not None
-            else ""
-        )
-        fee_raw = fee_table_amount_display(price, format_money=format_money)
-        if fee_raw and normalize_pricing_type(price.get("pricing_type")) != "FIXED":
-            active = str(price.get("frequency") or "ONE_TIME").upper()
-            col_map = {
-                "MONTHLY": "monthly",
-                "QUARTERLY": "quarterly",
-                "ANNUALLY": "annual",
-            }
-            active_key = col_map.get(active, "once_off")
-            display["frequency_columns_display"][active_key] = fee_raw
-    else:
-        amount_text = fee_table_amount_display(price, format_money=format_money)
-        if amount_text:
-            display["amount_display"] = amount_text
+        active_key = col_map.get(active, "once_off")
+        display["frequency_columns_display"][active_key] = fee_raw
+
+    total = row_total_annualized(freq_cols) if amount is not None else None
+    display["total_display"] = (
+        format_money(total, currency, include_currency=bool(currency)).strip()
+        if total is not None
+        else ""
+    )
+
+    amount_text = fee_table_amount_display(price, format_money=format_money)
+    if amount_text:
+        display["amount_display"] = amount_text
+
+    once_off, recurring = _build_once_off_recurring_displays(price, currency=currency)
+    display["once_off_display"] = once_off
+    display["recurring_display"] = recurring
 
     return display
+
+
+def resolve_fee_row(source: dict[str, Any], *, layout: dict[str, Any]) -> dict[str, Any]:
+    return _build_canonical_display_fields(source, layout=layout)
 
 
 def resolve_fee_row_display(row: dict[str, Any], *, layout: dict[str, Any]) -> dict[str, Any]:
@@ -188,56 +220,90 @@ def _apply_display_overrides(
     *,
     layout: dict[str, Any],
 ) -> dict[str, Any]:
-    """Recompute derived display fields after explicit display edits."""
-    table_style = str(layout.get("table_style") or "simple").strip().lower()
+    """Merge canonical fields with explicit display edits; recompute price-derived columns."""
+    base = _build_canonical_display_fields(source, layout=layout)
+    merged = {**base, **display}
     price = _price_object_from_source(source)
     currency = str(price.get("currency") or "")
 
-    if "amount_display" in display and table_style != "frequency_columns":
+    if "once_off_display" in display:
+        parsed = parse_amount_display(str(display.get("once_off_display") or ""))
+        text = str(display.get("once_off_display") or "").strip()
+        if parsed is not None:
+            price = {**price, "amount": parsed, "frequency": "ONE_TIME"}
+            merged["once_off_display"] = fee_table_amount_display(price, format_money=format_money) or text
+        else:
+            merged["once_off_display"] = text
+        merged["recurring_display"] = str(display.get("recurring_display") or merged.get("recurring_display") or "")
+
+    if "recurring_display" in display and "once_off_display" not in display:
+        parsed = parse_amount_display(str(display.get("recurring_display") or ""))
+        text = str(display.get("recurring_display") or "").strip()
+        if parsed is not None:
+            price = {**price, "amount": parsed}
+            merged["recurring_display"] = text or merged["recurring_display"]
+        else:
+            merged["recurring_display"] = text
+
+    if "amount_display" in display:
         parsed = parse_amount_display(str(display.get("amount_display") or ""))
         if parsed is not None:
             price = {**price, "amount": parsed}
-            display["amount_display"] = fee_table_amount_display(price, format_money=format_money) or display["amount_display"]
+            merged["amount_display"] = fee_table_amount_display(price, format_money=format_money) or display["amount_display"]
 
-    if table_style == "frequency_columns":
-        amount = price.get("amount")
-        explicit_freq = isinstance(display.get("frequency_columns_display"), dict)
-        if "amount_display" in display:
-            parsed = parse_amount_display(str(display.get("amount_display") or ""))
+    if isinstance(display.get("frequency_columns_display"), dict):
+        freq_patch = display["frequency_columns_display"]
+        active = str(price.get("frequency") or "ONE_TIME").upper()
+        col_map = {
+            "MONTHLY": "monthly",
+            "QUARTERLY": "quarterly",
+            "ANNUALLY": "annual",
+            "ONE_TIME": "once_off",
+        }
+        active_key = col_map.get(active, "once_off")
+        for key in (active_key, "once_off", "annual", "quarterly", "monthly"):
+            if key not in freq_patch:
+                continue
+            parsed = parse_amount_display(str(freq_patch.get(key) or ""))
             if parsed is not None:
-                amount = parsed
                 price = {**price, "amount": parsed}
-        if amount is not None and (not explicit_freq):
-            freq_cols = row_frequency_columns(
-                {"amount": amount, "billing_frequency": price.get("frequency")}
-            )
-            display["frequency_columns_display"] = {
+                if key == "once_off":
+                    price = {**price, "frequency": "ONE_TIME"}
+                break
+
+    amount = price.get("amount")
+    if amount is not None and (
+        "amount_display" in display
+        or "once_off_display" in display
+        or "recurring_display" in display
+        or "frequency_columns_display" in display
+    ):
+        freq_cols = row_frequency_columns(
+            {"amount": amount, "billing_frequency": price.get("frequency")}
+        )
+        if "frequency_columns_display" in display:
+            merged["frequency_columns_display"] = {
+                **(merged.get("frequency_columns_display") or {}),
+                **display["frequency_columns_display"],
+            }
+        else:
+            merged["frequency_columns_display"] = {
                 key: _format_frequency_column_display(freq_cols.get(key), currency)
                 for key in ("monthly", "quarterly", "annual", "once_off")
             }
-            total = row_total_annualized(freq_cols)
-            display["total_display"] = format_money(total, currency, include_currency=bool(currency)).strip()
-            fee_raw = fee_table_amount_display(price, format_money=format_money)
-            if fee_raw and normalize_pricing_type(price.get("pricing_type")) != "FIXED":
-                active = str(price.get("frequency") or "ONE_TIME").upper()
-                col_map = {
-                    "MONTHLY": "monthly",
-                    "QUARTERLY": "quarterly",
-                    "ANNUALLY": "annual",
-                }
-                active_key = col_map.get(active, "once_off")
-                display["frequency_columns_display"][active_key] = fee_raw
-        elif explicit_freq and "total_display" not in display and amount is not None:
-            freq_cols = row_frequency_columns(
-                {"amount": amount, "billing_frequency": price.get("frequency")}
-            )
-            total = row_total_annualized(freq_cols)
-            display["total_display"] = format_money(total, currency, include_currency=bool(currency)).strip()
+        total = row_total_annualized(freq_cols)
+        if "total_display" not in display:
+            merged["total_display"] = format_money(total, currency, include_currency=bool(currency)).strip()
+        once_off, recurring = _build_once_off_recurring_displays(price, currency=currency)
+        if "once_off_display" not in display:
+            merged["once_off_display"] = once_off
+        if "recurring_display" not in display:
+            merged["recurring_display"] = recurring
 
-    if "preview_primary" not in display or not str(display.get("preview_primary") or "").strip():
-        display["preview_primary"] = _preview_primary(source, layout)
+    if not str(merged.get("preview_primary") or "").strip():
+        merged["preview_primary"] = _preview_primary(source, layout)
 
-    return display
+    return merged
 
 
 def _normalize_custom_display(display: dict[str, Any], *, layout: dict[str, Any]) -> dict[str, Any]:
@@ -246,15 +312,39 @@ def _normalize_custom_display(display: dict[str, Any], *, layout: dict[str, Any]
     if not preview:
         raise ValueError("custom fee_row.display.preview_primary is required")
     amount_text = str(normalized.get("amount_display") or "").strip()
+    once_off_text = str(normalized.get("once_off_display") or "").strip()
+    recurring_text = str(normalized.get("recurring_display") or "").strip()
+    currency = ""
+    for probe in (amount_text, once_off_text, recurring_text):
+        if probe.upper().startswith("AUD"):
+            currency = "AUD"
+            break
+        if probe.upper().startswith("USD"):
+            currency = "USD"
+            break
+
+    if once_off_text or recurring_text:
+        if once_off_text and not recurring_text:
+            normalized.setdefault("once_off_display", once_off_text)
+        elif recurring_text and not once_off_text:
+            normalized.setdefault("recurring_display", recurring_text)
+    elif amount_text:
+        parsed = parse_amount_display(amount_text)
+        price = {
+            "amount": parsed,
+            "fee_raw": None,
+            "currency": currency,
+            "frequency": "ONE_TIME",
+            "pricing_type": "FIXED",
+        }
+        once_off, recurring = _build_once_off_recurring_displays(price, currency=currency)
+        normalized.setdefault("once_off_display", once_off or amount_text)
+        normalized.setdefault("recurring_display", recurring)
+
     table_style = str(layout.get("table_style") or "simple").strip().lower()
     if table_style == "frequency_columns":
         if "frequency_columns_display" not in normalized and amount_text:
             parsed = parse_amount_display(amount_text)
-            currency = ""
-            if amount_text.upper().startswith("AUD"):
-                currency = "AUD"
-            elif amount_text.upper().startswith("USD"):
-                currency = "USD"
             cols = row_frequency_columns({"amount": parsed, "billing_frequency": "ONE_TIME"})
             normalized["frequency_columns_display"] = {
                 key: _format_frequency_column_display(cols.get(key), currency)
@@ -377,6 +467,15 @@ def effective_pricing(row: dict[str, Any]) -> dict[str, Any]:
         parsed = parse_amount_display(str(display["frequency_columns_display"].get(active_key) or ""))
         if parsed is not None:
             price["amount"] = parsed
+    if display.get("once_off_display") and not isinstance(display.get("frequency_columns_display"), dict):
+        parsed = parse_amount_display(str(display.get("once_off_display") or ""))
+        if parsed is not None:
+            price["amount"] = parsed
+            price["frequency"] = "ONE_TIME"
+    elif display.get("recurring_display") and not isinstance(display.get("frequency_columns_display"), dict):
+        parsed = parse_amount_display(str(display.get("recurring_display") or ""))
+        if parsed is not None:
+            price["amount"] = parsed
     if "amount_display" in display and not isinstance(display.get("frequency_columns_display"), dict):
         parsed = parse_amount_display(str(display.get("amount_display") or ""))
         if parsed is not None:
@@ -414,6 +513,10 @@ def render_row_dto(row: dict[str, Any]) -> dict[str, Any]:
         dto["frequency_columns_display"] = copy.deepcopy(display["frequency_columns_display"])
     if display.get("scope_of_work_display"):
         dto["scope_of_work_display"] = display.get("scope_of_work_display")
+    if display.get("once_off_display") is not None:
+        dto["once_off_display"] = display.get("once_off_display")
+    if display.get("recurring_display") is not None:
+        dto["recurring_display"] = display.get("recurring_display")
     return dto
 
 

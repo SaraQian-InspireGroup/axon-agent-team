@@ -198,9 +198,11 @@ export type FeeRowSummary = {
   footnote: string | null
   frequencyColumns: Record<string, string> | null
   totalDisplay: string | null
+  onceOffDisplay: string | null
+  recurringDisplay: string | null
 }
 
-export type FeeTableLayout = 'simple' | 'frequency_columns'
+export type FeeTableLayout = 'simple' | 'frequency_columns' | 'one_off_recurring'
 
 export function feeSectionTableStyle(section: Record<string, unknown>): FeeTableLayout {
   const layout = section.fee_layout
@@ -208,7 +210,9 @@ export function feeSectionTableStyle(section: Record<string, unknown>): FeeTable
   const style = String((layout as Record<string, unknown>).table_style || 'simple')
     .trim()
     .toLowerCase()
-  return style === 'frequency_columns' ? 'frequency_columns' : 'simple'
+  if (style === 'frequency_columns') return 'frequency_columns'
+  if (style === 'one_off_recurring') return 'one_off_recurring'
+  return 'simple'
 }
 
 function readDisplay(row: Record<string, unknown>): Record<string, unknown> {
@@ -244,6 +248,8 @@ export function summarizeFeeRow(
   let amount: string | null = null
   let frequencyColumns: Record<string, string> | null = null
   let totalDisplay: string | null = null
+  let onceOffDisplay: string | null = null
+  let recurringDisplay: string | null = null
 
   if (layout === 'frequency_columns') {
     const rawCols = display.frequency_columns_display
@@ -260,6 +266,15 @@ export function summarizeFeeRow(
         ? display.total_display.trim()
         : null
     amount = totalDisplay
+  } else if (layout === 'one_off_recurring') {
+    onceOffDisplay =
+      typeof display.once_off_display === 'string' && display.once_off_display.trim()
+        ? display.once_off_display.trim()
+        : null
+    recurringDisplay =
+      typeof display.recurring_display === 'string' && display.recurring_display.trim()
+        ? display.recurring_display.trim()
+        : null
   } else {
     amount =
       typeof display.amount_display === 'string' && display.amount_display.trim()
@@ -276,6 +291,8 @@ export function summarizeFeeRow(
     footnote,
     frequencyColumns,
     totalDisplay,
+    onceOffDisplay,
+    recurringDisplay,
   }
 }
 

@@ -58,7 +58,69 @@ def test_resolve_bvi_simple_display_uses_description():
     display = resolve_fee_row(source, layout=_bvi_layout())
     assert display["preview_primary"] == "Formation fee"
     assert display["amount_display"] == "USD $100.00"
+    assert display["once_off_display"] == "USD $100.00"
+    assert display["recurring_display"] == ""
     assert "scope_of_work_display" not in display
+
+
+def test_resolve_recurring_once_off_recurring_canonical():
+    source = build_mdm_source(
+        {
+            "sku": "SG01",
+            "service_name": "Annual compliance",
+            "scope_of_work": "Monthly filings",
+            "price_amount": 800.0,
+            "price_currency": "USD",
+            "billing_frequency": "ANNUALLY",
+            "pricing_type": "FIXED",
+        }
+    )
+    layout = {
+        "table_style": "one_off_recurring",
+        "service_columns": {
+            "service_name": True,
+            "description": False,
+            "scope_of_work": True,
+        },
+    }
+    display = resolve_fee_row(source, layout=layout)
+    assert display["preview_primary"] == "Annual compliance"
+    assert display["scope_of_work_display"] == "Monthly filings"
+    assert display["once_off_display"] == ""
+    assert display["recurring_display"] == "USD $800.00 Annual"
+
+
+def test_render_one_off_recurring_table():
+    from app.proposal.fee_table import render_one_off_recurring_table
+
+    groups = [
+        {
+            "group_id": "g1",
+            "display_name": "Services",
+            "rows": [
+                {
+                    "display": {
+                        "preview_primary": "Setup",
+                        "scope_of_work_display": "Initial work",
+                        "once_off_display": "USD $500.00",
+                        "recurring_display": "",
+                    },
+                },
+                {
+                    "display": {
+                        "preview_primary": "Retainer",
+                        "once_off_display": "",
+                        "recurring_display": "USD $800.00 Annual",
+                    },
+                },
+            ],
+        }
+    ]
+    html = render_one_off_recurring_table(groups)
+    assert "proposal-fee-table-one-off-recurring" in html
+    assert "USD $500.00" in html
+    assert "USD $800.00 Annual" in html
+    assert "Initial work" in html
 
 
 def test_patch_amount_display_updates_effective_pricing():

@@ -173,12 +173,13 @@ def row_frequency_columns(row: dict[str, Any]) -> dict[str, float | None]:
 _DEFAULT_COLUMN_WIDTHS: dict[str, dict[str, str]] = {
     "simple": {"service": "68%", "amount": "32%"},
     "frequency_columns": {"service": "33.333%", "amount": "13.333%"},
+    "one_off_recurring": {"service": "50%", "one_off": "25%", "recurring": "25%"},
 }
 _TABLE_STYLE = "width:100%;table-layout:fixed;border-collapse:collapse"
 
 
 def fee_column_widths(layout: dict[str, Any] | None, table_style: str) -> dict[str, str]:
-    """Resolve service/amount column widths for a fee table style from template fee_layout."""
+    """Resolve column widths for a fee table style from template/draft fee_layout."""
     style = str(table_style or "simple").strip().lower()
     if style not in _DEFAULT_COLUMN_WIDTHS:
         style = "simple"
@@ -188,13 +189,12 @@ def fee_column_widths(layout: dict[str, Any] | None, table_style: str) -> dict[s
     if isinstance(raw.get(style), dict):
         nested = raw[style]
     flat: dict[str, str] = {}
-    if isinstance(raw.get("service"), str):
-        flat["service"] = str(raw["service"])
-    if isinstance(raw.get("amount"), str):
-        flat["amount"] = str(raw["amount"])
+    for key in defaults:
+        if isinstance(raw.get(key), str):
+            flat[key] = str(raw[key])
     return {
-        "service": str(nested.get("service") or flat.get("service") or defaults["service"]),
-        "amount": str(nested.get("amount") or flat.get("amount") or defaults["amount"]),
+        key: str(nested.get(key) or flat.get(key) or defaults[key])
+        for key in defaults
     }
 
 
@@ -494,6 +494,126 @@ def render_frequency_table(
         parts.append("</tbody></table>")
         parts.append("")
     return "\n".join(parts).strip()
+
+
+def _one_off_recurring_colgroup(service_width: str, one_off_width: str, recurring_width: str) -> str:
+    return (
+        "<colgroup>"
+        f'<col width="{service_width}" style="width:{service_width}" '
+        f'class="proposal-fee-col-label" />'
+        f'<col width="{one_off_width}" style="width:{one_off_width}" '
+        f'class="proposal-fee-col-once-off" />'
+        f'<col width="{recurring_width}" style="width:{recurring_width}" '
+        f'class="proposal-fee-col-recurring" />'
+        "</colgroup>"
+    )
+
+
+def _one_off_recurring_column_labels(layout: dict[str, Any] | None) -> dict[str, str]:
+    defaults = {
+        "service": "Scope",
+        "one_off": "One-off",
+        "recurring": "Recurring",
+    }
+    raw = (layout or {}).get("column_labels") or {}
+    nested: dict[str, Any] = {}
+    if isinstance(raw.get("one_off_recurring"), dict):
+        nested = raw["one_off_recurring"]
+    return {
+        key: str(nested.get(key) or raw.get(key) or defaults[key])
+        for key in defaults
+    }
+
+
+def render_one_off_recurring_table(
+    groups: list[dict[str, Any]],
+    *,
+    service_columns: dict[str, bool] | None = None,
+    column_widths: dict[str, str] | None = None,
+    column_labels: dict[str, str] | None = None,
+    empty_cell: str = "-",
+) -> str:
+    widths = column_widths or fee_column_widths(None, "one_off_recurring")
+    service_width = widths["service"]
+    one_off_width = widths["one_off"]
+    recurring_width = widths["recurring"]
+    labels = column_labels or _one_off_recurring_column_labels(None)
+    columns = service_columns or {
+        "service_name": True,
+        "description": False,
+        "scope_of_work": True,
+    }
+    empty = str(empty_cell or "-").strip() or "-"
+    parts: list[str] = []
+    for group in groups:
+        parts.append(f"### {group.get('display_name') or group.get('group_id')}")
+        parts.append("")
+        parts.append(
+            f"<table class=\"proposal-fee-table proposal-fee-table-one-off-recurring\" "
+            f"style=\"{_TABLE_STYLE}\">"
+        )
+        parts.append(_one_off_recurring_colgroup(service_width, one_off_width, recurring_width))
+        parts.append(
+            "<thead><tr>"
+            f'<th width="{service_width}" style="width:{service_width}">{escape_html(labels["service"])}</th>'
+            f'<th width="{one_off_width}" style="width:{one_off_width}" '
+            f'class="proposal-fee-amount-head">{escape_html(labels["one_off"])}</th>'
+            f'<th width="{recurring_width}" style="width:{recurring_width}" '
+            f'class="proposal-fee-amount-head">{escape_html(labels["recurring"])}</th>'
+            "</tr></thead><tbody>"
+        )
+        for row in group.get("rows") or []:
+            display = row.get("display") if isinstance(row.get("display"), dict) else {}
+            once_off = str(display.get("once_off_display") or "").strip() or empty
+            recurring = str(display.get("recurring_display") or "").strip() or empty
+            service_html = build_fee_service_cell_html(row, columns)
+            parts.append(
+                "<tr>"
+                f"<td width=\"{service_width}\" class=\"proposal-fee-service\" "
+                f"style=\"width:{service_width}\">{service_html}</td>"
+                + _text_amount_cell(once_off, col_width=one_off_width)
+                + _text_amount_cell(recurring, col_width=recurring_width)
+                + "</tr>"
+            )
+        parts.append("</tbody></table>")
+        parts.append("")
+    return "\n".join(parts).strip()
+
+
+def render_fee_table_by_style(
+    table_style: str,
+    groups: list[dict[str, Any]],
+    *,
+    layout: dict[str, Any] | None = None,
+    currency: str = "",
+    service_columns: dict[str, bool] | None = None,
+    column_widths: dict[str, str] | None = None,
+) -> str:
+    """Dispatch fee table HTML rendering by draft/template table_style."""
+    style = str(table_style or "simple").strip().lower()
+    fee_layout = layout or {}
+    if style == "frequency_columns":
+        return render_frequency_table(
+            groups,
+            currency=currency,
+            service_columns=service_columns,
+            column_widths=column_widths,
+        )
+    if style == "one_off_recurring":
+        return render_one_off_recurring_table(
+            groups,
+            service_columns=service_columns,
+            column_widths=column_widths,
+            column_labels=_one_off_recurring_column_labels(fee_layout),
+            empty_cell=str(fee_layout.get("empty_cell") or "-"),
+        )
+    return render_simple_table(
+        groups,
+        show_recurring=fee_layout.get("show_recurring", True),
+        service_columns=service_columns,
+        amount_column_label=str(fee_layout.get("amount_column_label") or "Amount"),
+        column_widths=column_widths,
+    )
 
 
 def render_simple_table(

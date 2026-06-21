@@ -233,6 +233,37 @@ function FeeRowLayoutFrequency({ row }: { row: ReturnType<typeof summarizeFeeRow
   )
 }
 
+function FeeRowLayoutOneOffRecurring({ row }: { row: ReturnType<typeof summarizeFeeRow> }) {
+  return (
+    <>
+      <div className="proposal-draft-fee-row-main">
+        {row.sku ? <span className="proposal-draft-fee-row-sku">{row.sku}</span> : null}
+        <span className="proposal-draft-fee-row-label">{row.label}</span>
+      </div>
+      {row.sow ? (
+        <div className="proposal-draft-fee-row-texts">
+          <DraftFeeRowTextField label="scope" text={row.sow} />
+        </div>
+      ) : null}
+      <dl className="proposal-draft-fee-one-off-recurring-cols">
+        <div className="proposal-draft-fee-one-off-recurring-col">
+          <dt>One-off</dt>
+          <dd>{row.onceOffDisplay ?? '—'}</dd>
+        </div>
+        <div className="proposal-draft-fee-one-off-recurring-col">
+          <dt>Recurring</dt>
+          <dd>{row.recurringDisplay ?? '—'}</dd>
+        </div>
+      </dl>
+      {row.footnote ? (
+        <div className="proposal-draft-fee-row-meta">
+          <span className="proposal-draft-fee-row-footnote-flag">has footnote</span>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 function DraftFeeTableBody({
   table,
   layout,
@@ -259,6 +290,8 @@ function DraftFeeTableBody({
             <li key={row.id} className="proposal-draft-fee-row-item">
               {layout === 'frequency_columns' ? (
                 <FeeRowLayoutFrequency row={row} />
+              ) : layout === 'one_off_recurring' ? (
+                <FeeRowLayoutOneOffRecurring row={row} />
               ) : (
                 <FeeRowLayoutSimple row={row} />
               )}

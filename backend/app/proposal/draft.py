@@ -342,15 +342,39 @@ def template_fee_section_spec(template_id: str, section_id: str) -> dict[str, An
     return {}
 
 
+# Keys stored on draft fee_section.fee_layout — draft instance wins over template.
+_INSTANCE_LAYOUT_KEYS = frozenset(
+    {
+        "table_style",
+        "column_widths",
+        "column_labels",
+        "amount_column_label",
+        "empty_cell",
+        "service_columns",
+        "show_recurring",
+        "show_line_amount",
+        "show_billing_frequency",
+        "group_by",
+        "tables_heading",
+        "footnotes",
+        "currency",
+    }
+)
+
+
 def _effective_fee_layout(draft: dict[str, Any], section: dict[str, Any]) -> dict[str, Any]:
-    """Template fee_layout wins over stale values copied at draft init."""
+    """Merge template defaults with draft instance layout; draft presentation keys win."""
     draft_layout = dict(section.get("fee_layout") or {})
     template_id = str((draft.get("meta") or {}).get("template_id") or "").strip()
     if not template_id:
         return draft_layout
     spec = template_fee_section_spec(template_id, str(section.get("id") or ""))
     tpl_layout = dict(spec.get("fee_layout") or {})
-    return {**draft_layout, **tpl_layout}
+    merged = {**tpl_layout, **draft_layout}
+    for key in _INSTANCE_LAYOUT_KEYS:
+        if key in draft_layout and draft_layout[key] is not None:
+            merged[key] = draft_layout[key]
+    return merged
 
 
 def _catalog_scope_for_draft(draft: dict[str, Any]) -> tuple[str | None, str | None]:
@@ -664,8 +688,7 @@ def _render_fee_section(draft: dict[str, Any], section: dict[str, Any]) -> str:
     currency = layout.get("currency")
     from app.proposal.fee_table import (
         fee_column_widths,
-        render_frequency_table,
-        render_simple_table,
+        render_fee_table_by_style,
         service_column_flags,
     )
     from app.proposal.footnotes import apply_footnote_numbers, collect_footnotes, render_footnotes_footer
@@ -693,25 +716,16 @@ def _render_fee_section(draft: dict[str, Any], section: dict[str, Any]) -> str:
         parts.extend([f"## {tables_heading}", ""])
     table_style = str(layout.get("table_style") or "simple")
     column_widths = fee_column_widths(layout, table_style)
-    if table_style == "frequency_columns":
-        parts.append(
-            render_frequency_table(
-                groups,
-                currency=currency,
-                service_columns=service_columns,
-                column_widths=column_widths,
-            )
+    parts.append(
+        render_fee_table_by_style(
+            table_style,
+            groups,
+            layout=layout,
+            currency=currency or "",
+            service_columns=service_columns,
+            column_widths=column_widths,
         )
-    else:
-        parts.append(
-            render_simple_table(
-                groups,
-                show_recurring=layout.get("show_recurring", True),
-                service_columns=service_columns,
-                amount_column_label=str(layout.get("amount_column_label") or "Amount"),
-                column_widths=column_widths,
-            )
-        )
+    )
     if footnote_entries:
         parts.append(render_footnotes_footer(footnote_entries))
     return "\n\n".join(part for part in parts if part != "")
