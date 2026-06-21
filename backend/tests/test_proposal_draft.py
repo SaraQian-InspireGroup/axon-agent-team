@@ -1,10 +1,14 @@
+import pytest
+
 from app.proposal.draft import (
     add_package_to_draft,
     add_services_to_draft,
     build_draft_preview,
     enable_draft_section,
     materialize_draft,
+    new_collection_markdown_block,
     patch_draft,
+    render_draft_markdown,
 )
 from tests.proposal_fee_fixtures import make_mdm_fee_row
 
@@ -59,7 +63,11 @@ def test_materialize_bvi_draft_from_template_sections():
     assert "introduction" in ids
     assert "solution_and_fees" in ids
     assert "additional_info" in ids
-    assert "appendix" in ids
+    assert "appendices" in ids
+    appendices = next(s for s in draft["document"]["sections"] if s["id"] == "appendices")
+    assert appendices["kind"] == "collection"
+    assert appendices.get("blocks") == []
+    assert appendices.get("collection") == {"child_kind": "markdown_block"}
     fee = next(s for s in draft["document"]["sections"] if s["id"] == "solution_and_fees")
     assert "intro" not in fee
 
@@ -435,3 +443,46 @@ def test_static_sections_render_template_titles_once():
     assert "# Terms and conditions" in preview["markdown"]
     assert preview["markdown"].count("# About Incorp") == 1
     assert preview["markdown"].count("# Terms and conditions") == 1
+
+
+def test_appendices_collection_renders_each_block_as_chapter():
+    draft = materialize_draft(template_id="harneys-bvi")
+    draft = enable_draft_section(draft, "appendices", enabled=True)
+    appendices_idx = next(
+        i for i, s in enumerate(draft["document"]["sections"]) if s["id"] == "appendices"
+    )
+    draft = patch_draft(
+        draft,
+        [
+            {
+                "op": "add",
+                "path": f"/document/sections/{appendices_idx}/blocks/-",
+                "value": new_collection_markdown_block(
+                    block_id="appendix-a",
+                    title="Appendix A — Sample",
+                    content="First appendix body.",
+                    edit_state="agent",
+                ),
+            },
+            {
+                "op": "add",
+                "path": f"/document/sections/{appendices_idx}/blocks/-",
+                "value": new_collection_markdown_block(
+                    block_id="appendix-b",
+                    title="Appendix B — Other",
+                    content="Second appendix body.",
+                    edit_state="agent",
+                ),
+            },
+        ],
+    )
+    markdown = render_draft_markdown(draft)
+    assert "# Appendix A — Sample\n\nFirst appendix body." in markdown
+    assert "# Appendix B — Other\n\nSecond appendix body." in markdown
+    assert "# Appendices\n\n" not in markdown
+    assert markdown.index("Appendix A") < markdown.index("Appendix B")
+
+
+def test_new_collection_markdown_block_requires_title():
+    with pytest.raises(ValueError, match="title"):
+        new_collection_markdown_block(block_id="x", title="")

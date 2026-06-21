@@ -2627,6 +2627,44 @@ body {
   font-style: italic;
 }
 
+.proposal-draft-collection-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem 0.75rem;
+  background: #fff;
+}
+
+.proposal-draft-collection-block {
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.proposal-draft-collection-block-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  cursor: pointer;
+  list-style: none;
+  background: #f8fafc;
+  font-size: 0.8125rem;
+}
+
+.proposal-draft-collection-block-title {
+  font-weight: 600;
+  color: var(--color-ink, #1e293b);
+}
+
+.proposal-draft-collection-block-kind {
+  font-size: 0.6875rem;
+  color: var(--color-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .proposal-draft-json-info-wrap {
   position: relative;
   flex-shrink: 0;

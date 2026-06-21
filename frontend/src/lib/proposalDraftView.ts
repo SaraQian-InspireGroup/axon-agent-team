@@ -107,6 +107,19 @@ export function isMarkdownBlockSection(section: Record<string, unknown>): boolea
   return isMarkdownBlockNode(section)
 }
 
+export function isCollectionSection(section: Record<string, unknown>): boolean {
+  return section.kind === 'collection'
+}
+
+/** collection with markdown_block children (e.g. appendices). */
+export function isCollectionBlocksSection(section: Record<string, unknown>): boolean {
+  return isCollectionSection(section) && Array.isArray(section.blocks)
+}
+
+export function collectionBlocks(section: Record<string, unknown>): Record<string, unknown>[] {
+  return draftRecordList(section.blocks)
+}
+
 export function markdownBlockContent(section: Record<string, unknown>): string {
   const content = section.content
   return typeof content === 'string' ? content : ''

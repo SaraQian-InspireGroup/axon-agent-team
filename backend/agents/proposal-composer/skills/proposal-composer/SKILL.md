@@ -82,7 +82,7 @@ proposal_draft
 | `markdown_block` / `static_block` | 单块文案 | `content`（视 editable） |
 | **`fee_section`** | **定价区 composite**（见下） | intro、package 叙事、fee rows |
 | `derived_section` | 从其他 draft 节点 **render 时推导** | 见下 **推导型 section** |
-| `collection` | 条目列表 | `items[]` |
+| `collection` | 条目列表 | `items[]`（legacy，如 credentials）或 **`blocks[]`**（`collection.child_kind: markdown_block`，如 appendices） |
 
 其他 kind 出现时：读 template + 当前 draft，按 node 上实际字段编辑。
 
@@ -122,6 +122,7 @@ Draft 内按 **语义槽** 组织（非独立 sub-section id）：
 Materialize 时 platform 会写 **canonical display**（含上述全部金额字段）；换 `table_style` 只换 renderer，不必重跑 MDM。
 
 - 改价：**simple** patch `display.amount_display`；**frequency** patch 对应 `display.frequency_columns_display.{monthly|quarterly|annual|once_off}` 与/或 `display.total_display`；**one_off_recurring** patch `display.once_off_display` / `display.recurring_display`。
+- **Display 文案**：`source` 不可改；`display.*` 可 patch。纯改价（如 `USD $750.00`）会 normalize；**同金额加说明**（如 `USD $703.00 (Refer appendix)`）按字面保留，refresh 不会 strip。
 - 改标题/服务名展示：patch `display.preview_primary`（勿 patch `source.service_name`）。
 - 脚注正文：patch `display.footnotes_display`（聚合编号仍由 render 处理）。
 - **`department_team` 只在 `source`**，供 `group_by: department`；不进 display。
@@ -201,6 +202,16 @@ JSON Pointer 示例：`/document/sections/{i}/tables/{t}/rows/{r}/display/previe
 
 **Reply gate**：对用户说 required documents 已齐之前，确认 draft 里 `content` 非空且 `composition.status` 为 `ready`，或如实说明 `pending_packages` / `pending_structure`。
 
+### Appendices（collection + markdown_block blocks）
+
+**概念**：`appendices` 是 `kind: collection`，子块在 **`blocks[]`**，每项为标准 **`markdown_block`**（必须有 **`title`** + `content`）。数量不限，按需 `add` / 调序 / 删除，无需 template 预置多个 appendix slot。
+
+**Template 契约**：`collection.child_kind: markdown_block`；`render.block_as_chapter: true` → preview 每项独立 `# Title`，无外层 `# Appendices` 包裹。
+
+**Workflow**：`enable_proposal_draft_section("appendices")` → `patch_proposal_draft` **`add`** 到 `.../appendices/blocks/-`，value 用 `new_collection_markdown_block` 形状（`id`, `kind: markdown_block`, `title`, `content`, `edit_state`, `policy`）。改文案 patch `blocks/{b}/content`；调序 replace/move `blocks` 数组；删块 remove 或 filter。
+
+**勿**与 legacy `collection.items[]`（credentials）混淆——appendices 只用 **`blocks[]`**。
+
 ### Facts 与 placeholders
 
 `facts.client` 是跨 section 输入；template `placeholders` 在 render 时注入 markdown 块。Patch client facts 即可；勿为 `{{client.*}}` 去 patch introduction 全文（除非销售要 override 且 edit_state 允许）。
@@ -213,6 +224,7 @@ JSON Pointer 示例：`/document/sections/{i}/tables/{t}/rows/{r}/display/previe
 - **`derived_section`**（需要 enable 的推导型章节）→ 先读 template 确认 `derivation.type`；enable ≠ 全部变体；读 draft 发现配置字段 → patch。
 - **其他 optional 章节**（`markdown_block`、`static_block`、`collection` 等）→ enable 后 patch 该 kind 的内容字段（`content`、`items[]`…）。
 - **Required documents（knowledge category）** → template `sections[].knowledge` 声明 category；读 compose reference + category catalog，按 fee tables 选型 → 只读选中 body → patch `content` + `composition`（见下）。
+- **Appendices** → `appendices` collection → enable → patch `blocks/-` 追加 `markdown_block`（必须有 title）；见 **Appendices** 节。
 - **加/换 catalog 项** → catalog 查询 → materialize；只改已有 draft → patch。
 
 Path 不确定：**读 draft**，不要猜数组下标。

@@ -68,12 +68,15 @@ sections:
       resolver: session_pick
       kind: credential
 
-  - id: appendix
-    kind: markdown_block
-    title: Appendix
+  - id: appendices
+    kind: collection
+    title: Appendices
     required: false
     default_enabled: false
-    editable: true
+    collection:
+      child_kind: markdown_block
+    render:
+      block_as_chapter: true
 
   - id: terms
     kind: static_block

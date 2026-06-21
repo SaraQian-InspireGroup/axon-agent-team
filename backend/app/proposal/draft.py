@@ -227,7 +227,9 @@ def _fee_section(template_id: str, spec: dict[str, Any]) -> dict[str, Any]:
 
 
 def _collection_section(spec: dict[str, Any]) -> dict[str, Any]:
-    return {
+    collection_spec = dict(spec.get("collection") or {})
+    child_kind = str(collection_spec.get("child_kind") or "").strip().lower()
+    section: dict[str, Any] = {
         "id": str(spec["id"]),
         "kind": "collection",
         "title": str(spec.get("title") or spec["id"]),
@@ -238,10 +240,39 @@ def _collection_section(spec: dict[str, Any]) -> dict[str, Any]:
             "editable": True,
             "removable": not bool(spec.get("required")),
             "item_editable": True,
+            "block_addable": child_kind == "markdown_block",
             "regenerable": True,
         },
         "add_policy": dict(spec.get("add_policy") or {}),
-        "items": [],
+        "render": dict(spec.get("render") or {}),
+    }
+    if child_kind == "markdown_block":
+        section["collection"] = {"child_kind": "markdown_block"}
+        section["blocks"] = []
+    else:
+        section["items"] = []
+    return section
+
+
+def new_collection_markdown_block(
+    *,
+    block_id: str,
+    title: str,
+    content: str = "",
+    edit_state: str = "empty",
+) -> dict[str, Any]:
+    """Standard markdown_block child for collection.blocks[] (e.g. appendices)."""
+    if not str(title or "").strip():
+        raise ValueError("collection markdown_block requires a non-empty title")
+    return {
+        "id": str(block_id).strip(),
+        "kind": "markdown_block",
+        "title": str(title).strip(),
+        "enabled": True,
+        "content": str(content or ""),
+        "source": {},
+        "policy": {"editable": True, "removable": True},
+        "edit_state": {"content": edit_state if content.strip() else "empty"},
     }
 
 
@@ -617,7 +648,7 @@ def render_draft_markdown(draft: dict[str, Any]) -> str:
             if content:
                 parts.append(content)
         elif kind == "collection":
-            content = _render_collection(section)
+            content = _render_collection(draft, section, template_id=template_id)
             if content:
                 parts.append(content)
         elif kind == "derived_section":
@@ -731,7 +762,54 @@ def _render_fee_section(draft: dict[str, Any], section: dict[str, Any]) -> str:
     return "\n\n".join(part for part in parts if part != "")
 
 
-def _render_collection(section: dict[str, Any]) -> str:
+def _render_markdown_block_node(
+    draft: dict[str, Any],
+    block: dict[str, Any],
+    *,
+    template_id: str,
+) -> str:
+    if block.get("enabled") is False:
+        return ""
+    from app.proposal.placeholders import resolve_section_source_content
+
+    if template_id:
+        content = resolve_section_source_content(draft, block, template_id=template_id)
+    else:
+        content = str(block.get("content") or "").strip()
+    if not content:
+        return ""
+    title = str(block.get("title") or block.get("id") or "").strip()
+    if not title:
+        return content
+    return _render_titled_section({"title": title}, content)
+
+
+def _render_collection(
+    draft: dict[str, Any],
+    section: dict[str, Any],
+    *,
+    template_id: str,
+) -> str:
+    blocks = section.get("blocks")
+    if isinstance(blocks, list) and blocks:
+        render_cfg = section.get("render") or {}
+        block_as_chapter = render_cfg.get("block_as_chapter", True)
+        parts: list[str] = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            if str(block.get("kind") or "") != "markdown_block":
+                continue
+            rendered = _render_markdown_block_node(draft, block, template_id=template_id)
+            if rendered:
+                parts.append(rendered)
+        if not parts:
+            return ""
+        if block_as_chapter:
+            return "\n\n".join(parts)
+        title = str(section.get("title") or section.get("id"))
+        return f"# {title}\n\n" + "\n\n".join(parts)
+
     if not section.get("items"):
         return ""
     title = str(section.get("title") or section.get("id"))

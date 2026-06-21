@@ -41,6 +41,23 @@ def parse_amount_display(text: str | None) -> float | None:
         return None
 
 
+def _is_literal_display_override(patched: str, canonical: str) -> bool:
+    """Keep patched display text verbatim when it adds wording beyond auto-generated price."""
+    text = str(patched or "").strip()
+    baseline = str(canonical or "").strip()
+    if not text:
+        return False
+    if text == baseline:
+        return False
+    parsed_text = parse_amount_display(text)
+    parsed_base = parse_amount_display(baseline)
+    if parsed_text is not None and parsed_base is not None and parsed_text == parsed_base:
+        return True
+    if parsed_text is not None and parsed_base is not None:
+        return False
+    return True
+
+
 def build_mdm_source(
     service: dict[str, Any],
     *,
@@ -255,34 +272,49 @@ def _apply_display_overrides(
     currency = str(price.get("currency") or "")
 
     if "once_off_display" in display:
-        parsed = parse_amount_display(str(display.get("once_off_display") or ""))
-        text = str(display.get("once_off_display") or "").strip()
-        if parsed is not None:
-            price = {**price, "amount": parsed, "frequency": "ONE_TIME"}
-            merged["once_off_display"] = fee_table_amount_display(price, format_money=format_money) or text
+        patched_text = str(display.get("once_off_display") or "").strip()
+        canonical_text = str(base.get("once_off_display") or "").strip()
+        if _is_literal_display_override(patched_text, canonical_text):
+            merged["once_off_display"] = patched_text
         else:
-            merged["once_off_display"] = text
+            parsed = parse_amount_display(patched_text)
+            if parsed is not None:
+                price = {**price, "amount": parsed, "frequency": "ONE_TIME"}
+                merged["once_off_display"] = fee_table_amount_display(price, format_money=format_money) or patched_text
+            else:
+                merged["once_off_display"] = patched_text
         merged["recurring_display"] = str(display.get("recurring_display") or merged.get("recurring_display") or "")
 
     if "recurring_display" in display and "once_off_display" not in display:
-        parsed = parse_amount_display(str(display.get("recurring_display") or ""))
-        text = str(display.get("recurring_display") or "").strip()
-        if parsed is not None:
-            price = {**price, "amount": parsed}
-            merged["recurring_display"] = text or merged["recurring_display"]
+        patched_text = str(display.get("recurring_display") or "").strip()
+        canonical_text = str(base.get("recurring_display") or "").strip()
+        if _is_literal_display_override(patched_text, canonical_text):
+            merged["recurring_display"] = patched_text
         else:
-            merged["recurring_display"] = text
+            parsed = parse_amount_display(patched_text)
+            if parsed is not None:
+                price = {**price, "amount": parsed}
+                merged["recurring_display"] = patched_text or merged.get("recurring_display") or ""
+            else:
+                merged["recurring_display"] = patched_text
 
+    amount_price_updated = False
     if "amount_display" in display:
-        parsed = parse_amount_display(str(display.get("amount_display") or ""))
-        if parsed is not None:
-            price = {**price, "amount": parsed}
-        formatted = fee_table_amount_display(price, format_money=format_money) or display["amount_display"]
-        merged["amount_display"] = _append_billing_frequency_to_amount(
-            formatted,
-            str(price.get("frequency") or "ONE_TIME"),
-            layout=layout,
-        )
+        patched_text = str(display.get("amount_display") or "").strip()
+        canonical_text = str(base.get("amount_display") or "").strip()
+        if _is_literal_display_override(patched_text, canonical_text):
+            merged["amount_display"] = patched_text
+        else:
+            parsed = parse_amount_display(patched_text)
+            if parsed is not None:
+                price = {**price, "amount": parsed}
+            formatted = fee_table_amount_display(price, format_money=format_money) or patched_text
+            merged["amount_display"] = _append_billing_frequency_to_amount(
+                formatted,
+                str(price.get("frequency") or "ONE_TIME"),
+                layout=layout,
+            )
+            amount_price_updated = True
 
     if isinstance(display.get("frequency_columns_display"), dict):
         freq_patch = display["frequency_columns_display"]
@@ -294,21 +326,40 @@ def _apply_display_overrides(
             "ONE_TIME": "once_off",
         }
         active_key = col_map.get(active, "once_off")
+        base_freq = base.get("frequency_columns_display") or {}
         for key in (active_key, "once_off", "annual", "quarterly", "monthly"):
             if key not in freq_patch:
                 continue
-            parsed = parse_amount_display(str(freq_patch.get(key) or ""))
+            patched_text = str(freq_patch.get(key) or "").strip()
+            canonical_text = str((base_freq.get(key) if isinstance(base_freq, dict) else "") or "").strip()
+            if _is_literal_display_override(patched_text, canonical_text):
+                continue
+            parsed = parse_amount_display(patched_text)
             if parsed is not None:
                 price = {**price, "amount": parsed}
                 if key == "once_off":
                     price = {**price, "frequency": "ONE_TIME"}
+                amount_price_updated = True
                 break
 
     amount = price.get("amount")
     if amount is not None and (
-        "amount_display" in display
-        or "once_off_display" in display
-        or "recurring_display" in display
+        amount_price_updated
+        or (
+            "once_off_display" in display
+            and not _is_literal_display_override(
+                str(display.get("once_off_display") or "").strip(),
+                str(base.get("once_off_display") or "").strip(),
+            )
+        )
+        or (
+            "recurring_display" in display
+            and "once_off_display" not in display
+            and not _is_literal_display_override(
+                str(display.get("recurring_display") or "").strip(),
+                str(base.get("recurring_display") or "").strip(),
+            )
+        )
         or "frequency_columns_display" in display
     ):
         freq_cols = row_frequency_columns(

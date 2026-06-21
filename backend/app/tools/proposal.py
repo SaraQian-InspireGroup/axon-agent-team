@@ -448,7 +448,7 @@ def remove_fee_rows_from_proposal_draft(
     name="enable_proposal_draft_section",
     description=(
         "Enable or disable an optional draft section by section id (e.g. payment_options, "
-        "credentials, appendix). Use only for sections already defined in the template. "
+        "credentials, appendices). Use only for sections already defined in the template. "
         "For kind derived_section, enabling shows the platform default derivation only; "
         "alternate variants require a follow-up patch_proposal_draft on that section's "
         "config fields (read get_proposal_draft for field names). Do not use to create "

@@ -79,12 +79,15 @@ sections:
       type: template_file
       file: blocks/additional-info-bvi.md
 
-  - id: appendix
-    kind: markdown_block
-    title: Appendix
+  - id: appendices
+    kind: collection
+    title: Appendices
     required: false
     default_enabled: false
-    editable: true
+    collection:
+      child_kind: markdown_block
+    render:
+      block_as_chapter: true
 
 document_title:
   prefix: Proposal

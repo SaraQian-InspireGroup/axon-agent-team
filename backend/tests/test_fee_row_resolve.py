@@ -1,4 +1,4 @@
-from app.proposal.draft import patch_draft
+from app.proposal.draft import patch_draft, materialize_draft, build_draft_preview, DraftPatchError, _effective_fee_layout
 from app.proposal.fee_row import (
     build_mdm_source,
     effective_pricing,
@@ -6,9 +6,9 @@ from app.proposal.fee_row import (
     parse_amount_display,
     remove_fee_rows_by_sku,
     resolve_fee_row,
+    resolve_fee_row_display,
     validate_fee_row_patches,
 )
-from app.proposal.draft import DraftPatchError, materialize_draft, _effective_fee_layout
 from tests.proposal_fee_fixtures import make_mdm_fee_row
 
 
@@ -206,3 +206,61 @@ def test_remove_fee_rows_by_sku():
 def test_parse_amount_display():
     assert parse_amount_display("AUD $600.00") == 600.0
     assert parse_amount_display("400 per pension stream") == 400.0
+
+
+def test_literal_amount_display_override_preserved():
+    source = build_mdm_source(
+        {
+            "sku": "CSS013",
+            "service_name": "Financial Annual Return (FAR)",
+            "price_amount": 703.0,
+            "price_currency": "USD",
+            "billing_frequency": "ANNUALLY",
+            "pricing_type": "FIXED",
+        }
+    )
+    layout = {**_bvi_layout(), "show_billing_frequency": True, "table_style": "simple"}
+    base = resolve_fee_row(source, layout=layout)
+    assert base["amount_display"] == "USD $703.00 Annual"
+
+    patched = {
+        **base,
+        "amount_display": "USD $703.00 (Refer appendix)",
+    }
+    display = resolve_fee_row_display({"source": source, "display": patched}, layout=layout)
+    assert display["amount_display"] == "USD $703.00 (Refer appendix)"
+
+
+def test_literal_amount_display_persists_through_patch_draft():
+    row = make_mdm_fee_row(
+        {
+            "sku": "CSS013",
+            "service_name": "Financial Annual Return (FAR)",
+            "price_amount": 703.0,
+            "price_currency": "USD",
+            "billing_frequency": "ANNUALLY",
+            "pricing_type": "FIXED",
+        }
+    )
+    draft = materialize_draft(template_id="harneys-bvi")
+    fee_idx = next(i for i, s in enumerate(draft["document"]["sections"]) if s["kind"] == "fee_section")
+    fee = draft["document"]["sections"][fee_idx]
+    fee["fee_layout"] = {**(fee.get("fee_layout") or {}), "show_billing_frequency": True, "table_style": "simple"}
+    fee["tables"] = [{"id": "t1", "title": "Annual maintenance", "rows": [row]}]
+
+    updated = patch_draft(
+        draft,
+        [
+            {
+                "op": "replace",
+                "path": f"/document/sections/{fee_idx}/tables/0/rows/0/display/amount_display",
+                "value": "USD $703.00 (Refer appendix)",
+            }
+        ],
+    )
+    patched_row = updated["document"]["sections"][fee_idx]["tables"][0]["rows"][0]
+    assert patched_row["display"]["amount_display"] == "USD $703.00 (Refer appendix)"
+    assert patched_row["source"]["price_amount"] == 703.0
+
+    preview = build_draft_preview(updated)
+    assert "USD $703.00 (Refer appendix)" in preview["markdown"]

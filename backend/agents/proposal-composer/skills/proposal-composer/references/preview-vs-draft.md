@@ -110,6 +110,17 @@ Template `sections[].knowledge` 指向 **category catalog**（skill reference）
 
 `enable` 只切 `enabled`；**enable ≠ 清单已写入**。fee tables 为空时 content 应为 placeholder（`composition.status: pending_packages`）。
 
+## Appendices（collection.blocks）
+
+| 存什么 | 路径 / 说明 |
+|--------|-------------|
+| 附录区开关 | `appendices.enabled` |
+| 每个附录 | `appendices.blocks[]` — 每项 `kind: markdown_block`，**必须有 `title`** |
+| 正文 | `blocks/{b}/content` |
+| 顺序 | `blocks` 数组顺序 = preview / 导出顺序 |
+
+动态新增：`patch add` → `/document/sections/{i}/blocks/-`。无预置数量上限。
+
 ## Custom 行（非 MDM）
 
 **不必单独 tool**：新增 custom 行 = **`patch_proposal_draft` 的 `add` op** 往 `tables/{t}/rows/-` 追加一行。

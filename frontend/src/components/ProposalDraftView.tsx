@@ -18,10 +18,12 @@ import {
   formatClientFactFieldValue,
   formatDraftJson,
   isClientFactRecord,
+  isCollectionBlocksSection,
   isFeeSection,
   isFeeTableBlock,
   isMarkdownBlockNode,
   isMarkdownBlockSection,
+  collectionBlocks,
   markdownBlockContent,
   summarizeFeeRow,
   type FeeTableLayout,
@@ -458,6 +460,28 @@ function FeeSectionDraftView({ section }: { section: Record<string, unknown> }) 
   )
 }
 
+function CollectionBlocksDraftView({ section }: { section: Record<string, unknown> }) {
+  const blocks = collectionBlocks(section)
+  if (blocks.length === 0) {
+    return <p className="proposal-draft-markdown-empty">No blocks</p>
+  }
+  return (
+    <div className="proposal-draft-collection-blocks">
+      {blocks.map((block, index) => (
+        <details key={draftBlockKey(block, index)} className="proposal-draft-collection-block">
+          <summary className="proposal-draft-collection-block-summary">
+            <span className="proposal-draft-collection-block-title">
+              {draftBlockTitle(block, index)}
+            </span>
+            <span className="proposal-draft-collection-block-kind">{String(block.kind ?? 'block')}</span>
+          </summary>
+          <DraftMarkdownBlockBody block={block} />
+        </details>
+      ))}
+    </div>
+  )
+}
+
 function DocumentSectionDraftView({
   section,
   index,
@@ -487,6 +511,15 @@ function DocumentSectionDraftView({
       <details className="proposal-draft-section">
         <summary className="proposal-draft-section-summary">{summary}</summary>
         <DraftMarkdownBlockBody block={section} />
+      </details>
+    )
+  }
+
+  if (isCollectionBlocksSection(section)) {
+    return (
+      <details className="proposal-draft-section">
+        <summary className="proposal-draft-section-summary">{summary}</summary>
+        <CollectionBlocksDraftView section={section} />
       </details>
     )
   }
