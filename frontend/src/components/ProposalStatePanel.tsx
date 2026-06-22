@@ -1,3 +1,4 @@
+import { draftTemplateId } from '../lib/proposalDraftView'
 import { LoadingSpinner } from './LoadingSpinner'
 import { ProposalDraftView } from './ProposalDraftView'
 
@@ -25,6 +26,7 @@ export function ProposalStatePanel({
   onRefresh,
 }: Props) {
   const hasDraft = Boolean(state && Object.keys(state).length > 0)
+  const templateId = state ? draftTemplateId(state) : null
   const subtitle = syncing
     ? 'Syncing draft…'
     : fingerprint
@@ -48,7 +50,12 @@ export function ProposalStatePanel({
         )}
         <div className="artifact-side-panel-header">
           <div className="proposal-live-panel-heading">
-            <h2 className="artifact-side-panel-title">Proposal draft</h2>
+            <div className="proposal-live-panel-title-row">
+              <h2 className="artifact-side-panel-title">Proposal draft</h2>
+              {templateId ? (
+                <span className="proposal-draft-bagel proposal-live-panel-template-bagel">{templateId}</span>
+              ) : null}
+            </div>
             <p className="proposal-live-panel-subtitle">
               {syncing && <span className="proposal-live-panel-sync-dot" aria-hidden />}
               {subtitle}

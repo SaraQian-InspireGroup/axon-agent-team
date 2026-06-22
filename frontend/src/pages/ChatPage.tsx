@@ -27,7 +27,6 @@ import {
   type PendingAttachment,
 } from '../lib/attachments'
 import { formatApiError } from '../lib/apiErrorMessage'
-import { getStoredChatId, setStoredChatId, clearStoredChatId } from '../lib/chatStorage'
 import {
   applyStreamArtifact,
   applyStreamReasoning,
@@ -48,6 +47,16 @@ import type { Agent, ChatSummary, Message } from '../types'
 
 const SIDEBAR_COLLAPSED_KEY = 'agent-platform:sidebar-collapsed'
 const PROPOSAL_COMPOSER_SLUG = 'proposal-composer'
+
+function pickMostRecentChatId(rows: ChatSummary[]): string | null {
+  if (rows.length === 0) return null
+  const sorted = [...rows].sort((a, b) => {
+    const aTime = a.updated_at ?? a.created_at ?? ''
+    const bTime = b.updated_at ?? b.created_at ?? ''
+    return bTime.localeCompare(aTime)
+  })
+  return sorted[0]?.id ?? null
+}
 
 function parseProposalExportWord(raw: unknown): ProposalPreview['export'] {
   if (!raw || typeof raw !== 'object') return undefined
@@ -366,26 +375,25 @@ export function ChatPage() {
     if (chatId) return chatId
     if (!selectedId) throw new Error('No agent selected')
     const chat = await api.createChat(selectedId)
-    setStoredChatId(selectedId, chat.id)
     setChatId(chat.id)
     chatIdRef.current = chat.id
     await refreshChatHistory(selectedId)
     return chat.id
   }, [chatId, selectedId, refreshChatHistory])
 
-  const openChatById = useCallback(async (agentId: string, id: string) => {
+  const openChatById = useCallback(async (_agentId: string, id: string) => {
     setError(null)
     setChatSessionLoading(true)
     setMessages([])
     try {
       invalidateProposalPanelFetches()
       setChatId(id)
+      chatIdRef.current = id
       setProposalPreview(null)
       setProposalPreviewError(null)
       setProposalState(null)
       setProposalStateFingerprint(null)
       setProposalStateError(null)
-      setStoredChatId(agentId, id)
       setInput('')
       setPendingAttachments([])
       const rows = await api.listMessages(id)
@@ -395,24 +403,44 @@ export function ChatPage() {
     }
   }, [invalidateProposalPanelFetches])
 
+  const createAndOpenChat = useCallback(
+    async (agentId: string) => {
+      const chat = await api.createChat(agentId)
+      await openChatById(agentId, chat.id)
+      await refreshChatHistory(agentId)
+      return chat.id
+    },
+    [openChatById, refreshChatHistory],
+  )
+
   const loadChat = useCallback(
     async (agentId: string) => {
       setError(null)
-      await refreshChatHistory(agentId)
-
-      const storedId = getStoredChatId(agentId)
-      if (storedId) {
-        try {
-          await openChatById(agentId, storedId)
-          return
-        } catch {
-          clearStoredChatId(agentId)
-        }
+      let rows: ChatSummary[] = []
+      setChatHistoryLoading(true)
+      try {
+        rows = await api.listChats(agentId)
+        setChatHistory(rows)
+      } catch {
+        setChatHistory([])
+        rows = []
+      } finally {
+        setChatHistoryLoading(false)
       }
 
-      enterDraftMode()
+      try {
+        const recentChatId = pickMostRecentChatId(rows)
+        if (recentChatId) {
+          await openChatById(agentId, recentChatId)
+          return
+        }
+        await createAndOpenChat(agentId)
+      } catch (e) {
+        enterDraftMode()
+        setError(e instanceof Error ? e.message : 'Failed to load conversation')
+      }
     },
-    [enterDraftMode, openChatById, refreshChatHistory],
+    [createAndOpenChat, enterDraftMode, openChatById],
   )
 
   const selectAgent = useCallback(
@@ -854,13 +882,16 @@ export function ChatPage() {
   const startNewChat = async () => {
     if (!selectedId || loading || chatSessionLoading) return
     setHistoryOpen(false)
-    clearStoredChatId(selectedId)
-    enterDraftMode()
-    setProposalPanelTab('preview')
-    if (isProposalComposer) {
-      setProposalPanelCollapsed(false)
+    setError(null)
+    try {
+      await createAndOpenChat(selectedId)
+      setProposalPanelTab('preview')
+      if (isProposalComposer) {
+        setProposalPanelCollapsed(false)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start new conversation')
     }
-    await refreshChatHistory(selectedId)
   }
 
   const openHistoryChat = async (id: string) => {

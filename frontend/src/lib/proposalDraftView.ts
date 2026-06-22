@@ -1,4 +1,5 @@
-const TOP_LEVEL_KEYS = ['version', 'meta', 'facts'] as const
+const HIDDEN_DRAFT_KEYS = ['version', 'meta'] as const
+const TOP_LEVEL_KEYS = ['facts'] as const
 
 export const CLIENT_FACT_FIELDS = [
   'company_name',
@@ -53,10 +54,25 @@ export function formatClientFactFieldValue(value: unknown): string {
 export function draftExtraTopLevel(draft: Record<string, unknown>): Record<string, unknown> | null {
   const extra: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(draft)) {
-    if (TOP_LEVEL_KEYS.includes(key as DraftTopLevelKey) || key === 'document') continue
+    if (
+      TOP_LEVEL_KEYS.includes(key as DraftTopLevelKey) ||
+      HIDDEN_DRAFT_KEYS.includes(key as (typeof HIDDEN_DRAFT_KEYS)[number]) ||
+      key === 'document'
+    ) {
+      continue
+    }
     extra[key] = value
   }
   return Object.keys(extra).length > 0 ? extra : null
+}
+
+export function draftTemplateId(draft: Record<string, unknown>): string | null {
+  const meta = draft.meta
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null
+  const templateId = (meta as Record<string, unknown>).template_id
+  if (typeof templateId !== 'string') return null
+  const trimmed = templateId.trim()
+  return trimmed || null
 }
 
 export function draftSections(draft: Record<string, unknown>): Record<string, unknown>[] {
