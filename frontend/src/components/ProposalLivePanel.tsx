@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { downloadBinaryUrl } from '../lib/downloadBinaryUrl'
+import { PanelLoadingState } from './PanelLoadingState'
 import { LoadingSpinner } from './LoadingSpinner'
 import { MarkdownContent } from './MarkdownContent'
 import { ArtifactDownloadIcon } from './ArtifactDownloadIcon'
@@ -184,12 +185,9 @@ export function ProposalLivePanel({
         </div>
         <div className="artifact-side-panel-scroll">
           {loading && !preview?.markdown && (
-            <div className="proposal-panel-loading" aria-live="polite" aria-label="Loading proposal">
-              <LoadingSpinner size="lg" />
-              <p className="proposal-live-panel-placeholder">Loading proposal…</p>
-            </div>
+            <PanelLoadingState message="Loading proposal preview…" />
           )}
-          {error && <p className="proposal-live-panel-error">{error}</p>}
+          {error && !loading && <p className="proposal-live-panel-error">{error}</p>}
           {exportError && <p className="proposal-live-panel-error">{exportError}</p>}
           {!loading && !error && !preview?.markdown && !preview?.message && (
             <p className="proposal-live-panel-placeholder">

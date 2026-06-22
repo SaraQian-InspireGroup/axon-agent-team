@@ -63,16 +63,6 @@ sections:
       compose_skill_resource: references/required-docs-compose.md
       catalog_skill_resource: references/required-docs-harneys-catalog.md
 
-  - id: additional_info
-    kind: static_block
-    title: Additional information
-    required: false
-    default_enabled: false
-    editable: false
-    source:
-      type: template_file
-      file: blocks/additional-info-bvi.md
-
   - id: appendices
     kind: collection
     title: Appendices

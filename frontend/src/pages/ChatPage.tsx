@@ -9,6 +9,7 @@ import { ProposalStatePanel } from '../components/ProposalStatePanel'
 import { ChatHistoryIcon } from '../components/ChatHistoryIcon'
 import { ChatMessageList } from '../components/ChatMessageList'
 import { LoadingSpinner } from '../components/LoadingSpinner'
+import { PanelLoadingState } from '../components/PanelLoadingState'
 import { NewChatIcon } from '../components/NewChatIcon'
 import { SidebarToggleIcon } from '../components/SidebarToggleIcon'
 import { UserIcon } from '../components/UserIcon'
@@ -240,6 +241,7 @@ export function ChatPage() {
       )
     } catch (e) {
       if (generation !== proposalPreviewFetchGenRef.current) return
+      if (chatIdRef.current !== id) return
       setProposalPreviewError(e instanceof Error ? e.message : 'Failed to load proposal preview')
     } finally {
       if (generation === proposalPreviewFetchGenRef.current) {
@@ -261,6 +263,7 @@ export function ChatPage() {
       setProposalStateFingerprint(payload.state_fingerprint)
     } catch (e) {
       if (generation !== proposalStateFetchGenRef.current) return
+      if (chatIdRef.current !== id) return
       setProposalStateError(formatApiError(e, 'Failed to load proposal draft'))
     } finally {
       if (generation === proposalStateFetchGenRef.current) {
@@ -357,6 +360,19 @@ export function ChatPage() {
     }
   }, [])
 
+  const beginAgentChatLoad = useCallback(() => {
+    setChatId(null)
+    chatIdRef.current = null
+    setChatSessionLoading(true)
+    setMessages([])
+    invalidateProposalPanelFetches()
+    setProposalPreview(null)
+    setProposalPreviewError(null)
+    setProposalState(null)
+    setProposalStateFingerprint(null)
+    setProposalStateError(null)
+  }, [invalidateProposalPanelFetches])
+
   const enterDraftMode = useCallback(() => {
     setChatId(null)
     setMessages([])
@@ -387,8 +403,6 @@ export function ChatPage() {
     setMessages([])
     try {
       invalidateProposalPanelFetches()
-      setChatId(id)
-      chatIdRef.current = id
       setProposalPreview(null)
       setProposalPreviewError(null)
       setProposalState(null)
@@ -398,6 +412,8 @@ export function ChatPage() {
       setPendingAttachments([])
       const rows = await api.listMessages(id)
       setMessages(rows)
+      setChatId(id)
+      chatIdRef.current = id
     } finally {
       setChatSessionLoading(false)
     }
@@ -437,6 +453,7 @@ export function ChatPage() {
         await createAndOpenChat(agentId)
       } catch (e) {
         enterDraftMode()
+        setChatSessionLoading(false)
         setError(e instanceof Error ? e.message : 'Failed to load conversation')
       }
     },
@@ -445,16 +462,18 @@ export function ChatPage() {
 
   const selectAgent = useCallback(
     async (agent: Agent) => {
+      beginAgentChatLoad()
       setSelectedId(agent.id)
       setHistoryOpen(false)
       setInput('')
       try {
         await loadChat(agent.id)
       } catch (e) {
+        setChatSessionLoading(false)
         setError(e instanceof Error ? e.message : 'Failed to load conversation')
       }
     },
-    [loadChat],
+    [beginAgentChatLoad, loadChat],
   )
 
   const loadAgents = useCallback(
@@ -502,7 +521,7 @@ export function ChatPage() {
     }
     setProposalPanelCollapsed(false)
     setProposalPanelTab('preview')
-    if (!chatId) {
+    if (!chatId || chatSessionLoading) {
       setProposalPreview(null)
       setProposalPreviewError(null)
       setProposalState(null)
@@ -512,7 +531,17 @@ export function ChatPage() {
     }
     invalidateProposalPanelFetches()
     void fetchProposalPreview(chatId)
-  }, [isProposalComposer, chatId, fetchProposalPreview, invalidateProposalPanelFetches])
+    if (proposalPanelTabRef.current === 'state') {
+      void fetchProposalState(chatId)
+    }
+  }, [
+    isProposalComposer,
+    chatId,
+    chatSessionLoading,
+    fetchProposalPreview,
+    fetchProposalState,
+    invalidateProposalPanelFetches,
+  ])
 
   useEffect(() => {
     scrollToBottomIfPinned()
@@ -1091,13 +1120,7 @@ export function ChatPage() {
                 >
                   <div className="chat-content-column">
                     {chatSessionLoading ? (
-                      <div
-                        className="chat-session-loading"
-                        aria-live="polite"
-                        aria-label="Loading"
-                      >
-                        <LoadingSpinner size="lg" />
-                      </div>
+                      <PanelLoadingState message="Loading conversation…" />
                     ) : (
                       <>
                         {messages.length === 0 && (

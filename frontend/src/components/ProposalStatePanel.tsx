@@ -1,5 +1,5 @@
 import { draftTemplateId } from '../lib/proposalDraftView'
-import { LoadingSpinner } from './LoadingSpinner'
+import { PanelLoadingState } from './PanelLoadingState'
 import { ProposalDraftView } from './ProposalDraftView'
 
 type Props = {
@@ -100,12 +100,9 @@ export function ProposalStatePanel({
         </div>
         <div className="artifact-side-panel-scroll">
           {loading && !hasDraft && (
-            <div className="proposal-panel-loading" aria-live="polite" aria-label="Loading draft">
-              <LoadingSpinner size="lg" />
-              <p className="proposal-live-panel-placeholder">Loading draft…</p>
-            </div>
+            <PanelLoadingState message="Loading draft view…" />
           )}
-          {error && <p className="proposal-live-panel-error">{error}</p>}
+          {error && !loading && <p className="proposal-live-panel-error">{error}</p>}
           {state && hasDraft ? (
             <ProposalDraftView draft={state} />
           ) : !loading && !error ? (
