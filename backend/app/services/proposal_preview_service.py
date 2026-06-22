@@ -12,7 +12,6 @@ from app.db.repositories.messages import MessageRepository
 from app.platform.session_store import SessionStore
 from app.proposal.draft import build_draft_preview
 from app.proposal.preview import proposal_state_fingerprint
-from app.proposal.export_service import word_export_status
 from app.proposal.store import load_proposal_draft_from_payload
 
 PROPOSAL_AGENT_SLUG = "proposal-composer"
@@ -95,11 +94,9 @@ async def get_chat_proposal_preview(
         preview = build_draft_preview({})
         preview["message"] = "Initialize a proposal draft to start the preview."
         preview["chat_id"] = str(chat_id)
-        preview["export"] = {"word": word_export_status(None)}
         return preview
     preview = build_draft_preview(draft_state)
     preview["chat_id"] = str(chat_id)
-    preview["export"] = {"word": word_export_status(draft_state)}
     return preview
 
 

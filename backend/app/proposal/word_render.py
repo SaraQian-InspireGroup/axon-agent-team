@@ -88,13 +88,13 @@ def sanitize_docx_bytes(docx_bytes: bytes) -> bytes:
     return out.getvalue()
 
 
-def render_word_document(template_path: Path, context: dict[str, Any]) -> bytes:
-    """Render a docxtpl Word template with plain-string context.
+from app.proposal.word_markdown import attach_markdown_subdocs
 
-    No RichText objects are used.  All section content is passed as plain str.
-    Table row loops use docxtpl's {%tr for %} / {%tr endfor %} syntax.
-    """
+
+def render_word_document(template_path: Path, context: dict[str, Any]) -> bytes:
+    """Render a docxtpl Word template with plain-string and Subdoc context."""
     doc = DocxTemplate(str(template_path))
+    attach_markdown_subdocs(doc, context)
     jinja_env = Environment(autoescape=False)
     doc.render(context, jinja_env=jinja_env)
     buf = BytesIO()

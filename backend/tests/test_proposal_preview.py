@@ -18,6 +18,16 @@ def test_build_draft_preview_empty_draft():
     preview = build_draft_preview({})
     assert preview["status"] == "empty"
     assert preview["markdown"] == ""
+    assert preview["export"]["word"]["available"] is False
+
+
+def test_build_draft_preview_includes_harneys_word_export():
+    from app.proposal.draft import materialize_draft
+
+    draft = materialize_draft(template_id="harneys-bvi")
+    preview = build_draft_preview(draft)
+    assert preview["export"]["word"]["available"] is True
+    assert preview["export"]["word"]["template_file"] == "proposal.docx"
 
 
 def test_get_chat_proposal_draft_returns_persisted_draft():

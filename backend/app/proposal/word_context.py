@@ -8,6 +8,7 @@ from typing import Any
 
 from app.proposal.draft import (
     _derive_first_invoice_lines,
+    _derive_payment_options,
     _draft_filename,
     _effective_fee_layout,
     _fee_table_render_groups,
@@ -15,7 +16,7 @@ from app.proposal.draft import (
     _sections,
     find_section,
 )
-from app.proposal.fee_table import format_money
+from app.proposal.fee_table import format_money, payment_summary_footer, row_total_annualized
 from app.proposal.footnotes import apply_footnote_numbers, collect_footnotes
 from app.proposal.loaders import load_template_yaml, read_static_block
 from app.proposal.placeholders import (
@@ -23,6 +24,7 @@ from app.proposal.placeholders import (
     resolve_section_source_content,
     selected_package_names,
 )
+from app.proposal.word_markdown import markdown_to_plain as _markdown_to_plain
 
 
 def _client_facts(draft: dict[str, Any]) -> dict[str, Any]:
@@ -38,46 +40,6 @@ def cover_for_name(client: dict[str, Any]) -> str:
     if company:
         return company
     return str(client.get("contract_name") or "").strip()
-
-
-def _markdown_to_plain(text: str) -> str:
-    """Strip markdown syntax and collapse soft line-wraps.
-
-    Single newlines (markdown line wrapping) are joined with a space so they
-    don't become ↓ soft breaks in Word.  Blank lines (paragraph separators)
-    are kept as a single newline so Word shows a visual gap.
-    """
-    lines: list[str] = []
-    for raw in str(text or "").splitlines():
-        line = raw.strip()
-        if not line:
-            lines.append("")
-            continue
-        line = re.sub(r"^#+\s*", "", line)
-        line = re.sub(r"^\s*[-*+]\s+", "", line)
-        line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
-        line = re.sub(r"\*(.+?)\*", r"\1", line)
-        line = re.sub(r"`(.+?)`", r"\1", line)
-        lines.append(line)
-
-    # Merge consecutive non-empty lines (soft-wrap) into one sentence,
-    # keep blank lines as paragraph separators.
-    merged: list[str] = []
-    current: list[str] = []
-    for line in lines:
-        if line == "":
-            if current:
-                merged.append(" ".join(current))
-                current = []
-            merged.append("")
-        else:
-            current.append(line)
-    if current:
-        merged.append(" ".join(current))
-
-    # Collapse multiple consecutive blank lines to one
-    result = re.sub(r"\n{3,}", "\n\n", "\n".join(merged))
-    return result.strip()
 
 
 def _section_body(
@@ -197,6 +159,81 @@ def _build_first_invoice(
     }
 
 
+def _build_payment_options(
+    draft: dict[str, Any],
+    section: dict[str, Any],
+) -> dict[str, Any]:
+    derivation = section.get("derivation") or {}
+    source_section_id = str(derivation.get("source_section") or "solution_and_fees")
+    fee_section = find_section(draft, source_section_id)
+    if not fee_section or fee_section.get("kind") != "fee_section":
+        return {"currency": "", "options": [], "has_options": False}
+
+    options = _derive_payment_options(draft, fee_section, section)
+    if not options:
+        return {"currency": "", "options": [], "has_options": False}
+
+    layout = _effective_fee_layout(draft, fee_section)
+    currency = str(layout.get("currency") or "")
+    include_currency = bool(currency)
+
+    built_options: list[dict[str, Any]] = []
+    for option in options:
+        raw_rows = option.get("rows") or []
+        rows: list[dict[str, Any]] = []
+        for row in raw_rows:
+            total = row.get("total_annualized")
+            if total is None:
+                total = row_total_annualized(row)
+            rows.append(
+                {
+                    "label": str(row.get("label") or row.get("group_id") or "").strip(),
+                    "monthly_display": format_money(
+                        row.get("monthly"), currency, include_currency=include_currency
+                    ),
+                    "quarterly_display": format_money(
+                        row.get("quarterly"), currency, include_currency=include_currency
+                    ),
+                    "annual_display": format_money(
+                        row.get("annual"), currency, include_currency=include_currency
+                    ),
+                    "once_off_display": format_money(
+                        row.get("once_off"), currency, include_currency=include_currency
+                    ),
+                    "total_display": format_money(
+                        total, currency, include_currency=include_currency
+                    ),
+                }
+            )
+        summary = option.get("summary") or payment_summary_footer(raw_rows)
+        built_options.append(
+            {
+                "option_id": str(option.get("option_id") or ""),
+                "label": str(option.get("label") or option.get("option_id") or "Payment Option"),
+                "rows": rows,
+                "has_rows": bool(rows),
+                "summary": {
+                    "once_off_total_display": format_money(
+                        summary.get("once_off_total"),
+                        currency,
+                        include_currency=include_currency,
+                    ),
+                    "recurring_annualized_total_display": format_money(
+                        summary.get("recurring_annualized_total"),
+                        currency,
+                        include_currency=include_currency,
+                    ),
+                },
+            }
+        )
+
+    return {
+        "currency": currency,
+        "options": built_options,
+        "has_options": bool(built_options),
+    }
+
+
 class WordSectionIntro:
     def __init__(self, body: str) -> None:
         text = str(body or "")
@@ -214,8 +251,9 @@ class WordAppendixBlock:
         self.title = title
         self.body = text
         self.plain = _markdown_to_plain(text)
+        self.subdoc: Any = None
         self.page_break_after = page_break_after
-        self.has_content = bool(self.plain.strip())
+        self.has_content = bool(text.strip())
 
     def __str__(self) -> str:
         return self.plain
@@ -238,11 +276,12 @@ class WordSectionContext:
         self.title = title
         self.body = text
         self.plain = _markdown_to_plain(text)
+        self.subdoc: Any = None
         self.intro = intro or WordSectionIntro("")
         appendix_blocks = blocks or []
         self.blocks = appendix_blocks
         self.items = appendix_blocks
-        self.has_content = bool(self.plain.strip())
+        self.has_content = bool(text.strip()) or bool(appendix_blocks)
         self.has_blocks = bool(appendix_blocks)
 
     def __str__(self) -> str:
@@ -323,6 +362,7 @@ def build_word_context(draft: dict[str, Any]) -> dict[str, Any]:
 
     fee_tables: dict[str, Any] = {"currency": "", "style": "", "groups": [], "footnotes": []}
     first_invoice: dict[str, Any] = {"rows": []}
+    payment_options: dict[str, Any] = {"options": [], "has_options": False}
     for section in _sections(draft):
         if section.get("enabled") is False:
             continue
@@ -332,6 +372,8 @@ def build_word_context(draft: dict[str, Any]) -> dict[str, Any]:
             deriv_type = str((section.get("derivation") or {}).get("type") or "")
             if deriv_type == "first_invoice_from_fee_tables":
                 first_invoice = _build_first_invoice(draft, section)
+            elif deriv_type == "payment_options_from_fee_tables":
+                payment_options = _build_payment_options(draft, section)
 
     package_names = selected_package_names(draft)
     return {
@@ -346,6 +388,7 @@ def build_word_context(draft: dict[str, Any]) -> dict[str, Any]:
         "sections": _build_sections(draft, template_id=template_id),
         "fee_tables": fee_tables,
         "first_invoice": first_invoice,
+        "payment_options": payment_options,
         "derived": {
             "selected_packages_bullet_list": (
                 "\n".join(f"- {name}" for name in package_names) if package_names else "—"

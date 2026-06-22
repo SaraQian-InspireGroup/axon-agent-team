@@ -93,3 +93,8 @@ document_title:
     - client.company_name
     - client.contract_name
   fallback: INCORP ADVISORY PROPOSAL
+
+document_export:
+  word:
+    enabled: true
+    template_file: export/proposal.docx

@@ -3,11 +3,10 @@
 * If the documents are not in English, please also provide translation in English on the documents together with the translator's name, company and position.
 * For your information, all certified documents are required to bear the below wordings:
 
-```
-+--------------------------------------------------------------------------+
-| Certified true copy of the original with detailed the signature of the   |
-| bearer (and the photo is a true likeness of the bearer)                  |
-|                                                                          |
+
+| Content |
+| --- |
+| Certified true copy of the original with detailed the signature of the bearer (and the photo is a true likeness of the bearer)|
 | Name of certifier: _______________________                               |
 | Capacity: ________________________________                               |
 | License No.: _____________________________                               |
@@ -15,5 +14,4 @@
 | Tel: _____________________________________                               |
 | Date: ____________________________________                               |
 | Signature: _______________________________                               |
-+--------------------------------------------------------------------------+
-```
+

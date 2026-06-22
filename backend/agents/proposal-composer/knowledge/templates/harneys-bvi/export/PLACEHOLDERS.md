@@ -64,7 +64,7 @@ Introduction 章节正文在导出前已由 platform 展开 `template.yaml` → 
 ```
 {% if sections.required_documents.enabled and sections.required_documents.has_content %}
 {{ sections.required_documents.title }}
-{{ sections.required_documents }}
+{% if sections.required_documents.subdoc %}{{ sections.required_documents.subdoc }}{% else %}{{ sections.required_documents.plain }}{% endif %}
 {% endif %}
 ```
 
@@ -73,9 +73,10 @@ Introduction 章节正文在导出前已由 platform 展开 `template.yaml` → 
 | `sections.required_documents.enabled` | 章节是否启用（draft 里 `enabled !== false`） |
 | `sections.required_documents.has_content` | 正文非空（compose 完成后为 `true`） |
 | `sections.required_documents.title` | 章节标题（template.yaml：`Required documents`） |
-| `sections.required_documents` | compose 后的 markdown 正文（已转纯文本） |
+| `sections.required_documents.subdoc` | compose 后的 markdown（GFM 表格 → Word 原生 table） |
+| `sections.required_documents.plain` | 纯文本 fallback（无表格时用） |
 
-> 不要裸写 `{{ sections.required_documents }}` —— 未 compose 或章节关闭时会出现空白标题/段落。
+> 不要裸写 `{{ sections.required_documents }}` —— 未 compose 或章节关闭时会出现空白块。含 `\|...\|` 表格时必须用 `subdoc`。
 
 ## 费用表（simple，2 列）
 
@@ -148,13 +149,15 @@ Harneys 启用 `fee_layout.footnotes: aggregate`。表格行上的 `[1]` 由 pre
 
 ## 附录（collection）
 
+含 GFM markdown 表格时用 `{{ item.subdoc }}`：
+
 ```
 {% if sections.appendices.enabled and sections.appendices.items %}
 {{ sections.appendices.title }}
 
 {% for item in sections.appendices.items %}
 {{ item.title }}
-{{ item.plain }}
+{% if item.subdoc %}{{ item.subdoc }}{% else %}{{ item.plain }}{% endif %}
 
 {% endfor %}
 {% endif %}
@@ -166,7 +169,8 @@ Harneys 启用 `fee_layout.footnotes: aggregate`。表格行上的 `[1]` 由 pre
 |------|----------------|
 | Fee table（simple） | ✅ `fee_tables.groups` |
 | Package solution briefs | ❌ 尚未注入 Word context |
-| Required documents | ✅ `sections.required_documents`（需 `enabled` + `has_content` 条件） |
+| Required documents | ✅ `sections.required_documents.subdoc`（需 `enabled` + `has_content`） |
+| Markdown GFM 表格 | ✅ appendix / required_documents 通过 `subdoc` 渲染 |
 | 行内 footnote 上标 | ⚠️ Word 模版需自行排版；文末汇总可用 `fee_tables.footnotes` |
 
 ## 模版文件位置

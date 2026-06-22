@@ -1106,7 +1106,7 @@ def _payment_row_from_override_row(row: dict[str, Any]) -> dict[str, Any]:
 def build_draft_preview(draft: dict[str, Any]) -> dict[str, Any]:
     markdown = render_draft_markdown(draft)
     title = str((draft.get("meta") or {}).get("title") or "Proposal draft")
-    return {
+    preview: dict[str, Any] = {
         "status": "ok" if markdown else "empty",
         "title": title,
         "markdown": markdown,
@@ -1118,3 +1118,7 @@ def build_draft_preview(draft: dict[str, Any]) -> dict[str, Any]:
             "ready_to_generate": bool(markdown),
         },
     }
+    from app.proposal.export_service import word_export_status
+
+    preview["export"] = {"word": word_export_status(draft if draft else None)}
+    return preview

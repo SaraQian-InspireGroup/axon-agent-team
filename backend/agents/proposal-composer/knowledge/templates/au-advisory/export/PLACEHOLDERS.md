@@ -32,7 +32,7 @@ For {{ cover_for }}
 |--------|------|
 | `sections.introduction` | About Incorp 静态正文 |
 | `sections.solution_and_fees.intro` | Solution and fees 简介 |
-| `sections.payment_options` | Fee summary 章节正文（**目前仅 intro 文本**；payment options 汇总表尚未接入 Word context，见文末说明） |
+| `sections.payment_options` | Fee summary 章节 intro（`sections.payment_options.intro`）；汇总表见下方 **Payment options** |
 | `sections.terms` | Terms 静态正文 |
 | `sections.credentials` | Credentials collection（若有启用 blocks） |
 | `sections.appendices` | 同 sg-incorp 附录写法 |
@@ -110,6 +110,67 @@ AU advisory 的 `table_style` 为 **`frequency_columns`**：Service + Monthly / 
 - 每个标签 **一次性粘贴进单元格**，不要被 Word 拆 run。
 - 字段名是 `once_off`（下划线），不是 `one_off`。
 
+## Payment options（Fee summary，6 列）
+
+章节需在 draft 中 **启用** `payment_options`。数据来自 `payment_options` context（与 HTML preview 同源，由 fee table 各 group 汇总）。
+
+### 表格外段落（intro + 多 option 循环）
+
+```
+{% if sections.payment_options.enabled and payment_options.has_options %}
+{% if sections.payment_options.intro.has_content %}
+{{ sections.payment_options.intro }}
+
+{% endif %}
+{% for option in payment_options.options %}
+{{ option.label }}
+
+（此处放下面 6 列 × 4 行表格）
+
+Once-Off Fees: {{ option.summary.once_off_total_display }}
+Annualised Total Fees: {{ option.summary.recurring_annualized_total_display }}
+
+{% endfor %}
+{% endif %}
+```
+
+### 表头（第 1 行）
+
+| 第 1 列 | 第 2 列 | 第 3 列 | 第 4 列 | 第 5 列 | 第 6 列 |
+|---------|---------|---------|---------|---------|---------|
+| `Option` | `Monthly Fees` | `Quarterly Fees` | `Annual Fees` | `Once-Off Fees` | `Total Fees (Annualised)` |
+
+### 第 2 行（loop 开始，只填第 1 列）
+
+```
+{%tr for row in option.rows %}
+```
+
+### 第 3 行（数据行）
+
+| 第 1 列 | 第 2 列 | 第 3 列 | 第 4 列 | 第 5 列 | 第 6 列 |
+|---------|---------|---------|---------|---------|---------|
+| `{{ row.label }}` | `{{ row.monthly_display }}` | `{{ row.quarterly_display }}` | `{{ row.annual_display }}` | `{{ row.once_off_display }}` | `{{ row.total_display }}` |
+
+| 字段 | 说明 |
+|------|------|
+| `row.label` | fee table group 标题（如 `Setup of Xero`） |
+| `row.*_display` | 各列金额，已含 `AUD $` 格式；无值时为空 |
+| `option.summary.once_off_total_display` | 汇总行：一次性费用合计 |
+| `option.summary.recurring_annualized_total_display` | 汇总行：年化 recurring 合计 |
+
+### 第 4 行（loop 结束，只填第 1 列）
+
+```
+{%tr endfor %}
+```
+
+### 粘贴注意
+
+- 外层用 `{% for option in payment_options.options %}`；表格行内用 `{%tr for row in option.rows %}`。
+- 每个 option 可单独放一张表 + 两行汇总（Once-Off / Annualised Total）。
+- 与 fee table 相同：标签须在同一 run 内一次性粘贴。
+
 ## 附录（collection）
 
 与 sg-incorp 相同：
@@ -131,7 +192,7 @@ AU advisory 的 `table_style` 为 **`frequency_columns`**：Service + Monthly / 
 | 功能 | Word 导出状态 |
 |------|----------------|
 | Fee table（frequency_columns） | ✅ `fee_tables.groups` |
-| Payment options 汇总表 | ❌ 尚未实现；`sections.payment_options` 只有 intro 文本 |
+| Payment options 汇总表 | ✅ `payment_options.options` |
 | Credentials collection | ⚠️ 仅 `sections.credentials` 正文，无专用表格 context |
 
 ## 模版文件位置

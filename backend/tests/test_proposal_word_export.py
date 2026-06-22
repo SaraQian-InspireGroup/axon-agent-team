@@ -14,6 +14,67 @@ from app.proposal.word_context import build_word_context, cover_for_name, word_e
 from app.proposal.word_render import render_word_document
 
 
+def test_build_word_context_payment_options_au_advisory():
+    from tests.proposal_fee_fixtures import make_mdm_fee_row
+    from app.proposal.draft import enable_draft_section
+
+    draft = materialize_draft(template_id="au-advisory")
+    fee = next(s for s in draft["document"]["sections"] if s["kind"] == "fee_section")
+    fee["tables"] = [
+        {
+            "id": "table_setup",
+            "title": "Setup of Xero",
+            "rows": [
+                make_mdm_fee_row(
+                    {
+                        "sku": "XERO",
+                        "service_name": "Setup of Xero",
+                        "scope_of_work": "",
+                        "price_amount": 500.0,
+                        "price_currency": "AUD",
+                        "billing_frequency": "ONE_TIME",
+                        "recurring": "ONE_OFF",
+                        "pricing_type": "FIXED",
+                    }
+                )
+            ],
+        },
+        {
+            "id": "table_tax",
+            "title": "Tax Package 2",
+            "rows": [
+                make_mdm_fee_row(
+                    {
+                        "sku": "TAX",
+                        "service_name": "Application",
+                        "scope_of_work": "",
+                        "price_amount": 400.0,
+                        "price_currency": "AUD",
+                        "billing_frequency": "MONTHLY",
+                        "recurring": "RECURRING",
+                        "pricing_type": "FIXED",
+                    }
+                )
+            ],
+        },
+    ]
+    draft = enable_draft_section(draft, "payment_options")
+    ctx = build_word_context(draft)
+    payment = ctx["payment_options"]
+    assert payment["has_options"] is True
+    assert payment["currency"] == "AUD"
+    assert len(payment["options"]) == 1
+    option = payment["options"][0]
+    assert option["label"] == "Payment Option A"
+    assert len(option["rows"]) == 2
+    assert option["rows"][0]["label"] == "Setup of Xero"
+    assert option["rows"][0]["once_off_display"] == "AUD $500.00"
+    assert option["rows"][1]["monthly_display"] == "AUD $400.00"
+    assert option["rows"][1]["total_display"] == "AUD $4,800.00"
+    assert option["summary"]["once_off_total_display"] == "AUD $500.00"
+    assert option["summary"]["recurring_annualized_total_display"] == "AUD $4,800.00"
+
+
 def test_build_word_context_bvi_aggregate_footnotes():
     from tests.proposal_fee_fixtures import make_mdm_fee_row
 

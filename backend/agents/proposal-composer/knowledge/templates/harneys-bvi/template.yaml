@@ -89,3 +89,8 @@ document_title:
     - client.company_name
     - client.contract_name
   fallback: Proposal
+
+document_export:
+  word:
+    enabled: true
+    template_file: export/proposal.docx

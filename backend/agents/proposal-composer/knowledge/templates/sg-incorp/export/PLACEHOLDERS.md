@@ -222,13 +222,15 @@ Total: {{ first_invoice.total_display }}
 
 **标准配置（总标题 + 逐条 appendix）**
 
+正文含 **GFM markdown 表格** 时用 `{{ item.subdoc }}`（渲染为 Word 原生表格）；纯文本也可用 `{{ item.plain }}`。
+
 ```
 {% if sections.appendices.enabled and sections.appendices.items %}
 {{ sections.appendices.title }}
 
 {% for item in sections.appendices.items %}
 {{ item.title }}
-{{ item.plain }}
+{% if item.subdoc %}{{ item.subdoc }}{% else %}{{ item.plain }}{% endif %}
 
 {% endfor %}
 {% endif %}
@@ -239,7 +241,7 @@ Total: {{ first_invoice.total_display }}
 ```
 {% for item in sections.appendices.items %}
 {{ item.title }}
-{{ item.plain }}
+{% if item.subdoc %}{{ item.subdoc }}{% else %}{{ item.plain }}{% endif %}
 {% if not loop.last %}
 （此处在 Word 里插入分页符段落）
 {% endif %}
@@ -251,7 +253,8 @@ Total: {{ first_invoice.total_display }}
 | `sections.appendices.enabled` | 整个 Appendices 是否启用 |
 | `sections.appendices.items` | 已启用且有内容的子块列表 |
 | `item.title` | 子块标题（如 `"Appendix A — Required documents"`） |
-| `item.plain` | 子块正文（纯文本） |
+| `item.subdoc` | 子块正文（GFM 表格 → Word 原生 table；段落仍为纯文本） |
+| `item.plain` | 子块正文纯文本 fallback（无 markdown 表格时用） |
 | `item.page_break_after` | 是否在该块后分页（最后一个为 `false`） |
 
 ## 模版文件位置
