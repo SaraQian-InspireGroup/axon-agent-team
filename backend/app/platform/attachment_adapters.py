@@ -17,6 +17,9 @@ from app.platform.model_registry import ModelProvider
 
 logger = logging.getLogger(__name__)
 
+# Azure Responses API currently accepts PDF file_id inputs only (not docx/xlsx).
+AZURE_OPENAI_FILE_INPUT_MIME_TYPES = frozenset({"application/pdf"})
+
 ALLOWED_MIME_TYPES = frozenset(
     {
         "application/pdf",
@@ -101,6 +104,30 @@ def validate_message_attachments(*, size_bytes_list: list[int], settings: Settin
         raise ValueError(f"Combined attachment size exceeds {limit_mb} MB per message")
 
 
+def is_azure_openai_base_url(base_url: str) -> bool:
+    host = urlparse(base_url).netloc.lower()
+    return host.endswith(".openai.azure.com") or host.endswith(".cognitiveservices.azure.com")
+
+
+def azure_openai_file_upload_purpose(base_url: str) -> str:
+    # Azure rejects user_data today; assistants returns assistant-* ids for Responses input_file.
+    return "assistants" if is_azure_openai_base_url(base_url) else "user_data"
+
+
+def validate_azure_openai_attachment_mime(*, base_url: str, mime_type: str, filename: str) -> None:
+    if not is_azure_openai_base_url(base_url):
+        return
+    normalized = (mime_type or "application/octet-stream").split(";", 1)[0].strip().lower()
+    if normalized in AZURE_OPENAI_FILE_INPUT_MIME_TYPES:
+        return
+    if filename.lower().endswith(".pdf"):
+        return
+    raise ValueError(
+        "Azure OpenAI currently supports PDF attachments only. "
+        "Convert Word/Excel files to PDF, or paste the text into your message."
+    )
+
+
 def _azure_openai_files_url(base_url: str, api_version: str) -> str:
     parsed = urlparse(base_url.rstrip("/"))
     path = parsed.path.rstrip("/")
@@ -121,20 +148,33 @@ class OpenAIAttachmentAdapter:
         self._settings = settings or get_settings()
 
     async def upload(self, *, filename: str, mime_type: str, data: bytes) -> UploadedProviderFile:
-        url = _azure_openai_files_url(
-            self._settings.azure_openai_base_url,
-            self._settings.azure_openai_api_version,
+        base_url = self._settings.azure_openai_base_url
+        validate_azure_openai_attachment_mime(base_url=base_url, mime_type=mime_type, filename=filename)
+        files_api_version = (
+            self._settings.azure_openai_files_api_version
+            if is_azure_openai_base_url(base_url)
+            else self._settings.azure_openai_api_version
         )
+        purpose = azure_openai_file_upload_purpose(base_url)
+        url = _azure_openai_files_url(base_url, files_api_version)
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 url,
                 headers={"api-key": self._settings.azure_api_key},
                 files={"file": (filename, data, mime_type)},
-                data={"purpose": "user_data"},
+                data={"purpose": purpose},
             )
         if response.status_code >= 400:
             logger.warning("OpenAI file upload failed: %s %s", response.status_code, response.text[:500])
-            response.raise_for_status()
+            detail = response.text.strip()
+            try:
+                payload = response.json()
+                message = (payload.get("error") or {}).get("message")
+                if message:
+                    detail = str(message)
+            except (ValueError, TypeError, AttributeError):
+                pass
+            raise RuntimeError(f"OpenAI file upload failed ({response.status_code}): {detail}") from None
         payload = response.json()
         file_id = payload.get("id")
         if not file_id:

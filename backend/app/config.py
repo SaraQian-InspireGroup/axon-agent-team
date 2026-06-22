@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     azure_api_key: str = Field(validation_alias="AZURE_API_KEY")
     azure_openai_base_url: str = Field(validation_alias="AZURE_OPENAI_BASE_URL")
     azure_openai_api_version: str = Field(validation_alias="AZURE_OPENAI_API_VERSION")
+    azure_openai_files_api_version: str = Field(
+        default="preview",
+        validation_alias="AZURE_OPENAI_FILES_API_VERSION",
+    )
     azure_openai_deployment: str = Field(validation_alias="AZURE_OPENAI_DEPLOYMENT")
 
     # Platform utility model (title, compaction)
