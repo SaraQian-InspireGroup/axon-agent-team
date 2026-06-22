@@ -309,6 +309,17 @@ def resolve_word_text(value: Any) -> str:
     return ""
 
 
+def _empty_word_section(*, section_id: str, title: str) -> WordSectionContext:
+    """Placeholder section so Jinja can safely use sections.<id> in Word templates."""
+    return WordSectionContext(
+        enabled=False,
+        title=title,
+        body="",
+        intro=WordSectionIntro(""),
+        blocks=[],
+    )
+
+
 def _build_sections(draft: dict[str, Any], *, template_id: str) -> dict[str, WordSectionContext]:
     sections: dict[str, WordSectionContext] = {}
     for section in _sections(draft):
@@ -346,6 +357,18 @@ def _build_sections(draft: dict[str, Any], *, template_id: str) -> dict[str, Wor
             body=body,
             intro=intro,
             blocks=appendix_blocks,
+        )
+
+    tpl = load_template_yaml(template_id) if template_id else {}
+    for spec in tpl.get("sections") or []:
+        if not isinstance(spec, dict):
+            continue
+        section_id = str(spec.get("id") or "").strip()
+        if not section_id or section_id in sections:
+            continue
+        sections[section_id] = _empty_word_section(
+            section_id=section_id,
+            title=str(spec.get("title") or section_id),
         )
     return sections
 

@@ -75,6 +75,72 @@ def test_build_word_context_payment_options_au_advisory():
     assert option["summary"]["recurring_annualized_total_display"] == "AUD $4,800.00"
 
 
+def test_word_export_without_optional_sections_in_draft():
+    """Word templates use sections.<id>; missing draft nodes must get template stubs."""
+    from jinja2 import Environment
+
+    from app.proposal.loaders import load_template_yaml
+
+    env = Environment(autoescape=False)
+    cases = {
+        "sg-incorp": ["appendices", "first_invoice"],
+        "au-advisory": ["appendices", "payment_options", "credentials"],
+        "harneys-bvi": ["appendices", "required_documents", "additional_info"],
+    }
+
+    for template_id, optional_ids in cases.items():
+        draft = materialize_draft(template_id=template_id)
+        draft["document"]["sections"] = [
+            section
+            for section in draft["document"]["sections"]
+            if section.get("id") not in optional_ids
+        ]
+        ctx = build_word_context(draft)
+        tpl = load_template_yaml(template_id)
+        for spec in tpl.get("sections") or []:
+            section_id = str(spec.get("id") or "").strip()
+            if not section_id:
+                continue
+            assert section_id in ctx["sections"], template_id
+            if section_id in optional_ids:
+                assert ctx["sections"][section_id].enabled is False, section_id
+
+        jinja_checks = [
+            "{% if sections.appendices.enabled and sections.appendices.items %}{% endif %}",
+        ]
+        if template_id == "sg-incorp":
+            jinja_checks.append(
+                "{% if sections.first_invoice.enabled and first_invoice.has_rows %}{% endif %}"
+            )
+        if template_id == "au-advisory":
+            jinja_checks.append(
+                "{% if sections.payment_options.enabled and payment_options.has_options %}{% endif %}"
+            )
+        if template_id == "harneys-bvi":
+            jinja_checks.append(
+                "{% if sections.required_documents.enabled and sections.required_documents.has_content %}{% endif %}"
+            )
+        for template in jinja_checks:
+            env.from_string(template).render(**ctx)
+
+
+def test_word_export_without_appendices_section_in_draft():
+    from pathlib import Path
+
+    draft = materialize_draft(template_id="harneys-bvi")
+    draft["document"]["sections"] = [
+        section for section in draft["document"]["sections"] if section.get("id") != "appendices"
+    ]
+    ctx = build_word_context(draft)
+    appendices = ctx["sections"]["appendices"]
+    assert appendices.enabled is False
+    assert appendices.items == []
+
+    path = Path("agents/proposal-composer/knowledge/templates/harneys-bvi/export/proposal.docx")
+    output = render_word_document(path, ctx)
+    assert output.startswith(b"PK")
+
+
 def test_build_word_context_bvi_aggregate_footnotes():
     from tests.proposal_fee_fixtures import make_mdm_fee_row
 
