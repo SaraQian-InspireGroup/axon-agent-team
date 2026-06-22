@@ -30,6 +30,7 @@ def test_proposal_builtin_tools_registered():
         "enable_proposal_draft_section",
         "render_preview",
         "generate_document",
+        "generate_word_document",
     ):
         assert name in BUILTIN_TOOLS
 

@@ -1,5 +1,6 @@
 import json
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -14,6 +15,8 @@ from app.api.schemas import (
     MessageCreate,
     MessageOut,
     ProposalDraftOut,
+    ProposalExportOut,
+    ProposalExportRequest,
     ProposalPreviewOut,
 )
 from app.db.models import AgentModel, Chat
@@ -21,8 +24,9 @@ from app.platform.current_user import get_current_user_id
 from app.db.session import get_db
 from app.services.attachment_service import AttachmentService
 from app.services.chat_run import ChatRunService, list_chat_messages
-from app.services.proposal_preview_service import get_chat_proposal_draft, get_chat_proposal_preview
-from app.proposal.storage import artifact_download_filename, resolve_artifact_path
+from app.services.proposal_preview_service import get_chat_proposal_draft, get_chat_proposal_preview, load_chat_proposal_draft
+from app.proposal.export_service import ProposalExportError, generate_proposal_docx
+from app.proposal.storage import artifact_download_filename, artifact_media_type, resolve_artifact_path
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
@@ -110,6 +114,36 @@ async def get_proposal_draft(
     return ProposalDraftOut(**payload)
 
 
+@router.post("/{chat_id}/proposal/export", response_model=ProposalExportOut)
+async def export_proposal(
+    chat_id: uuid.UUID,
+    body: ProposalExportRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ProposalExportOut:
+    chat = await db.get(Chat, chat_id)
+    if chat is None:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    if body.format != "docx":
+        raise HTTPException(status_code=422, detail="Only format=docx is supported.")
+    try:
+        draft = await load_chat_proposal_draft(db, chat_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not draft:
+        raise HTTPException(status_code=422, detail="Proposal draft is not initialized.")
+    try:
+        payload = generate_proposal_docx(draft, chat_id=chat_id, force=body.force, persist=True)
+    except ProposalExportError as exc:
+        detail: dict[str, Any] = {"code": exc.code, "message": exc.message}
+        if exc.code == "blocked":
+            from app.proposal.draft import build_draft_preview
+
+            preview = build_draft_preview(draft)
+            detail["missing_required"] = (preview.get("completeness") or {}).get("missing_required") or []
+        raise HTTPException(status_code=exc.http_status, detail=detail) from exc
+    return ProposalExportOut(**payload)
+
+
 @router.get("/{chat_id}/artifacts/{artifact_id}")
 async def download_artifact(
     chat_id: uuid.UUID,
@@ -125,7 +159,7 @@ async def download_artifact(
     filename = artifact_download_filename(chat_id, artifact_id)
     return FileResponse(
         path,
-        media_type="text/markdown; charset=utf-8",
+        media_type=artifact_media_type(chat_id, artifact_id),
         filename=filename,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

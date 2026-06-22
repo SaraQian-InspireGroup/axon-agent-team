@@ -1,3 +1,13 @@
+export type ProposalExportWordStatus = {
+  available: boolean
+  reason?: string | null
+  template_file?: string | null
+}
+
+export type ProposalExportFormats = {
+  word: ProposalExportWordStatus
+}
+
 export type ProposalPreviewStatus = 'ok' | 'empty' | 'blocked' | 'error'
 
 export type ProposalCompleteness = {
@@ -15,4 +25,16 @@ export type ProposalPreview = {
   state_fingerprint: string
   message?: string | null
   completeness: ProposalCompleteness
+  export?: ProposalExportFormats
+}
+
+export type ProposalExportResponse = {
+  status: string
+  format: 'docx'
+  artifact_id: string
+  filename: string
+  download_url?: string | null
+  title: string
+  state_fingerprint: string
+  missing_required?: string[]
 }

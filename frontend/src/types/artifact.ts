@@ -1,5 +1,5 @@
-export type ArtifactKind = 'proposal_preview' | 'proposal_document'
-export type ArtifactFormat = 'markdown'
+export type ArtifactKind = 'proposal_preview' | 'proposal_document' | 'proposal_word'
+export type ArtifactFormat = 'markdown' | 'docx'
 
 export type ArtifactSpec = {
   kind: ArtifactKind

@@ -10,7 +10,7 @@ import type {
 } from '../types'
 import type { AttachmentLimits } from '../lib/attachments'
 import { DEFAULT_ATTACHMENT_LIMITS } from '../lib/attachments'
-import type { ProposalPreview } from '../types/proposalPreview'
+import type { ProposalExportResponse, ProposalPreview } from '../types/proposalPreview'
 import type { ProposalDraftResponse } from '../types/proposalDraft'
 
 const API = '/api/v1'
@@ -65,6 +65,12 @@ export const api = {
 
   getProposalDraft: (chatId: string) =>
     request<ProposalDraftResponse>(`/chats/${chatId}/proposal/draft`),
+
+  exportProposalWord: (chatId: string, force = false) =>
+    request<ProposalExportResponse>(`/chats/${chatId}/proposal/export`, {
+      method: 'POST',
+      body: JSON.stringify({ format: 'docx', force }),
+    }),
 
   cancelRun: (runId: string) =>
     request<{ run_id: string; chat_id: string; status: string }>(`/runs/${runId}/cancel`, {

@@ -79,6 +79,16 @@ class ProposalCompletenessOut(BaseModel):
     ready_to_generate: bool = False
 
 
+class ProposalExportWordStatusOut(BaseModel):
+    available: bool = False
+    reason: str | None = None
+    template_file: str | None = None
+
+
+class ProposalExportFormatsOut(BaseModel):
+    word: ProposalExportWordStatusOut = Field(default_factory=ProposalExportWordStatusOut)
+
+
 class ProposalPreviewOut(BaseModel):
     chat_id: str | None = None
     status: str
@@ -88,6 +98,23 @@ class ProposalPreviewOut(BaseModel):
     state_fingerprint: str
     message: str | None = None
     completeness: ProposalCompletenessOut = Field(default_factory=ProposalCompletenessOut)
+    export: ProposalExportFormatsOut = Field(default_factory=ProposalExportFormatsOut)
+
+
+class ProposalExportRequest(BaseModel):
+    format: str = "docx"
+    force: bool = False
+
+
+class ProposalExportOut(BaseModel):
+    status: str
+    format: str
+    artifact_id: str
+    filename: str
+    download_url: str | None = None
+    title: str
+    state_fingerprint: str
+    missing_required: list[str] = Field(default_factory=list)
 
 
 class ProposalDraftOut(BaseModel):

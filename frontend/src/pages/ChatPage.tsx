@@ -49,6 +49,20 @@ import type { Agent, ChatSummary, Message } from '../types'
 const SIDEBAR_COLLAPSED_KEY = 'agent-platform:sidebar-collapsed'
 const PROPOSAL_COMPOSER_SLUG = 'proposal-composer'
 
+function parseProposalExportWord(raw: unknown): ProposalPreview['export'] {
+  if (!raw || typeof raw !== 'object') return undefined
+  const wordRaw = (raw as { word?: unknown }).word
+  if (!wordRaw || typeof wordRaw !== 'object') return undefined
+  const word = wordRaw as Record<string, unknown>
+  return {
+    word: {
+      available: Boolean(word.available),
+      reason: typeof word.reason === 'string' ? word.reason : null,
+      template_file: typeof word.template_file === 'string' ? word.template_file : null,
+    },
+  }
+}
+
 function parseProposalPreview(data: Record<string, unknown>): ProposalPreview | null {
   if (typeof data.state_fingerprint !== 'string' || typeof data.title !== 'string') {
     return null
@@ -74,6 +88,7 @@ function parseProposalPreview(data: Record<string, unknown>): ProposalPreview | 
     state_fingerprint: data.state_fingerprint,
     message: typeof data.message === 'string' ? data.message : null,
     completeness,
+    export: parseProposalExportWord(data.export),
   }
 }
 
@@ -1210,6 +1225,7 @@ export function ChatPage() {
               >
                 {proposalPanelTab === 'preview' ? (
                   <ProposalLivePanel
+                    chatId={chatId}
                     open
                     embedded
                     preview={proposalPreview}

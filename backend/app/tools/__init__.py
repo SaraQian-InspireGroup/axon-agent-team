@@ -10,6 +10,7 @@ from app.tools.proposal import (
     add_services_to_proposal_draft,
     enable_proposal_draft_section,
     generate_document,
+    generate_word_document,
     get_proposal_draft,
     initialize_proposal_draft,
     list_templates,
@@ -39,4 +40,5 @@ BUILTIN_TOOLS = {
     "enable_proposal_draft_section": enable_proposal_draft_section,
     "render_preview": render_preview,
     "generate_document": generate_document,
+    "generate_word_document": generate_word_document,
 }

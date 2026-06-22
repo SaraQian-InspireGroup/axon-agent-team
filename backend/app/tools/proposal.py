@@ -25,6 +25,7 @@ from app.proposal.draft import (
     render_draft_markdown,
 )
 from app.proposal.fee_row import remove_fee_rows_by_sku
+from app.proposal.export_service import ProposalExportError, generate_proposal_docx
 from app.proposal.loaders import load_templates, read_knowledge_file
 from app.proposal.paths import KNOWLEDGE_ROOT, PERIPHERAL_ROOT, TEMPLATES_ROOT
 from app.proposal.storage import new_artifact_id, save_markdown
@@ -591,4 +592,58 @@ def generate_document(
     payload = _queue_artifact(spec)
     payload["download_url"] = spec.download_url
     payload["filename"] = spec.filename
+    return payload
+
+
+@tool(
+    name="generate_word_document",
+    description=(
+        "Create a downloadable Word (.docx) proposal from the current draft using the "
+        "template's Word export file. Use when the user asks to export/download/send a "
+        "Word document or .docx proposal. Requires a Word template configured for the "
+        "proposal template. Same readiness rules as generate_document."
+    ),
+)
+def generate_word_document(
+    force: Annotated[bool, "If true, generate even when the draft is not ready_to_generate. Use only with user consent."] = False,
+) -> dict[str, Any]:
+    ctx = get_run_proposal_state()
+    if ctx is None:
+        return {"status": "error", "message": "Proposal context unavailable for this run."}
+
+    if ctx.draft is None:
+        return {"status": "empty", "message": "Proposal draft is not initialized."}
+
+    try:
+        result = generate_proposal_docx(
+            ctx.draft,
+            chat_id=ctx.chat_id,
+            force=force,
+            persist=True,
+        )
+    except ProposalExportError as exc:
+        payload: dict[str, Any] = {
+            "status": exc.code if exc.code in {"blocked", "empty", "no_word_template"} else "error",
+            "message": exc.message,
+        }
+        if exc.code == "blocked":
+            preview = build_draft_preview(ctx.draft)
+            payload["missing_required"] = (preview.get("completeness") or {}).get("missing_required") or []
+        return payload
+
+    spec = ArtifactSpec(
+        kind="proposal_word",
+        title=result["title"],
+        format="docx",
+        content="",
+        filename=result["filename"],
+        artifact_id=result["artifact_id"],
+        download_url=result["download_url"],
+        preview_truncated=False,
+    )
+    ctx.mark_draft_dirty()
+    payload = _queue_artifact(spec)
+    payload["download_url"] = spec.download_url
+    payload["filename"] = spec.filename
+    payload["format"] = "docx"
     return payload

@@ -74,15 +74,6 @@ sections:
         type: template_file
         file: blocks/solution-pricing-intro-sg.md
       editable: true
-
-  - id: terms
-    kind: static_block
-    title: Terms and conditions
-    required: true
-    editable: false
-    source:
-      type: template_file
-      file: blocks/terms-sg-incorp.md
   
   - id: appendices
     kind: collection
@@ -120,9 +111,23 @@ sections:
       one-off plus first recurring period (not annualised). Recalculates when fee
       rows or prices change; do not patch the rendered table.
 
+  - id: terms
+    kind: static_block
+    title: Terms and conditions
+    required: true
+    editable: false
+    source:
+      type: template_file
+      file: blocks/terms-sg-incorp.md
+
 document_title:
   prefix: FEE PROPOSAL
   name_from:
     - client.company_name
     - client.contract_name
   fallback: FEE PROPOSAL
+
+document_export:
+  word:
+    enabled: true
+    template_file: export/proposal.docx

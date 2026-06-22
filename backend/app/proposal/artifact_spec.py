@@ -6,8 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-ArtifactKind = Literal["proposal_preview", "proposal_document"]
-ArtifactFormat = Literal["markdown"]
+ArtifactKind = Literal["proposal_preview", "proposal_document", "proposal_word"]
+ArtifactFormat = Literal["markdown", "docx"]
 
 
 class ArtifactSpec(BaseModel):

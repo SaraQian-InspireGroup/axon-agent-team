@@ -21,6 +21,7 @@ PROPOSAL_TOOL_NAMES = frozenset(
         "enable_proposal_draft_section",
         "render_preview",
         "generate_document",
+        "generate_word_document",
     }
 )
 

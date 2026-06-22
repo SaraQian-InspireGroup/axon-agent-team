@@ -1,10 +1,13 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { api } from '../api/client'
+import { downloadBinaryUrl } from '../lib/downloadBinaryUrl'
 import { LoadingSpinner } from './LoadingSpinner'
 import { MarkdownContent } from './MarkdownContent'
 import { ArtifactDownloadIcon } from './ArtifactDownloadIcon'
 import type { ProposalPreview } from '../types/proposalPreview'
 
 type Props = {
+  chatId: string | null
   open: boolean
   embedded?: boolean
   preview: ProposalPreview | null
@@ -29,6 +32,7 @@ function downloadPreview(preview: ProposalPreview) {
 }
 
 export function ProposalLivePanel({
+  chatId,
   open,
   embedded = false,
   preview,
@@ -38,6 +42,9 @@ export function ProposalLivePanel({
   onCollapse,
   onRefresh,
 }: Props) {
+  const [exportingWord, setExportingWord] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -49,10 +56,39 @@ export function ProposalLivePanel({
 
   const title = preview?.title || 'Proposal draft'
   const canDownload = Boolean(preview?.markdown)
+  const wordExport = preview?.export?.word
+  const canExportWord = Boolean(
+    chatId &&
+      wordExport?.available &&
+      preview?.completeness.ready_to_generate &&
+      !exportingWord,
+  )
   const missing = preview?.completeness.missing_required ?? []
   const subtitle = syncing
     ? 'Syncing draft…'
     : 'Current draft · live from state'
+
+  const wordExportTitle = !wordExport?.available
+    ? 'Word template not configured for this proposal'
+    : !preview?.completeness.ready_to_generate
+      ? 'Complete required fields before exporting Word'
+      : 'Export Word (.docx)'
+
+  async function handleExportWord() {
+    if (!chatId || !canExportWord) return
+    setExportingWord(true)
+    setExportError(null)
+    try {
+      const result = await api.exportProposalWord(chatId)
+      if (result.download_url) {
+        await downloadBinaryUrl(result.download_url, result.filename)
+      }
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Word export failed')
+    } finally {
+      setExportingWord(false)
+    }
+  }
 
   return (
     <aside
@@ -61,7 +97,7 @@ export function ProposalLivePanel({
       }${syncing ? ' proposal-live-panel-syncing' : ''}`}
       aria-hidden={!open}
       aria-label={title}
-      aria-busy={syncing || loading}
+      aria-busy={syncing || loading || exportingWord}
     >
       <div className="artifact-side-panel-inner">
         {syncing && (
@@ -95,14 +131,34 @@ export function ProposalLivePanel({
             </button>
             <button
               type="button"
-              className="viz-widget-btn"
-              aria-label="Download draft"
-              title="Download draft"
+              className="viz-widget-btn proposal-live-panel-export-btn"
+              aria-label="Download markdown draft"
+              title="Download markdown draft"
               onClick={() => preview && downloadPreview(preview)}
               disabled={!canDownload}
             >
               <ArtifactDownloadIcon />
+              <span className="proposal-live-panel-format-label">MD</span>
             </button>
+            {wordExport?.available ? (
+              <button
+                type="button"
+                className="viz-widget-btn proposal-live-panel-export-btn"
+                aria-label="Export Word document"
+                title={wordExportTitle}
+                onClick={() => void handleExportWord()}
+                disabled={!canExportWord}
+              >
+                {exportingWord ? (
+                  <LoadingSpinner size="sm" />
+                ) : (
+                  <>
+                    <ArtifactDownloadIcon />
+                    <span className="proposal-live-panel-format-label">WORD</span>
+                  </>
+                )}
+              </button>
+            ) : null}
             <button
               type="button"
               className="viz-widget-btn artifact-side-panel-close"
@@ -134,6 +190,7 @@ export function ProposalLivePanel({
             </div>
           )}
           {error && <p className="proposal-live-panel-error">{error}</p>}
+          {exportError && <p className="proposal-live-panel-error">{exportError}</p>}
           {!loading && !error && !preview?.markdown && !preview?.message && (
             <p className="proposal-live-panel-placeholder">
               Send a message to start drafting your proposal.

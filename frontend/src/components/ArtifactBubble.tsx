@@ -1,4 +1,5 @@
 import type { ArtifactSpec } from '../types/artifact'
+import { downloadBinaryUrl } from '../lib/downloadBinaryUrl'
 import { MarkdownContent } from './MarkdownContent'
 import { ArtifactDownloadIcon } from './ArtifactDownloadIcon'
 import { VizMaximizeIcon } from './VizMaximizeIcon'
@@ -11,8 +12,16 @@ type Props = {
 
 const PREVIEW_MAX_HEIGHT = 280
 
-function downloadArtifact(spec: ArtifactSpec) {
+async function downloadArtifact(spec: ArtifactSpec) {
   if (spec.download_url) {
+    const isBinary =
+      spec.kind === 'proposal_word' ||
+      spec.format === 'docx' ||
+      spec.filename.toLowerCase().endsWith('.docx')
+    if (isBinary) {
+      await downloadBinaryUrl(spec.download_url, spec.filename)
+      return
+    }
     const link = document.createElement('a')
     link.href = spec.download_url
     link.download = spec.filename
@@ -50,7 +59,7 @@ export function ArtifactBubble({ spec, expanded = false, onExpand }: Props) {
             className="viz-widget-btn"
             aria-label="Download"
             title="Download"
-            onClick={() => downloadArtifact(spec)}
+            onClick={() => void downloadArtifact(spec)}
           >
             <ArtifactDownloadIcon />
           </button>
