@@ -286,7 +286,7 @@ body {
   gap: 0.625rem;
   width: 100%;
   border-radius: 10px;
-  padding: 0.5625rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   text-align: left;
   border: none;
   background: transparent;
@@ -316,7 +316,7 @@ body {
   font-family: 'PingFang SC', var(--font-sans);
   font-size: 14px;
   font-weight: 500;
-  line-height: 160%;
+  line-height: 150%;
   letter-spacing: -0.3px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1047,7 +1047,7 @@ body {
   justify-content: center;
   width: 2.375rem;
   margin-inline: auto;
-  padding: 0.5rem;
+  padding: 0.4375rem;
 }
 
 .agent-sidebar-footer {

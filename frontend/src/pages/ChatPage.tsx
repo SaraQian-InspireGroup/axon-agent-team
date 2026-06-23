@@ -1165,7 +1165,7 @@ export function ChatPage() {
         </div>
 
         {!sidebarCollapsed && (
-          <div className="px-4 pb-1 pt-3">
+          <div className="px-4 pb-0.5 pt-2.5">
             <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-subtle">
               Agents
             </p>
@@ -1207,7 +1207,7 @@ export function ChatPage() {
             const agentSession = getAgentSession(sessions, agent.id)
             const agentBusy = agentSession.loading
             return (
-              <li key={agent.id} className="mb-0.5">
+              <li key={agent.id}>
                 <button
                   type="button"
                   onClick={() => void selectAgent(agent)}
