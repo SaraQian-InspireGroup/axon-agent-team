@@ -7,7 +7,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react'
 import type { ArtifactSpec } from '../types/artifact'
-import { createSvgObjectUrl } from '../lib/svgDisplay'
+import { prepareSvgForDisplay } from '../lib/svgDisplay'
 
 type Props = {
   spec: ArtifactSpec
@@ -39,7 +39,7 @@ export function DiagramArtifactViewer({ spec }: Props) {
     setRemoteSvg(null)
     setLoadError(null)
     setZoom(1)
-    if (!spec.download_url) return
+    if (inlineSvg || !spec.download_url) return
 
     let cancelled = false
     void fetch(spec.download_url)
@@ -48,7 +48,11 @@ export function DiagramArtifactViewer({ spec }: Props) {
         return res.text()
       })
       .then((text) => {
-        if (!cancelled) setRemoteSvg(text)
+        if (cancelled) return
+        if (!isSvgMarkup(text)) {
+          throw new Error('Diagram download did not return SVG markup.')
+        }
+        setRemoteSvg(text)
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -59,19 +63,13 @@ export function DiagramArtifactViewer({ spec }: Props) {
     return () => {
       cancelled = true
     }
-  }, [spec.download_url, spec.artifact_id])
+  }, [spec.download_url, spec.artifact_id, inlineSvg])
 
-  const svgMarkup = remoteSvg || inlineSvg
-
-  const objectUrl = useMemo(() => {
-    if (!svgMarkup) return null
-    return createSvgObjectUrl(svgMarkup)
-  }, [svgMarkup])
-
-  useEffect(() => {
-    if (!objectUrl) return
-    return () => URL.revokeObjectURL(objectUrl)
-  }, [objectUrl])
+  const displaySvg = useMemo(() => {
+    const raw = (inlineSvg || remoteSvg || '').trim()
+    if (!isSvgMarkup(raw)) return ''
+    return prepareSvgForDisplay(raw)
+  }, [inlineSvg, remoteSvg])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -83,7 +81,7 @@ export function DiagramArtifactViewer({ spec }: Props) {
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [svgMarkup])
+  }, [displaySvg])
 
   const zoomIn = useCallback(() => {
     setZoom((value) => Math.min(MAX_ZOOM, Number((value + ZOOM_STEP).toFixed(2))))
@@ -114,8 +112,8 @@ export function DiagramArtifactViewer({ spec }: Props) {
     return <p className="artifact-diagram-empty">{loadError}</p>
   }
 
-  if (!svgMarkup || !objectUrl) {
-    if (spec.download_url) {
+  if (!displaySvg) {
+    if (spec.download_url && !inlineSvg) {
       return <p className="artifact-diagram-empty">Loading diagram…</p>
     }
     return <p className="artifact-diagram-empty">Diagram preview unavailable.</p>
@@ -136,17 +134,19 @@ export function DiagramArtifactViewer({ spec }: Props) {
         </button>
       </div>
       <div ref={scrollRef} className="diagram-viewer-scroll" onWheel={onWheel}>
-        <div className="diagram-viewer-canvas">
-          <img
-            src={objectUrl}
-            alt={spec.title}
-            className="diagram-viewer-img"
-            style={
-              expandedWidth
-                ? { width: expandedWidth, height: 'auto' }
-                : { width: '100%', height: 'auto' }
-            }
-            draggable={false}
+        <div
+          className="diagram-viewer-canvas diagram-viewer-canvas-inline"
+          style={
+            expandedWidth != null
+              ? { width: `${expandedWidth}px` }
+              : { width: '100%' }
+          }
+        >
+          <div
+            className="diagram-viewer-inline-svg"
+            role="img"
+            aria-label={spec.title}
+            dangerouslySetInnerHTML={{ __html: displaySvg }}
           />
         </div>
       </div>

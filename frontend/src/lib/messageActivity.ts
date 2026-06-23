@@ -22,7 +22,8 @@ function parseArtifactSpec(metadata: Record<string, unknown> | undefined): Artif
   const raw = metadata?.spec
   if (!raw || typeof raw !== 'object') return null
   const spec = raw as ArtifactSpec
-  if (!spec.kind || !spec.title || !spec.content) return null
+  if (!spec.kind || !spec.title) return null
+  if (!spec.content && !spec.download_url) return null
   return spec
 }
 
@@ -71,19 +72,76 @@ function inferKind(messageType: string): ActivityEntry['kind'] {
   return 'tool'
 }
 
-function resultLooksLikeError(result: unknown): boolean {
+const READ_ONLY_SKILL_TOOLS = new Set(['load_skill', 'read_skill_resource'])
+
+function parseToolArguments(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return {}
+    try {
+      const parsed = JSON.parse(trimmed) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      return { raw: trimmed }
+    }
+  }
+  return {}
+}
+
+function formatSkillToolRequest(argumentsValue: unknown): string | null {
+  const obj = parseToolArguments(argumentsValue)
+  const skill = obj.skill_name ?? obj.name
+  if (typeof skill === 'string' && skill.trim()) return skill.trim()
+  return null
+}
+
+function resultLooksLikeError(result: unknown, toolName?: string): boolean {
   if (result == null) return false
+
+  const tool = (toolName ?? '').trim()
+  if (READ_ONLY_SKILL_TOOLS.has(tool)) {
+    if (typeof result === 'object') {
+      const obj = result as Record<string, unknown>
+      if (typeof obj.error === 'string' && obj.error.trim()) return true
+      if (obj.status === 'error') return true
+      return false
+    }
+    if (typeof result === 'string') {
+      const trimmed = result.trim()
+      if (!trimmed) return false
+      // Successful loads return SKILL.md (YAML frontmatter or long markdown body).
+      if (trimmed.startsWith('---') || trimmed.length > 400) return false
+      const lower = trimmed.toLowerCase()
+      return (
+        lower.startsWith('error') ||
+        lower.includes('not found') ||
+        lower.includes('not allowed')
+      )
+    }
+    return false
+  }
+
   if (typeof result === 'string') {
-    const lower = result.toLowerCase()
-    return (
-      lower.includes('error') ||
-      lower.includes('parsing failed') ||
-      result.includes('not allowed')
-    )
+    const trimmed = result.trim()
+    if (!trimmed) return false
+    const lower = trimmed.toLowerCase()
+    if (lower.includes('not allowed')) return true
+    if (lower.includes('parsing failed')) return true
+    // Long tool payloads often mention "error" in docs or JSON examples.
+    if (trimmed.length > 400) {
+      return lower.startsWith('error') || lower.startsWith('{"error"')
+    }
+    return lower.includes('error')
   }
   if (typeof result === 'object') {
     const obj = result as Record<string, unknown>
-    return typeof obj.error === 'string'
+    if (typeof obj.error === 'string' && obj.error.trim()) return true
+    if (obj.status === 'error') return true
   }
   return false
 }
@@ -119,6 +177,8 @@ function hasToolRequest(value: string | undefined): boolean {
 }
 
 function formatToolRequest(value: unknown): string {
+  const skillRequest = formatSkillToolRequest(value)
+  if (skillRequest) return skillRequest
   if (value == null) return ''
   if (typeof value === 'string') {
     return formatCompactDetail(value)
@@ -233,7 +293,7 @@ export function messageToActivityEntry(message: Message): ActivityEntry {
     request: hasToolRequest(request) ? request : undefined,
     response: response || undefined,
     detail: response,
-    status: resultLooksLikeError(result) ? 'error' : 'done',
+    status: resultLooksLikeError(result, toolName) ? 'error' : 'done',
   }
 }
 

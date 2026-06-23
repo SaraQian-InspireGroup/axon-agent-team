@@ -2295,12 +2295,31 @@ body {
   min-width: min-content;
 }
 
+.diagram-viewer-canvas-inline {
+  display: block;
+  min-width: 0;
+  max-width: none;
+}
+
 .diagram-viewer-img {
   display: block;
   width: auto;
   height: auto;
   max-width: none;
   image-rendering: auto;
+}
+
+.diagram-viewer-inline-svg {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+}
+
+.diagram-viewer-inline-svg svg {
+  display: block;
+  width: 100% !important;
+  height: auto !important;
+  max-width: none;
 }
 
 .artifact-markdown-wrap-expanded {

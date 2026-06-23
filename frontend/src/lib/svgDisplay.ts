@@ -3,13 +3,19 @@ export type SvgNaturalSize = {
   height: number
 }
 
+/** PlantUML/Kroki sometimes emit `data:img/png` — invalid in Chrome for inline SVG/images. */
+export function normalizeSvgDataUris(svgMarkup: string): string {
+  return svgMarkup.replace(/data:img\/png/gi, 'data:image/png')
+}
+
 /** Strip root width/height attrs that fight CSS; keep viewBox for aspect ratio. */
 export function prepareSvgForDisplay(svgMarkup: string): string {
+  const normalized = normalizeSvgDataUris(svgMarkup)
   try {
     const parser = new DOMParser()
-    const doc = parser.parseFromString(svgMarkup, 'image/svg+xml')
+    const doc = parser.parseFromString(normalized, 'image/svg+xml')
     const svg = doc.documentElement
-    if (svg.tagName.toLowerCase() !== 'svg') return svgMarkup
+    if (svg.tagName.toLowerCase() !== 'svg') return normalized
 
     const size = readSvgNaturalSizeFromElement(svg)
     if (!svg.getAttribute('viewBox') && size.width > 0 && size.height > 0) {
@@ -20,7 +26,7 @@ export function prepareSvgForDisplay(svgMarkup: string): string {
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet')
     return new XMLSerializer().serializeToString(svg)
   } catch {
-    return svgMarkup
+    return normalized
   }
 }
 
