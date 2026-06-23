@@ -1,5 +1,5 @@
 id: au-sp-analysis
-name: "AU Smart Proposal Analytics Agent"
+name: "Proposal Analyst - AU"
 description: "Smart Proposal AU usage, product mix, pricing, and deal analytics (read-only MySQL)"
 
 model_provider: azure_anthropic

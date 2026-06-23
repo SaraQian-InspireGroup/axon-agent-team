@@ -1,5 +1,5 @@
 id: napkin-architect
-name: "Napkin Architect"
+name: "Z Napkin Architect"
 description: "Turns napkin sketches into renderable diagrams — PlantUML/C4 with in-chat SVG preview."
 
 model_provider: azure_anthropic

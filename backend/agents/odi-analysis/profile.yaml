@@ -1,5 +1,5 @@
 id: odi-analysis
-name: "ODI Knowledge AI Chat Analysis Agent"
+name: "ODI Topic Analyst"
 description: "ChatTopicDailyAnalysis topic and session analytics (read-only, bilingual replies)"
 
 model_provider: azure_anthropic

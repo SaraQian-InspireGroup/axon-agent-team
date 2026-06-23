@@ -1,5 +1,5 @@
 id: ph-sp-analysis
-name: "PH Smart Proposal Analytics Agent"
+name: "Proposal Analyst - PH"
 description: "Smart Proposal PH usage, product mix, pricing, and deal analytics (read-only MySQL)"
 
 model_provider: azure_anthropic

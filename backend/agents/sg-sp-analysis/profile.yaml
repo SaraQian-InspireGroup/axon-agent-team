@@ -1,5 +1,5 @@
 id: sg-sp-analysis
-name: "SG Smart Proposal Analytics Agent"
+name: "Proposal Analyst - SG"
 description: "Smart Proposal SG usage, product mix, pricing, and deal analytics (read-only MySQL)"
 
 model_provider: azure_anthropic

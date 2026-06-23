@@ -15,7 +15,7 @@ import { PanelLoadingState } from '../components/PanelLoadingState'
 import { NewChatIcon } from '../components/NewChatIcon'
 import { SidebarToggleIcon } from '../components/SidebarToggleIcon'
 import { UserIcon } from '../components/UserIcon'
-import { formatAgentSlugLabel } from '../lib/agentLabel'
+import { formatAgentLabel } from '../lib/agentLabel'
 import {
   DEFAULT_ATTACHMENT_LIMITS,
   SUPPORTED_ATTACHMENT_ACCEPT,
@@ -1022,14 +1022,14 @@ export function ChatPage() {
                 <button
                   type="button"
                   onClick={() => void selectAgent(agent)}
-                  title={sidebarCollapsed ? formatAgentSlugLabel(agent) : undefined}
+                  title={sidebarCollapsed ? formatAgentLabel(agent) : undefined}
                   className={`agent-nav-item ${active ? 'agent-nav-item-active' : ''} ${
                     sidebarCollapsed ? 'agent-nav-item-collapsed' : ''
                   }`}
                 >
                   <AgentIcon className="h-[18px] w-[18px] shrink-0" />
                   {!sidebarCollapsed && (
-                    <span className="agent-nav-label">{formatAgentSlugLabel(agent)}</span>
+                    <span className="agent-nav-label">{formatAgentLabel(agent)}</span>
                   )}
                 </button>
               </li>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
-import { formatAgentSlugLabel } from '../lib/agentLabel'
+import { formatAgentLabel } from '../lib/agentLabel'
 import type { Agent, MemoryBullet, MemoryDocument } from '../types'
 
 type Props = {
@@ -336,7 +336,7 @@ export function MemoryPanel({ open, agents, activeAgentId, refreshKey = 0, onClo
                       <MemoryScopeBlock
                         key={agent.id}
                         scopeKey={key}
-                        title={formatAgentSlugLabel(agent)}
+                        title={formatAgentLabel(agent)}
                         doc={agentDocs[agent.id] ?? null}
                         expanded={!!expanded[key]}
                         isActive={agent.id === activeAgentId}
