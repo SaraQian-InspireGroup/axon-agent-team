@@ -78,10 +78,9 @@ class ModelProviderRegistry:
 
         default_options: dict | None = None
         if model_provider == ModelProvider.AZURE_ANTHROPIC:
-            default_options = {
-                "max_tokens": 16000,
-                "thinking": {"type": "enabled", "budget_tokens": 1024},
-            }
+            default_options = {"max_tokens": 16000}
+            if self._settings.claude_enable_thinking:
+                default_options["thinking"] = {"type": "enabled", "budget_tokens": 1024}
 
         return Agent(
             client=client,

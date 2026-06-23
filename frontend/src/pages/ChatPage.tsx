@@ -17,6 +17,12 @@ import { SidebarToggleIcon } from '../components/SidebarToggleIcon'
 import { UserIcon } from '../components/UserIcon'
 import { formatAgentLabel } from '../lib/agentLabel'
 import {
+  getAgentSession,
+  type AgentChatSession,
+} from '../lib/agentChatSession'
+import { getStoredChatId, setStoredChatId } from '../lib/chatStorage'
+import { StreamRegistry } from '../lib/streamRegistry'
+import {
   DEFAULT_ATTACHMENT_LIMITS,
   SUPPORTED_ATTACHMENT_ACCEPT,
   SUPPORTED_ATTACHMENT_LABEL,
@@ -30,6 +36,7 @@ import {
   type PendingAttachment,
 } from '../lib/attachments'
 import { formatApiError } from '../lib/apiErrorMessage'
+import { formatUserFacingError } from '../lib/userFacingError'
 import {
   applyStreamArtifact,
   applyStreamReasoning,
@@ -41,7 +48,7 @@ import {
   finalizeStreamReasoning,
   mergeMessagesFromApi,
 } from '../lib/messageActivity'
-import { turnSyncStatusLabel, type TurnSyncPhase } from '../lib/turnSync'
+import { turnSyncStatusLabel } from '../lib/turnSync'
 import type { ArtifactSpec } from '../types/artifact'
 import { isProposalArtifact } from '../lib/artifactDownload'
 import type { VizSpec } from '../types/viz'
@@ -160,50 +167,71 @@ export function ChatPage() {
   const [agentsLoading, setAgentsLoading] = useState(true)
   const [agentsError, setAgentsError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [chatId, setChatId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState('')
-  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
+  const [sessions, setSessions] = useState<Record<string, AgentChatSession>>({})
   const [attachmentUploading, setAttachmentUploading] = useState(false)
   const [attachmentLimits, setAttachmentLimits] = useState<AttachmentLimits>(DEFAULT_ATTACHMENT_LIMITS)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed)
   const [userEmail, setUserEmail] = useState<string | null>(null)
-  const [chatHistory, setChatHistory] = useState<ChatSummary[]>([])
-  const [chatHistoryLoading, setChatHistoryLoading] = useState(false)
-  const [chatSessionLoading, setChatSessionLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
-  const [proposalPanelCollapsed, setProposalPanelCollapsed] = useState(true)
-  const [proposalPanelTab, setProposalPanelTab] = useState<ProposalPanelTab>('preview')
   const [proposalPanelWidth, setProposalPanelWidth] = useState(readProposalPanelWidth)
-  const [proposalPreview, setProposalPreview] = useState<ProposalPreview | null>(null)
-  const [proposalPreviewLoading, setProposalPreviewLoading] = useState(false)
-  const [proposalTurnSyncing, setProposalTurnSyncing] = useState(false)
-  const [turnSyncPhase, setTurnSyncPhase] = useState<TurnSyncPhase | null>(null)
-  const [proposalPreviewError, setProposalPreviewError] = useState<string | null>(null)
-  const [proposalState, setProposalState] = useState<Record<string, unknown> | null>(null)
-  const [proposalStateFingerprint, setProposalStateFingerprint] = useState<string | null>(null)
-  const [proposalStateLoading, setProposalStateLoading] = useState(false)
-  const [proposalStateError, setProposalStateError] = useState<string | null>(null)
-  const [expandedArtifact, setExpandedArtifact] = useState<ArtifactSpec | null>(null)
   const [diagramPanelWidth, setDiagramPanelWidth] = useState(readDiagramPanelWidth)
-  const proposalPreviewFetchGenRef = useRef(0)
-  const proposalStateFetchGenRef = useRef(0)
-  const chatIdRef = useRef<string | null>(null)
-  const proposalPanelTabRef = useRef<ProposalPanelTab>('preview')
+  const streamRegistryRef = useRef(new StreamRegistry())
+  const reloadInFlightRef = useRef(new Map<string, Promise<void>>())
+  const proposalPreviewFetchGenRef = useRef(new Map<string, number>())
+  const proposalStateFetchGenRef = useRef(new Map<string, number>())
+  const proposalPanelTabRef = useRef(new Map<string, ProposalPanelTab>())
   const [memoryRefreshKey, setMemoryRefreshKey] = useState(0)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const pinToBottomRef = useRef(true)
-  const runIdRef = useRef<string | null>(null)
-  const [activeRunId, setActiveRunId] = useState<string | null>(null)
-  const streamGenRef = useRef(0)
-  const streamAbortRef = useRef<AbortController | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const reloadInFlightRef = useRef<Promise<void> | null>(null)
-  /** True when SSE proposal_updated already applied preview for the current turn. */
-  const previewFreshFromStreamRef = useRef(false)
+  const openChatLoadGenRef = useRef(new Map<string, number>())
+  const chatLoadTasksRef = useRef(new Map<string, Promise<void>>())
+  const sessionsRef = useRef(sessions)
+  const proposalFetchKeyRef = useRef<string | null>(null)
+  sessionsRef.current = sessions
+
+  const patchSession = useCallback(
+    (
+      agentId: string,
+      patch:
+        | Partial<AgentChatSession>
+        | ((session: AgentChatSession) => Partial<AgentChatSession>),
+    ) => {
+      setSessions((prev) => {
+        const current = getAgentSession(prev, agentId)
+        const updates = typeof patch === 'function' ? patch(current) : patch
+        return { ...prev, [agentId]: { ...current, ...updates } }
+      })
+    },
+    [],
+  )
+
+  const session = getAgentSession(sessions, selectedId)
+  const {
+    chatId,
+    messages,
+    input,
+    pendingAttachments,
+    loading,
+    error,
+    chatHistory,
+    chatHistoryLoading,
+    chatSessionLoading,
+    activeRunId,
+    turnSyncPhase,
+    proposalTurnSyncing,
+    expandedArtifact,
+    proposalPanelCollapsed,
+    proposalPanelTab,
+    proposalPreview,
+    proposalPreviewLoading,
+    proposalPreviewError,
+    proposalState,
+    proposalStateFingerprint,
+    proposalStateLoading,
+    proposalStateError,
+  } = session
 
   const SCROLL_PIN_THRESHOLD_PX = 80
 
@@ -226,113 +254,145 @@ export function ChatPage() {
   const isProposalComposer = selected?.slug === PROPOSAL_COMPOSER_SLUG
   const showChat = !agentsLoading && selected != null
 
-  const invalidateProposalPanelFetches = useCallback(() => {
-    ++proposalPreviewFetchGenRef.current
-    ++proposalStateFetchGenRef.current
-    previewFreshFromStreamRef.current = false
+  useEffect(() => {
+    if (selectedId) {
+      proposalPanelTabRef.current.set(selectedId, proposalPanelTab)
+    }
+  }, [selectedId, proposalPanelTab])
+
+  const invalidateProposalPanelFetches = useCallback((agentId: string) => {
+    proposalPreviewFetchGenRef.current.set(agentId, (proposalPreviewFetchGenRef.current.get(agentId) ?? 0) + 1)
+    proposalStateFetchGenRef.current.set(agentId, (proposalStateFetchGenRef.current.get(agentId) ?? 0) + 1)
   }, [])
 
-  const fetchProposalPreview = useCallback(async (id: string) => {
-    const generation = ++proposalPreviewFetchGenRef.current
-    setProposalPreviewLoading(true)
-    setProposalPreviewError(null)
+  const fetchProposalPreview = useCallback(async (agentId: string, id: string) => {
+    const generation = (proposalPreviewFetchGenRef.current.get(agentId) ?? 0) + 1
+    proposalPreviewFetchGenRef.current.set(agentId, generation)
+    patchSession(agentId, {
+      proposalPreviewLoading: true,
+      proposalPreviewError: null,
+    })
     try {
       const preview = await api.getProposalPreview(id, true)
-      if (generation !== proposalPreviewFetchGenRef.current) return
-      if (chatIdRef.current !== id) return
-      if (preview.chat_id && preview.chat_id !== id) return
-      setProposalPreview((prev) =>
-        shouldReplaceProposalPreview(prev, preview) ? preview : prev,
-      )
+      if (generation !== proposalPreviewFetchGenRef.current.get(agentId)) return
+      patchSession(agentId, (prev) => {
+        if (prev.chatId !== id) return {}
+        if (preview.chat_id && preview.chat_id !== id) return {}
+        return {
+          proposalPreview: shouldReplaceProposalPreview(prev.proposalPreview, preview)
+            ? preview
+            : prev.proposalPreview,
+          proposalPreviewLoading: false,
+        }
+      })
     } catch (e) {
-      if (generation !== proposalPreviewFetchGenRef.current) return
-      if (chatIdRef.current !== id) return
-      setProposalPreviewError(e instanceof Error ? e.message : 'Failed to load proposal preview')
+      if (generation !== proposalPreviewFetchGenRef.current.get(agentId)) return
+      patchSession(agentId, (prev) => {
+        if (prev.chatId !== id) return {}
+        return {
+          proposalPreviewError: e instanceof Error ? e.message : 'Failed to load proposal preview',
+          proposalPreviewLoading: false,
+        }
+      })
     } finally {
-      if (generation === proposalPreviewFetchGenRef.current) {
-        setProposalPreviewLoading(false)
+      if (generation === proposalPreviewFetchGenRef.current.get(agentId)) {
+        patchSession(agentId, { proposalPreviewLoading: false })
       }
     }
-  }, [])
+  }, [patchSession])
 
-  const fetchProposalState = useCallback(async (id: string) => {
-    const generation = ++proposalStateFetchGenRef.current
-    setProposalStateLoading(true)
-    setProposalStateError(null)
+  const fetchProposalState = useCallback(async (agentId: string, id: string) => {
+    const generation = (proposalStateFetchGenRef.current.get(agentId) ?? 0) + 1
+    proposalStateFetchGenRef.current.set(agentId, generation)
+    patchSession(agentId, {
+      proposalStateLoading: true,
+      proposalStateError: null,
+    })
     try {
       const payload: ProposalDraftResponse = await api.getProposalDraft(id)
-      if (generation !== proposalStateFetchGenRef.current) return
-      if (chatIdRef.current !== id) return
-      if (payload.chat_id && payload.chat_id !== id) return
-      setProposalState(payload.draft)
-      setProposalStateFingerprint(payload.state_fingerprint)
+      if (generation !== proposalStateFetchGenRef.current.get(agentId)) return
+      patchSession(agentId, (prev) => {
+        if (prev.chatId !== id) return {}
+        if (payload.chat_id && payload.chat_id !== id) return {}
+        return {
+          proposalState: payload.draft,
+          proposalStateFingerprint: payload.state_fingerprint,
+          proposalStateLoading: false,
+        }
+      })
     } catch (e) {
-      if (generation !== proposalStateFetchGenRef.current) return
-      if (chatIdRef.current !== id) return
-      setProposalStateError(formatApiError(e, 'Failed to load proposal draft'))
+      if (generation !== proposalStateFetchGenRef.current.get(agentId)) return
+      patchSession(agentId, (prev) => {
+        if (prev.chatId !== id) return {}
+        return {
+          proposalStateError: formatApiError(e, 'Failed to load proposal draft'),
+          proposalStateLoading: false,
+        }
+      })
     } finally {
-      if (generation === proposalStateFetchGenRef.current) {
-        setProposalStateLoading(false)
+      if (generation === proposalStateFetchGenRef.current.get(agentId)) {
+        patchSession(agentId, { proposalStateLoading: false })
       }
     }
-  }, [])
+  }, [patchSession])
 
-  const applyProposalPreview = useCallback((preview: ProposalPreview, forChatId: string) => {
-    if (chatIdRef.current !== forChatId) return
-    if (preview.chat_id && preview.chat_id !== forChatId) return
-    ++proposalPreviewFetchGenRef.current
-    previewFreshFromStreamRef.current = true
-    setProposalPreview((prev) =>
-      shouldReplaceProposalPreview(prev, preview) ? preview : prev,
+  const applyProposalPreview = useCallback((
+    agentId: string,
+    preview: ProposalPreview,
+    forChatId: string,
+  ) => {
+    proposalPreviewFetchGenRef.current.set(
+      agentId,
+      (proposalPreviewFetchGenRef.current.get(agentId) ?? 0) + 1,
     )
-    setProposalPreviewLoading(false)
-    setProposalPreviewError(null)
-    setProposalTurnSyncing(false)
-    setTurnSyncPhase(null)
-    if (preview.markdown) {
-      setProposalPanelCollapsed(false)
-    }
-  }, [])
+    patchSession(agentId, (prev) => {
+      if (prev.chatId !== forChatId) return {}
+      if (preview.chat_id && preview.chat_id !== forChatId) return {}
+      return {
+        proposalPreview: shouldReplaceProposalPreview(prev.proposalPreview, preview)
+          ? preview
+          : prev.proposalPreview,
+        proposalPreviewLoading: false,
+        proposalPreviewError: null,
+        proposalTurnSyncing: false,
+        turnSyncPhase: null,
+        proposalPanelCollapsed: preview.markdown ? false : prev.proposalPanelCollapsed,
+      }
+    })
+  }, [patchSession])
 
   useEffect(() => {
     void api.getAttachmentConfig().then(setAttachmentLimits)
   }, [])
 
-  useEffect(() => {
-    chatIdRef.current = chatId
-  }, [chatId])
-
-  useEffect(() => {
-    proposalPanelTabRef.current = proposalPanelTab
-  }, [proposalPanelTab])
-
   const collapseProposalPanel = useCallback(() => {
-    setProposalPanelCollapsed(true)
-  }, [])
+    if (!selectedId) return
+    patchSession(selectedId, { proposalPanelCollapsed: true })
+  }, [patchSession, selectedId])
 
   const expandProposalPanel = useCallback(
     (tab: ProposalPanelTab = 'preview') => {
-      setProposalPanelCollapsed(false)
-      setProposalPanelTab(tab)
-      if (!chatId) return
-      if (tab === 'preview') void fetchProposalPreview(chatId)
-      if (tab === 'state') void fetchProposalState(chatId)
+      if (!selectedId || !chatId) return
+      patchSession(selectedId, { proposalPanelCollapsed: false, proposalPanelTab: tab })
+      if (tab === 'preview') void fetchProposalPreview(selectedId, chatId)
+      if (tab === 'state') void fetchProposalState(selectedId, chatId)
     },
-    [chatId, fetchProposalPreview, fetchProposalState],
+    [chatId, fetchProposalPreview, fetchProposalState, patchSession, selectedId],
   )
 
   const handleProposalPanelTabChange = useCallback(
     (tab: ProposalPanelTab) => {
-      setProposalPanelTab(tab)
-      if (!chatId) return
-      if (tab === 'preview') void fetchProposalPreview(chatId)
-      if (tab === 'state') void fetchProposalState(chatId)
+      if (!selectedId || !chatId) return
+      patchSession(selectedId, { proposalPanelTab: tab })
+      if (tab === 'preview') void fetchProposalPreview(selectedId, chatId)
+      if (tab === 'state') void fetchProposalState(selectedId, chatId)
     },
-    [chatId, fetchProposalPreview, fetchProposalState],
+    [chatId, fetchProposalPreview, fetchProposalState, patchSession, selectedId],
   )
 
   const handleExpandArtifact = useCallback(
     (spec: ArtifactSpec) => {
+      if (!selectedId) return
       if (isProposalArtifact(spec) && isProposalComposer) {
         expandProposalPanel()
         setHistoryOpen(false)
@@ -340,17 +400,18 @@ export function ChatPage() {
         return
       }
       if (spec.kind === 'diagram_svg') {
-        setExpandedArtifact(spec)
+        patchSession(selectedId, { expandedArtifact: spec })
         setHistoryOpen(false)
         setMemoryOpen(false)
       }
     },
-    [expandProposalPanel, isProposalComposer],
+    [expandProposalPanel, isProposalComposer, patchSession, selectedId],
   )
 
   const closeArtifactPanel = useCallback(() => {
-    setExpandedArtifact(null)
-  }, [])
+    if (!selectedId) return
+    patchSession(selectedId, { expandedArtifact: null })
+  }, [patchSession, selectedId])
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -365,78 +426,95 @@ export function ChatPage() {
   }
 
   const refreshChatHistory = useCallback(async (agentId: string) => {
-    setChatHistoryLoading(true)
+    patchSession(agentId, { chatHistoryLoading: true })
     try {
       const rows = await api.listChats(agentId)
-      setChatHistory(rows)
+      patchSession(agentId, { chatHistory: rows, chatHistoryLoading: false })
     } catch {
-      setChatHistory([])
-    } finally {
-      setChatHistoryLoading(false)
+      patchSession(agentId, { chatHistory: [], chatHistoryLoading: false })
     }
-  }, [])
+  }, [patchSession])
 
-  const beginAgentChatLoad = useCallback(() => {
-    setChatId(null)
-    chatIdRef.current = null
-    setChatSessionLoading(true)
-    setMessages([])
-    setExpandedArtifact(null)
-    invalidateProposalPanelFetches()
-    setProposalPreview(null)
-    setProposalPreviewError(null)
-    setProposalState(null)
-    setProposalStateFingerprint(null)
-    setProposalStateError(null)
-  }, [invalidateProposalPanelFetches])
+  const resetProposalPanel = useCallback((agentId: string) => {
+    invalidateProposalPanelFetches(agentId)
+    patchSession(agentId, {
+      proposalPreview: null,
+      proposalPreviewError: null,
+      proposalState: null,
+      proposalStateFingerprint: null,
+      proposalStateError: null,
+    })
+  }, [invalidateProposalPanelFetches, patchSession])
 
-  const enterDraftMode = useCallback(() => {
-    setChatId(null)
-    setMessages([])
-    setInput('')
-    setPendingAttachments([])
-    setError(null)
-    setExpandedArtifact(null)
-    invalidateProposalPanelFetches()
-    setProposalPreview(null)
-    setProposalPreviewError(null)
-    setProposalState(null)
-    setProposalStateFingerprint(null)
-    setProposalStateError(null)
-  }, [invalidateProposalPanelFetches])
+  const enterDraftMode = useCallback((agentId: string) => {
+    patchSession(agentId, {
+      chatId: null,
+      messages: [],
+      input: '',
+      pendingAttachments: [],
+      error: null,
+      expandedArtifact: null,
+      chatSessionLoading: false,
+      initialized: true,
+    })
+    resetProposalPanel(agentId)
+  }, [patchSession, resetProposalPanel])
 
-  const ensureChatId = useCallback(async (): Promise<string> => {
-    if (chatId) return chatId
-    if (!selectedId) throw new Error('No agent selected')
-    const chat = await api.createChat(selectedId)
-    setChatId(chat.id)
-    chatIdRef.current = chat.id
-    await refreshChatHistory(selectedId)
+  const ensureChatId = useCallback(async (agentId: string): Promise<string> => {
+    const current = getAgentSession(sessionsRef.current, agentId)
+    if (current.chatId) return current.chatId
+    const chat = await api.createChat(agentId)
+    setStoredChatId(agentId, chat.id)
+    streamRegistryRef.current.bindChat(chat.id, agentId)
+    patchSession(agentId, { chatId: chat.id, initialized: true })
+    await refreshChatHistory(agentId)
     return chat.id
-  }, [chatId, selectedId, refreshChatHistory])
+  }, [patchSession, refreshChatHistory])
 
-  const openChatById = useCallback(async (_agentId: string, id: string) => {
-    setError(null)
-    setChatSessionLoading(true)
-    setMessages([])
+  const openChatById = useCallback(async (agentId: string, id: string) => {
+    const loadGen = (openChatLoadGenRef.current.get(agentId) ?? 0) + 1
+    openChatLoadGenRef.current.set(agentId, loadGen)
+
+    setSessions((prev) => {
+      const current = getAgentSession(prev, agentId)
+      if (current.chatId && current.chatId !== id) {
+        streamRegistryRef.current.abort(current.chatId)
+      }
+      return {
+        ...prev,
+        [agentId]: {
+          ...current,
+          error: null,
+          chatSessionLoading: true,
+          messages: current.chatId === id ? current.messages : [],
+        },
+      }
+    })
+    resetProposalPanel(agentId)
     try {
-      invalidateProposalPanelFetches()
-      setProposalPreview(null)
-      setProposalPreviewError(null)
-      setProposalState(null)
-      setProposalStateFingerprint(null)
-      setProposalStateError(null)
-      setInput('')
-      setPendingAttachments([])
-      setExpandedArtifact(null)
       const rows = await api.listMessages(id)
-      setMessages(rows)
-      setChatId(id)
-      chatIdRef.current = id
-    } finally {
-      setChatSessionLoading(false)
+      if (loadGen !== openChatLoadGenRef.current.get(agentId)) return
+      patchSession(agentId, {
+        messages: rows,
+        chatId: id,
+        input: '',
+        pendingAttachments: [],
+        expandedArtifact: null,
+        chatSessionLoading: false,
+        initialized: true,
+        error: null,
+      })
+      setStoredChatId(agentId, id)
+      streamRegistryRef.current.bindChat(id, agentId)
+    } catch (e) {
+      if (loadGen !== openChatLoadGenRef.current.get(agentId)) return
+      patchSession(agentId, {
+        chatSessionLoading: false,
+        error: e instanceof Error ? e.message : 'Failed to load conversation',
+      })
+      throw e
     }
-  }, [invalidateProposalPanelFetches])
+  }, [resetProposalPanel, patchSession])
 
   const createAndOpenChat = useCallback(
     async (agentId: string) => {
@@ -450,20 +528,23 @@ export function ChatPage() {
 
   const loadChat = useCallback(
     async (agentId: string) => {
-      setError(null)
+      patchSession(agentId, { error: null })
       let rows: ChatSummary[] = []
-      setChatHistoryLoading(true)
+      patchSession(agentId, { chatHistoryLoading: true })
       try {
         rows = await api.listChats(agentId)
-        setChatHistory(rows)
+        patchSession(agentId, { chatHistory: rows, chatHistoryLoading: false })
       } catch {
-        setChatHistory([])
+        patchSession(agentId, { chatHistory: [], chatHistoryLoading: false })
         rows = []
-      } finally {
-        setChatHistoryLoading(false)
       }
 
       try {
+        const storedChatId = getStoredChatId(agentId)
+        if (storedChatId && rows.some((row) => row.id === storedChatId)) {
+          await openChatById(agentId, storedChatId)
+          return
+        }
         const recentChatId = pickMostRecentChatId(rows)
         if (recentChatId) {
           await openChatById(agentId, recentChatId)
@@ -471,54 +552,82 @@ export function ChatPage() {
         }
         await createAndOpenChat(agentId)
       } catch (e) {
-        enterDraftMode()
-        setChatSessionLoading(false)
-        setError(e instanceof Error ? e.message : 'Failed to load conversation')
+        enterDraftMode(agentId)
+        patchSession(agentId, {
+          error: e instanceof Error ? e.message : 'Failed to load conversation',
+        })
       }
     },
-    [createAndOpenChat, enterDraftMode, openChatById],
+    [createAndOpenChat, enterDraftMode, openChatById, patchSession],
+  )
+
+  const ensureAgentChatLoaded = useCallback(
+    async (agentId: string) => {
+      if (getAgentSession(sessionsRef.current, agentId).initialized) return
+
+      const inFlight = chatLoadTasksRef.current.get(agentId)
+      if (inFlight) {
+        await inFlight
+        return
+      }
+
+      patchSession(agentId, { chatSessionLoading: true, error: null })
+      const task = (async () => {
+        try {
+          await loadChat(agentId)
+        } finally {
+          chatLoadTasksRef.current.delete(agentId)
+          patchSession(agentId, (prev) => {
+            if (prev.initialized) return {}
+            return { chatSessionLoading: false }
+          })
+        }
+      })()
+      chatLoadTasksRef.current.set(agentId, task)
+      await task
+    },
+    [loadChat, patchSession],
   )
 
   const selectAgent = useCallback(
     async (agent: Agent) => {
-      beginAgentChatLoad()
       setSelectedId(agent.id)
       setHistoryOpen(false)
-      setInput('')
       try {
-        await loadChat(agent.id)
+        await ensureAgentChatLoaded(agent.id)
       } catch (e) {
-        setChatSessionLoading(false)
-        setError(e instanceof Error ? e.message : 'Failed to load conversation')
+        patchSession(agent.id, {
+          chatSessionLoading: false,
+          error: e instanceof Error ? e.message : 'Failed to load conversation',
+        })
       }
     },
-    [beginAgentChatLoad, loadChat],
+    [ensureAgentChatLoaded, patchSession],
   )
 
-  const loadAgents = useCallback(
-    async (options?: { autoSelect?: boolean }) => {
-      setAgentsLoading(true)
-      setAgentsError(null)
-      try {
-        const rows = await api.listAgents()
-        setAgents(rows)
-        if (rows.length > 0 && options?.autoSelect) {
-          await selectAgent(rows[0])
-        }
-      } catch (e) {
-        const message = e instanceof Error ? e.message : 'Failed to load agents'
-        setAgents([])
-        setAgentsError(message)
-      } finally {
-        setAgentsLoading(false)
+  const loadAgents = useCallback(async (options?: { autoSelect?: boolean }) => {
+    setAgentsLoading(true)
+    setAgentsError(null)
+    try {
+      const rows = await api.listAgents()
+      setAgents(rows)
+      if (rows.length > 0 && options?.autoSelect) {
+        setSelectedId(rows[0].id)
+        await ensureAgentChatLoaded(rows[0].id)
       }
-    },
-    [selectAgent],
-  )
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to load agents'
+      setAgents([])
+      setAgentsError(message)
+    } finally {
+      setAgentsLoading(false)
+    }
+  }, [ensureAgentChatLoaded])
 
   useEffect(() => {
     void loadAgents({ autoSelect: true })
-  }, [loadAgents])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only bootstrap
+  }, [])
 
   useEffect(() => {
     void api.getCurrentUser().then(
@@ -528,38 +637,32 @@ export function ChatPage() {
   }, [])
 
   useEffect(() => {
-    if (!isProposalComposer) {
-      setProposalPanelCollapsed(true)
-      setProposalPanelTab('preview')
-      setProposalPreview(null)
-      setProposalPreviewError(null)
-      setProposalState(null)
-      setProposalStateFingerprint(null)
-      setProposalStateError(null)
+    if (!isProposalComposer || !selectedId) {
+      proposalFetchKeyRef.current = null
       return
     }
-    setProposalPanelCollapsed(false)
-    setProposalPanelTab('preview')
-    if (!chatId || chatSessionLoading) {
-      setProposalPreview(null)
-      setProposalPreviewError(null)
-      setProposalState(null)
-      setProposalStateFingerprint(null)
-      setProposalStateError(null)
-      return
-    }
-    invalidateProposalPanelFetches()
-    void fetchProposalPreview(chatId)
-    if (proposalPanelTabRef.current === 'state') {
-      void fetchProposalState(chatId)
+    if (!chatId || chatSessionLoading) return
+
+    const fetchKey = `${selectedId}:${chatId}`
+    if (proposalFetchKeyRef.current === fetchKey) return
+    proposalFetchKeyRef.current = fetchKey
+
+    patchSession(selectedId, { proposalPanelCollapsed: false })
+    invalidateProposalPanelFetches(selectedId)
+    void fetchProposalPreview(selectedId, chatId)
+    const tab = proposalPanelTabRef.current.get(selectedId) ?? 'preview'
+    if (tab === 'state') {
+      void fetchProposalState(selectedId, chatId)
     }
   }, [
     isProposalComposer,
+    selectedId,
     chatId,
     chatSessionLoading,
     fetchProposalPreview,
     fetchProposalState,
     invalidateProposalPanelFetches,
+    patchSession,
   ])
 
   useEffect(() => {
@@ -567,30 +670,38 @@ export function ChatPage() {
   }, [messages, scrollToBottomIfPinned])
 
   const reloadMessagesAfterStream = useCallback(
-    async (id: string) => {
+    async (agentId: string, id: string) => {
       const task = (async () => {
         const rows = await api.listMessages(id)
-        setMessages((prev) => mergeMessagesFromApi(rows, prev))
-        if (selectedId) {
-          void refreshChatHistory(selectedId)
-        }
+        patchSession(agentId, (prev) => ({
+          messages: mergeMessagesFromApi(rows, prev.messages),
+        }))
+        await refreshChatHistory(agentId)
       })()
-      reloadInFlightRef.current = task
+      reloadInFlightRef.current.set(id, task)
       try {
         await task
       } finally {
-        if (reloadInFlightRef.current === task) {
-          reloadInFlightRef.current = null
+        if (reloadInFlightRef.current.get(id) === task) {
+          reloadInFlightRef.current.delete(id)
         }
       }
     },
-    [refreshChatHistory, selectedId],
+    [patchSession, refreshChatHistory],
   )
 
+  const setInputForSelected = (value: string) => {
+    if (!selectedId) return
+    patchSession(selectedId, { input: value })
+  }
+
   const removePendingAttachment = (attachmentId: string) => {
-    setPendingAttachments((prev) =>
-      prev.filter((item) => pendingAttachmentId(item) !== attachmentId),
-    )
+    if (!selectedId) return
+    patchSession(selectedId, (prev) => ({
+      pendingAttachments: prev.pendingAttachments.filter(
+        (item) => pendingAttachmentId(item) !== attachmentId,
+      ),
+    }))
   }
 
   const handleAttachmentPick = () => {
@@ -616,25 +727,36 @@ export function ChatPage() {
       attachmentLimits,
     )
     if (limitError) {
-      setError(limitError)
+      if (selectedId) patchSession(selectedId, { error: limitError })
       return
     }
 
     if (!chatId) {
-      setPendingAttachments((prev) => [
-        ...prev,
-        { kind: 'local', localId: `local-${Date.now()}`, file },
-      ])
+      if (!selectedId) return
+      patchSession(selectedId, (prev) => ({
+        pendingAttachments: [
+          ...prev.pendingAttachments,
+          { kind: 'local', localId: `local-${Date.now()}`, file },
+        ],
+      }))
       return
     }
 
     setAttachmentUploading(true)
-    setError(null)
+    if (selectedId) patchSession(selectedId, { error: null })
     try {
       const uploaded = await api.uploadChatAttachment(chatId, file)
-      setPendingAttachments((prev) => [...prev, { kind: 'uploaded', attachment: uploaded }])
+      if (selectedId) {
+        patchSession(selectedId, (prev) => ({
+          pendingAttachments: [...prev.pendingAttachments, { kind: 'uploaded', attachment: uploaded }],
+        }))
+      }
     } catch (e) {
-      setError(formatApiError(e, 'Failed to upload attachment'))
+      if (selectedId) {
+        patchSession(selectedId, {
+          error: formatApiError(e, 'Failed to upload attachment'),
+        })
+      }
     } finally {
       setAttachmentUploading(false)
     }
@@ -657,8 +779,10 @@ export function ChatPage() {
   )
 
   const stopStreaming = async () => {
-    const runId = runIdRef.current ?? activeRunId
-    if (!runId || !chatId) return
+    if (!selectedId || !chatId) return
+    const stream = streamRegistryRef.current.get(chatId)
+    const runId = stream?.runId ?? activeRunId
+    if (!runId) return
 
     try {
       await api.cancelRun(runId)
@@ -666,76 +790,76 @@ export function ChatPage() {
       /* idempotent */
     }
 
-    streamAbortRef.current?.abort()
+    streamRegistryRef.current.abort(chatId)
 
     try {
-      await reloadMessagesAfterStream(chatId)
+      await reloadMessagesAfterStream(selectedId, chatId)
     } finally {
-      setLoading(false)
-      setProposalTurnSyncing(false)
-      setTurnSyncPhase(null)
-      setActiveRunId(null)
-      runIdRef.current = null
+      patchSession(selectedId, {
+        loading: false,
+        proposalTurnSyncing: false,
+        turnSyncPhase: null,
+        activeRunId: null,
+      })
     }
-  }
-
-  const beginTurnSync = () => {
-    setTurnSyncPhase('saving-messages')
-    if (isProposalComposer) {
-      setProposalTurnSyncing(true)
-    }
-  }
-
-  const finishTurnSync = () => {
-    setTurnSyncPhase(null)
-    setProposalTurnSyncing(false)
   }
 
   const send = async () => {
-    if (loading || !selectedId) return
-    const text = input.trim()
-    const sentAttachments = [...pendingAttachments]
+    if (!selectedId || loading) return
+    const agentId = selectedId
+    const agentSlug = agents.find((a) => a.id === agentId)?.slug
+    const composer = agentSlug === PROPOSAL_COMPOSER_SLUG
+    const currentSession = getAgentSession(sessionsRef.current, agentId)
+    const text = currentSession.input.trim()
+    const sentAttachments = [...currentSession.pendingAttachments]
     if (!text && sentAttachments.length === 0) return
 
-    setInput('')
-    setPendingAttachments([])
-    setLoading(true)
-    setProposalTurnSyncing(false)
-    setTurnSyncPhase(null)
-    previewFreshFromStreamRef.current = false
+    patchSession(agentId, {
+      input: '',
+      pendingAttachments: [],
+      loading: true,
+      proposalTurnSyncing: false,
+      turnSyncPhase: null,
+      error: null,
+    })
     pinToBottomRef.current = true
-    setError(null)
 
-    streamAbortRef.current?.abort()
+    let activeChatId: string
+    try {
+      activeChatId = await ensureChatId(agentId)
+    } catch (e) {
+      patchSession(agentId, {
+        loading: false,
+        error: e instanceof Error ? e.message : 'Failed to start conversation',
+      })
+      return
+    }
 
-    if (reloadInFlightRef.current) {
+    streamRegistryRef.current.bindChat(activeChatId, agentId)
+    const reloadInFlight = reloadInFlightRef.current.get(activeChatId)
+    if (reloadInFlight) {
       try {
-        await reloadInFlightRef.current
+        await reloadInFlight
       } catch {
         /* reload may fail; still attempt send */
       }
     }
 
-    let activeChatId: string
-    try {
-      activeChatId = await ensureChatId()
-    } catch (e) {
-      setLoading(false)
-      setError(e instanceof Error ? e.message : 'Failed to start conversation')
-      return
-    }
+    streamRegistryRef.current.abort(activeChatId)
 
     let attachmentIds: string[] = []
     try {
       attachmentIds = await resolveAttachmentIds(activeChatId, sentAttachments)
     } catch (e) {
-      setLoading(false)
-      setError(formatApiError(e, 'Failed to upload attachments'))
+      patchSession(agentId, {
+        loading: false,
+        error: formatApiError(e, 'Failed to upload attachments'),
+      })
       return
     }
 
-    setMessages((prev) => {
-      const nextSequence = prev.reduce((max, row) => Math.max(max, row.sequence), 0) + 1
+    patchSession(agentId, (prev) => {
+      const nextSequence = prev.messages.reduce((max, row) => Math.max(max, row.sequence), 0) + 1
       const optimistic: Message = {
         id: `tmp-${Date.now()}`,
         chat_id: activeChatId,
@@ -763,46 +887,73 @@ export function ChatPage() {
         sequence: nextSequence,
         created_at: new Date().toISOString(),
       }
-      return [...prev, optimistic]
+      return { messages: [...prev.messages, optimistic] }
     })
 
-    const generation = ++streamGenRef.current
+    const generation = streamRegistryRef.current.nextGeneration(activeChatId)
     const abortController = new AbortController()
-    streamAbortRef.current = abortController
+    const streamHandle = {
+      chatId: activeChatId,
+      agentId,
+      generation,
+      abortController,
+      segmentText: '',
+      runId: null as string | null,
+      streamIdleSeen: false,
+      reloadedAfterStream: false,
+      previewFreshFromStream: false,
+      isProposalComposer: composer,
+    }
+    streamRegistryRef.current.set(activeChatId, streamHandle)
 
-    let segmentText = ''
-    let reloadedAfterStream = false
-    let streamIdleSeen = false
-    runIdRef.current = null
-    setActiveRunId(null)
+    patchSession(agentId, { activeRunId: null })
+
+    const patchStreamSession = (
+      updates: Partial<AgentChatSession> | ((prev: AgentChatSession) => Partial<AgentChatSession>),
+    ) => {
+      if (!streamRegistryRef.current.isActive(activeChatId, generation)) return
+      patchSession(agentId, (prev) => {
+        if (prev.chatId !== activeChatId) return {}
+        const nextUpdates = typeof updates === 'function' ? updates(prev) : updates
+        return nextUpdates
+      })
+    }
 
     const finishTurnAfterStream = async () => {
-      if (generation !== streamGenRef.current || reloadedAfterStream) return
-      reloadedAfterStream = true
+      const handle = streamRegistryRef.current.get(activeChatId)
+      if (!handle || handle.generation !== generation || handle.reloadedAfterStream) return
+      handle.reloadedAfterStream = true
       try {
-        if (!streamIdleSeen) {
-          setLoading(false)
-          setActiveRunId(null)
-          runIdRef.current = null
-          setMessages((prev) => finalizeStreamLocalMessages(prev))
-          beginTurnSync()
+        if (!handle.streamIdleSeen) {
+          patchStreamSession({
+            loading: false,
+            activeRunId: null,
+            turnSyncPhase: 'saving-messages',
+            proposalTurnSyncing: composer,
+          })
+          patchStreamSession((prev) => ({
+            messages: finalizeStreamLocalMessages(prev.messages),
+          }))
         }
-        setTurnSyncPhase('saving-messages')
-        await reloadMessagesAfterStream(activeChatId)
-        if (isProposalComposer && !previewFreshFromStreamRef.current) {
-          setTurnSyncPhase('updating-preview')
-          await fetchProposalPreview(activeChatId)
+        patchStreamSession({ turnSyncPhase: 'saving-messages' })
+        await reloadMessagesAfterStream(agentId, activeChatId)
+        if (composer && !handle.previewFreshFromStream) {
+          patchStreamSession({ turnSyncPhase: 'updating-preview' })
+          await fetchProposalPreview(agentId, activeChatId)
         }
-        if (isProposalComposer && proposalPanelTabRef.current === 'state') {
-          setTurnSyncPhase('refreshing-draft')
-          await fetchProposalState(activeChatId)
+        const tab = proposalPanelTabRef.current.get(agentId) ?? 'preview'
+        if (composer && tab === 'state') {
+          patchStreamSession({ turnSyncPhase: 'refreshing-draft' })
+          await fetchProposalState(agentId, activeChatId)
         }
       } finally {
-        if (generation === streamGenRef.current) {
-          finishTurnSync()
-          setLoading(false)
-          setActiveRunId(null)
-          runIdRef.current = null
+        if (streamRegistryRef.current.isActive(activeChatId, generation)) {
+          patchStreamSession({
+            turnSyncPhase: null,
+            proposalTurnSyncing: false,
+            loading: false,
+            activeRunId: null,
+          })
         }
       }
     }
@@ -812,46 +963,58 @@ export function ChatPage() {
         activeChatId,
         text,
         (ev) => {
-          if (generation !== streamGenRef.current) return
+          if (!streamRegistryRef.current.isActive(activeChatId, generation)) return
+
+          const handle = streamRegistryRef.current.get(activeChatId)!
 
           if (ev.event === 'memory_updated') {
             setMemoryRefreshKey((k) => k + 1)
           }
           if (ev.event === 'run_started' && ev.data.run_id != null) {
             const id = String(ev.data.run_id)
-            runIdRef.current = id
-            setActiveRunId(id)
+            handle.runId = id
+            patchStreamSession({ activeRunId: id })
           }
           if (ev.event === 'text' && typeof ev.data.text === 'string') {
             const chunk = ev.data.text
             if (
-              segmentText === '' ||
-              (chunk.length >= segmentText.length && chunk.startsWith(segmentText))
+              handle.segmentText === '' ||
+              (chunk.length >= handle.segmentText.length && chunk.startsWith(handle.segmentText))
             ) {
-              segmentText = chunk
+              handle.segmentText = chunk
             } else if (chunk) {
-              segmentText += chunk
+              handle.segmentText += chunk
             }
-            setMessages((prev) => applyStreamText(prev, activeChatId, segmentText))
+            patchStreamSession((prev) => ({
+              messages: applyStreamText(prev.messages, activeChatId, handle.segmentText),
+            }))
           }
           if (ev.event === 'reasoning_done') {
-            setMessages((prev) => finalizeStreamReasoning(prev))
+            patchStreamSession((prev) => ({
+              messages: finalizeStreamReasoning(prev.messages),
+            }))
           }
           if (ev.event === 'viz' && ev.data.spec && typeof ev.data.spec === 'object') {
             const spec = ev.data.spec as VizSpec
-            setMessages((prev) => applyStreamViz(prev, activeChatId, spec))
+            patchStreamSession((prev) => ({
+              messages: applyStreamViz(prev.messages, activeChatId, spec),
+            }))
           }
           if (ev.event === 'artifact' && ev.data.spec && typeof ev.data.spec === 'object') {
             const spec = ev.data.spec as ArtifactSpec
-            setMessages((prev) => applyStreamArtifact(prev, activeChatId, spec))
+            patchStreamSession((prev) => ({
+              messages: applyStreamArtifact(prev.messages, activeChatId, spec),
+            }))
           }
           if (ev.event === 'proposal_updated') {
             const preview = parseProposalPreview(ev.data)
             if (preview) {
-              applyProposalPreview(preview, activeChatId)
+              handle.previewFreshFromStream = true
+              applyProposalPreview(agentId, preview, activeChatId)
             }
-            if (proposalPanelTabRef.current === 'state') {
-              void fetchProposalState(activeChatId)
+            const tab = proposalPanelTabRef.current.get(agentId) ?? 'preview'
+            if (tab === 'state') {
+              void fetchProposalState(agentId, activeChatId)
             }
           }
           const proposalDraftWriteTools = new Set([
@@ -864,65 +1027,75 @@ export function ChatPage() {
           if (
             ev.event === 'tool_result' &&
             proposalDraftWriteTools.has(String(ev.data?.tool_name || '')) &&
-            isProposalComposer
+            composer
           ) {
             const result = parseToolResultObject(ev.data?.result)
             if (result) {
               const draft = result.draft
               if (draft && typeof draft === 'object' && !Array.isArray(draft)) {
-                setProposalState(draft as Record<string, unknown>)
+                patchStreamSession({ proposalState: draft as Record<string, unknown> })
               }
             }
-            if (proposalPanelTabRef.current === 'state') {
-              void fetchProposalState(activeChatId)
+            const tab = proposalPanelTabRef.current.get(agentId) ?? 'preview'
+            if (tab === 'state') {
+              void fetchProposalState(agentId, activeChatId)
             }
           }
           if (ev.event === 'reasoning' && typeof ev.data.text === 'string') {
-            setMessages((prev) => applyStreamReasoning(prev, activeChatId, ev.data.text as string))
+            patchStreamSession((prev) => ({
+              messages: applyStreamReasoning(prev.messages, activeChatId, ev.data.text as string),
+            }))
           }
           if (ev.event === 'tool_call' && ev.data) {
-            segmentText = ''
-            setMessages((prev) => applyStreamToolCall(prev, activeChatId, ev.data))
+            handle.segmentText = ''
+            patchStreamSession((prev) => ({
+              messages: applyStreamToolCall(prev.messages, activeChatId, ev.data),
+            }))
           }
           if (ev.event === 'tool_result' && ev.data) {
-            segmentText = ''
-            setMessages((prev) => applyStreamToolResult(prev, activeChatId, ev.data))
+            handle.segmentText = ''
+            patchStreamSession((prev) => ({
+              messages: applyStreamToolResult(prev.messages, activeChatId, ev.data),
+            }))
           }
           if (ev.event === 'stream_idle') {
-            streamIdleSeen = true
-            setLoading(false)
-            setActiveRunId(null)
-            runIdRef.current = null
-            setMessages((prev) => finalizeStreamLocalMessages(prev))
-            beginTurnSync()
+            handle.streamIdleSeen = true
+            patchStreamSession((prev) => ({
+              loading: false,
+              activeRunId: null,
+              turnSyncPhase: 'saving-messages',
+              proposalTurnSyncing: composer,
+              messages: finalizeStreamLocalMessages(prev.messages),
+            }))
           }
           if (ev.event === 'error') {
-            throw new Error(String(ev.data.error ?? 'stream error'))
+            throw new Error(formatUserFacingError(ev.data.error ?? ev.data, 'stream error'))
           }
         },
         abortController.signal,
         attachmentIds,
       )
 
-      if (generation !== streamGenRef.current) return
+      if (!streamRegistryRef.current.isActive(activeChatId, generation)) return
       await finishTurnAfterStream()
     } catch (e) {
-      if (generation !== streamGenRef.current) return
+      if (!streamRegistryRef.current.isActive(activeChatId, generation)) return
       if (e instanceof Error && e.name === 'AbortError') return
-      setError(e instanceof Error ? e.message : 'Failed to send message')
+      patchSession(agentId, {
+        error: formatUserFacingError(e, 'Failed to send message'),
+        proposalTurnSyncing: false,
+        turnSyncPhase: null,
+        loading: false,
+        activeRunId: null,
+      })
       try {
-        await reloadMessagesAfterStream(activeChatId)
+        await reloadMessagesAfterStream(agentId, activeChatId)
       } catch {
         /* ignore reload failure */
       }
-      setProposalTurnSyncing(false)
-      setTurnSyncPhase(null)
-      setLoading(false)
-      setActiveRunId(null)
-      runIdRef.current = null
     } finally {
-      if (generation === streamGenRef.current && streamAbortRef.current === abortController) {
-        streamAbortRef.current = null
+      if (streamRegistryRef.current.get(activeChatId)?.generation === generation) {
+        streamRegistryRef.current.delete(activeChatId)
       }
     }
   }
@@ -930,27 +1103,41 @@ export function ChatPage() {
   const startNewChat = async () => {
     if (!selectedId || loading || chatSessionLoading) return
     setHistoryOpen(false)
-    setError(null)
+    proposalFetchKeyRef.current = null
+    patchSession(selectedId, { error: null })
     try {
       await createAndOpenChat(selectedId)
-      setProposalPanelTab('preview')
-      if (isProposalComposer) {
-        setProposalPanelCollapsed(false)
-      }
+      patchSession(selectedId, {
+        proposalPanelTab: 'preview',
+        proposalPanelCollapsed: isProposalComposer ? false : true,
+      })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to start new conversation')
+      patchSession(selectedId, {
+        error: e instanceof Error ? e.message : 'Failed to start new conversation',
+      })
     }
   }
 
   const openHistoryChat = async (id: string) => {
-    if (!selectedId || loading || chatSessionLoading) return
+    if (!selectedId || chatSessionLoading) return
+    const current = getAgentSession(sessionsRef.current, selectedId)
+    if (current.loading && current.chatId === id) return
     setHistoryOpen(false)
+    proposalFetchKeyRef.current = null
     try {
       await openChatById(selectedId, id)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load conversation')
+      patchSession(selectedId, {
+        error: e instanceof Error ? e.message : 'Failed to load conversation',
+      })
     }
   }
+
+  useEffect(() => {
+    return () => {
+      streamRegistryRef.current.abortAll()
+    }
+  }, [])
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
@@ -1017,6 +1204,8 @@ export function ChatPage() {
           {!agentsLoading &&
             agents.map((agent) => {
             const active = agent.id === selectedId
+            const agentSession = getAgentSession(sessions, agent.id)
+            const agentBusy = agentSession.loading
             return (
               <li key={agent.id} className="mb-0.5">
                 <button
@@ -1025,11 +1214,14 @@ export function ChatPage() {
                   title={sidebarCollapsed ? formatAgentLabel(agent) : undefined}
                   className={`agent-nav-item ${active ? 'agent-nav-item-active' : ''} ${
                     sidebarCollapsed ? 'agent-nav-item-collapsed' : ''
-                  }`}
+                  }${agentBusy ? ' agent-nav-item-busy' : ''}`}
                 >
                   <AgentIcon className="h-[18px] w-[18px] shrink-0" />
                   {!sidebarCollapsed && (
                     <span className="agent-nav-label">{formatAgentLabel(agent)}</span>
+                  )}
+                  {agentBusy && (
+                    <span className="agent-nav-busy-dot" aria-hidden title="Responding…" />
                   )}
                 </button>
               </li>
@@ -1162,7 +1354,9 @@ export function ChatPage() {
 
                 {error && (
                   <p className="chat-error-bar text-center text-[11px] text-brand-700">
-                    <span className="chat-content-column inline-block">{error}</span>
+                    <span className="chat-content-column inline-block">
+                      {formatUserFacingError(error)}
+                    </span>
                   </p>
                 )}
 
@@ -1204,7 +1398,7 @@ export function ChatPage() {
                       )}
                       <textarea
                         value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                        onChange={(e) => setInputForSelected(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.nativeEvent.isComposing || e.keyCode === 229) {
                             return
@@ -1308,7 +1502,7 @@ export function ChatPage() {
                     error={proposalPreviewError}
                     onCollapse={collapseProposalPanel}
                     onRefresh={() => {
-                      if (chatId) void fetchProposalPreview(chatId)
+                      if (selectedId && chatId) void fetchProposalPreview(selectedId, chatId)
                     }}
                   />
                 ) : (
@@ -1322,7 +1516,7 @@ export function ChatPage() {
                     error={proposalStateError}
                     onCollapse={collapseProposalPanel}
                     onRefresh={() => {
-                      if (chatId) void fetchProposalState(chatId)
+                      if (selectedId && chatId) void fetchProposalState(selectedId, chatId)
                     }}
                   />
                 )}

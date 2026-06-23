@@ -312,6 +312,7 @@ body {
 
 .agent-nav-label {
   min-width: 0;
+  flex: 1;
   font-family: 'PingFang SC', var(--font-sans);
   font-size: 14px;
   font-weight: 500;
@@ -320,6 +321,35 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.agent-nav-busy-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-brand-500, #f97316);
+  animation: agent-nav-pulse 1.2s ease-in-out infinite;
+}
+
+.agent-nav-item-collapsed .agent-nav-busy-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+}
+
+@keyframes agent-nav-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .chat-header {
@@ -1013,6 +1043,7 @@ body {
 }
 
 .agent-nav-item-collapsed {
+  position: relative;
   justify-content: center;
   width: 2.375rem;
   margin-inline: auto;

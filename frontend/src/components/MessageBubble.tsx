@@ -1,6 +1,8 @@
 import type { Message, MessageAttachmentMeta } from '../types'
 import { MarkdownContent } from './MarkdownContent'
 
+import { formatUserFacingError } from '../lib/userFacingError'
+
 interface Props {
   message: Message
 }
@@ -32,7 +34,7 @@ export function MessageBubble({ message }: Props) {
     return (
       <div className="flex justify-start">
         <div className="chat-assistant-block msg-assistant rounded-sm border border-brand-200 px-3 py-2 text-[12px] text-brand-700">
-          {message.content}
+          {formatUserFacingError(message.content, 'Assistant run failed')}
         </div>
       </div>
     )

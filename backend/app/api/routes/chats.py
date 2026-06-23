@@ -24,6 +24,7 @@ from app.platform.current_user import get_current_user_id
 from app.db.session import get_db
 from app.services.attachment_service import AttachmentService
 from app.services.chat_run import ChatRunService, list_chat_messages
+from app.services.stream_errors import user_facing_stream_error
 from app.services.proposal_preview_service import get_chat_proposal_draft, get_chat_proposal_preview, load_chat_proposal_draft
 from app.proposal.export_service import ProposalExportError, generate_proposal_docx
 from app.proposal.storage import artifact_download_filename, artifact_media_type, resolve_artifact_path
@@ -239,14 +240,7 @@ async def stream_message(
     service = ChatRunService(db)
 
     def _stream_error_message(exc: Exception) -> str:
-        name = type(exc).__name__
-        text = str(exc)
-        if "AuthenticationError" in name or "401" in text or "Unauthorized" in text:
-            return (
-                "Claude 模型认证失败（401）：请检查 backend/.env 中的 "
-                "CLAUDE_AZURE_API_KEY 与 CLAUDE_AZURE_FOUNDRY_ENDPOINT 是否与 Azure 资源区域一致。"
-            )
-        return text or name
+        return user_facing_stream_error(exc)
 
     async def event_generator():
         try:

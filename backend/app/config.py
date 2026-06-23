@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     claude_azure_foundry_model: str | None = Field(
         default=None, validation_alias="CLAUDE_AZURE_FOUNDRY_MODEL"
     )
+    claude_enable_thinking: bool = Field(default=False, validation_alias="CLAUDE_ENABLE_THINKING")
 
     database_url: str = Field(validation_alias="DATABASE_URL")
     redis_url: str = Field(validation_alias="REDIS_URL")

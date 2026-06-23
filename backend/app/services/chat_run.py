@@ -20,6 +20,7 @@ from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
 from app.platform.session_store import SessionStore
 from app.platform.user_message_input import build_user_run_input, link_attachments_metadata
 from app.services.attachment_service import AttachmentService
+from app.services.stream_errors import user_facing_stream_error
 from app.proposal.context import get_run_proposal_state, init_run_proposal_state, reset_run_proposal_state
 from app.diagram.context import get_run_diagram_state, init_run_diagram_state, reset_run_diagram_state
 from app.proposal.draft import build_draft_preview
@@ -199,7 +200,7 @@ class ChatRunService:
             await self._db.rollback()
 
     async def _persist_run_error(self, chat_id: uuid.UUID, exc: Exception) -> None:
-        message = str(exc).strip() or type(exc).__name__
+        message = user_facing_stream_error(exc)
         await self._messages.insert(
             chat_id=chat_id,
             role="assistant",
