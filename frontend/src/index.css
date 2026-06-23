@@ -2108,6 +2108,23 @@ body {
   background: var(--color-brand-50, #fff7ed);
 }
 
+.artifact-side-panel-header-diagram {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+}
+
+.artifact-side-panel-header-diagram .artifact-side-panel-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.diagram-artifact-panel-actions {
+  flex-wrap: wrap;
+}
+
 .artifact-markdown-wrap {
   overflow: auto;
   padding: 0.75rem 0.875rem;
