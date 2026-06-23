@@ -148,18 +148,20 @@ async def export_proposal(
 async def download_artifact(
     chat_id: uuid.UUID,
     artifact_id: str,
+    format: str | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> FileResponse:
     chat = await db.get(Chat, chat_id)
     if chat is None:
         raise HTTPException(status_code=404, detail="Chat not found")
-    path = resolve_artifact_path(chat_id, artifact_id)
+    variant = format.strip().lower() if format else None
+    path = resolve_artifact_path(chat_id, artifact_id, variant=variant)
     if path is None:
         raise HTTPException(status_code=404, detail="Artifact not found")
-    filename = artifact_download_filename(chat_id, artifact_id)
+    filename = artifact_download_filename(chat_id, artifact_id, variant=variant)
     return FileResponse(
         path,
-        media_type=artifact_media_type(chat_id, artifact_id),
+        media_type=artifact_media_type(chat_id, artifact_id, variant=variant),
         filename=filename,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

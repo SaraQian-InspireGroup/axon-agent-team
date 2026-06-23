@@ -20,7 +20,7 @@ from app.platform.session_store import SessionStore
 from app.platform.skill_registry import SkillRegistry
 from app.platform.tool_registry import ToolRegistry
 from app.tools import BUILTIN_TOOLS
-from app.tools.builtin_groups import PROPOSAL_TOOL_NAMES, resolve_builtin_tools
+from app.tools.builtin_groups import DIAGRAM_TOOL_NAMES, PROPOSAL_TOOL_NAMES, resolve_builtin_tools
 
 
 class AgentFactory:
@@ -105,7 +105,8 @@ class AgentFactory:
                     viz_tools.append(viz_tool)
 
         proposal_tools = resolve_builtin_tools(allowed, PROPOSAL_TOOL_NAMES)
-        combined_tools = [*viz_tools, *proposal_tools, *list(function_tools or []), *mcp_tools]
+        diagram_tools = resolve_builtin_tools(allowed, DIAGRAM_TOOL_NAMES)
+        combined_tools = [*viz_tools, *proposal_tools, *diagram_tools, *list(function_tools or []), *mcp_tools]
 
         agent = self._registry.create_agent(
             name=row.name,

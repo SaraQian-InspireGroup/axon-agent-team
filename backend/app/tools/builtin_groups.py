@@ -32,6 +32,12 @@ VIZ_TOOL_NAMES = frozenset(
     }
 )
 
+DIAGRAM_TOOL_NAMES = frozenset(
+    {
+        "render_plantuml",
+    }
+)
+
 
 def resolve_builtin_tools(allowed_tools: list[str], group: frozenset[str]) -> list:
     """Return MAF tool callables for allowed names in a builtin group."""

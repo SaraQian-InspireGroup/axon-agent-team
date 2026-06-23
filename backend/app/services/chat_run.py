@@ -21,6 +21,7 @@ from app.platform.session_store import SessionStore
 from app.platform.user_message_input import build_user_run_input, link_attachments_metadata
 from app.services.attachment_service import AttachmentService
 from app.proposal.context import get_run_proposal_state, init_run_proposal_state, reset_run_proposal_state
+from app.diagram.context import get_run_diagram_state, init_run_diagram_state, reset_run_diagram_state
 from app.proposal.draft import build_draft_preview
 from app.proposal.store import (
     load_proposal_draft_from_payload,
@@ -37,6 +38,7 @@ _TOOL_ROW_TYPES = frozenset({"tool_call", "tool_result", "mcp_call", "mcp_result
 
 
 _PROPOSAL_AGENT_SLUG = "proposal-composer"
+_DIAGRAM_AGENT_SLUG = "napkin-architect"
 
 
 class ChatRunService:
@@ -144,6 +146,13 @@ class ChatRunService:
             initial_draft=initial_draft,
         )
 
+    async def _prepare_diagram_context(self, chat: Chat) -> None:
+        agent = await self._db.get(AgentModel, chat.agent_id)
+        if not agent or agent.slug != _DIAGRAM_AGENT_SLUG:
+            reset_run_diagram_state()
+            return
+        init_run_diagram_state(chat_id=chat.id)
+
     async def _finalize_success(
         self,
         chat_id: uuid.UUID,
@@ -201,10 +210,14 @@ class ChatRunService:
         await self._db.flush()
 
     async def _persist_pending_artifacts(self, chat_id: uuid.UUID) -> None:
-        ctx = get_run_proposal_state()
-        if ctx is None:
-            return
-        for spec in ctx.drain_pending_artifacts():
+        specs: list[ArtifactSpec] = []
+        proposal_ctx = get_run_proposal_state()
+        if proposal_ctx is not None:
+            specs.extend(proposal_ctx.drain_pending_artifacts())
+        diagram_ctx = get_run_diagram_state()
+        if diagram_ctx is not None:
+            specs.extend(diagram_ctx.drain_pending_artifacts())
+        for spec in specs:
             await self._messages.insert(
                 chat_id=chat_id,
                 role="assistant",
@@ -224,6 +237,7 @@ class ChatRunService:
         memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
         await self._prepare_proposal_context(chat)
+        await self._prepare_diagram_context(chat)
         attachments = await self._resolve_attachments(chat, attachment_ids or [])
         if not content.strip() and not attachments:
             raise ValueError("Message content or attachments required")
@@ -274,6 +288,7 @@ class ChatRunService:
             raise
         finally:
             reset_run_proposal_state()
+            reset_run_diagram_state()
 
     async def stream_message(
         self,
@@ -286,6 +301,7 @@ class ChatRunService:
         memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
         await self._prepare_proposal_context(chat)
+        await self._prepare_diagram_context(chat)
         attachments = await self._resolve_attachments(chat, attachment_ids or [])
         if not content.strip() and not attachments:
             raise ValueError("Message content or attachments required")
@@ -424,6 +440,7 @@ class ChatRunService:
         finally:
             reset_run_viz_state()
             reset_run_proposal_state()
+            reset_run_diagram_state()
             await run_manager.complete(run.run_id)
 
     async def _persist_agent_messages(
@@ -558,12 +575,18 @@ def _emit_pending_artifact_events(
     chat_id: uuid.UUID,
     accumulator: "_StreamTurnAccumulator",
 ) -> list[dict[str, Any]]:
-    ctx = get_run_proposal_state()
-    if ctx is None:
+    specs: list[ArtifactSpec] = []
+    proposal_ctx = get_run_proposal_state()
+    if proposal_ctx is not None:
+        specs.extend(proposal_ctx.drain_pending_artifacts())
+    diagram_ctx = get_run_diagram_state()
+    if diagram_ctx is not None:
+        specs.extend(diagram_ctx.drain_pending_artifacts())
+    if not specs:
         return []
 
     events: list[dict[str, Any]] = []
-    for spec in ctx.drain_pending_artifacts():
+    for spec in specs:
         accumulator.record_artifact(spec)
         events.append(
             {

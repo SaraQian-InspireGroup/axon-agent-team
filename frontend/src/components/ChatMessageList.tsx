@@ -3,6 +3,7 @@ import { MessageBubble } from './MessageBubble'
 import { VizBubble } from './VizBubble'
 import { ArtifactBubble } from './ArtifactBubble'
 import { groupMessages, shouldShowPendingIndicator, type ChatBlock } from '../lib/messageActivity'
+import { isProposalArtifact } from '../lib/artifactDownload'
 import type { ArtifactSpec } from '../types/artifact'
 import type { Message } from '../types'
 
@@ -10,7 +11,8 @@ type Props = {
   messages: Message[]
   loading?: boolean
   turnSyncHint?: string | null
-  liveProposalOpen?: boolean
+  proposalPanelOpen?: boolean
+  expandedArtifactId?: string | null
   onExpandArtifact?: (spec: ArtifactSpec) => void
 }
 
@@ -27,10 +29,21 @@ function PendingIndicator({ hint }: { hint?: string | null }) {
   )
 }
 
+function isArtifactExpanded(
+  spec: ArtifactSpec,
+  proposalPanelOpen?: boolean,
+  expandedArtifactId?: string | null,
+): boolean {
+  if (expandedArtifactId && spec.artifact_id === expandedArtifactId) return true
+  if (proposalPanelOpen && isProposalArtifact(spec)) return true
+  return false
+}
+
 function renderBlock(
   block: ChatBlock,
   key: string,
-  liveProposalOpen?: boolean,
+  proposalPanelOpen?: boolean,
+  expandedArtifactId?: string | null,
   onExpandArtifact?: (spec: ArtifactSpec) => void,
 ) {
   if (block.kind === 'bubble') {
@@ -48,7 +61,7 @@ function renderBlock(
       <div key={key} className="chat-artifact-row">
         <ArtifactBubble
           spec={block.spec}
-          expanded={Boolean(liveProposalOpen)}
+          expanded={isArtifactExpanded(block.spec, proposalPanelOpen, expandedArtifactId)}
           onExpand={onExpandArtifact}
         />
       </div>
@@ -65,7 +78,8 @@ export function ChatMessageList({
   messages,
   loading = false,
   turnSyncHint = null,
-  liveProposalOpen = false,
+  proposalPanelOpen = false,
+  expandedArtifactId = null,
   onExpandArtifact,
 }: Props) {
   const blocks = groupMessages(messages)
@@ -78,7 +92,8 @@ export function ChatMessageList({
         renderBlock(
           block,
           block.kind === 'bubble' ? block.message.id : `${block.kind}-${block.id}-${index}`,
-          liveProposalOpen,
+          proposalPanelOpen,
+          expandedArtifactId,
           onExpandArtifact,
         ),
       )}

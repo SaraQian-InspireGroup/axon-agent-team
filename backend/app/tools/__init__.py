@@ -1,4 +1,5 @@
 from app.tools.builtin import platform_time
+from app.tools.diagram import render_plantuml_tool
 from app.tools.mdm_catalog import (
     get_mdm_package_services,
     list_mdm_packages,
@@ -23,6 +24,7 @@ from app.tools.viz import list_sql_results, suggest_visualization
 
 BUILTIN_TOOLS = {
     "platform_time": platform_time,
+    "render_plantuml": render_plantuml_tool,
     "list_sql_results": list_sql_results,
     "suggest_visualization": suggest_visualization,
     "list_templates": list_templates,

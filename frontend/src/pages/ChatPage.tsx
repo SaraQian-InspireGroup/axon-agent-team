@@ -8,6 +8,8 @@ import { ProposalPanelShell, readProposalPanelWidth, type ProposalPanelTab } fro
 import { ProposalStatePanel } from '../components/ProposalStatePanel'
 import { ChatHistoryIcon } from '../components/ChatHistoryIcon'
 import { ChatMessageList } from '../components/ChatMessageList'
+import { ArtifactSidePanel } from '../components/ArtifactSidePanel'
+import { DiagramPanelShell, readDiagramPanelWidth } from '../components/DiagramPanelShell'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { PanelLoadingState } from '../components/PanelLoadingState'
 import { NewChatIcon } from '../components/NewChatIcon'
@@ -41,6 +43,7 @@ import {
 } from '../lib/messageActivity'
 import { turnSyncStatusLabel, type TurnSyncPhase } from '../lib/turnSync'
 import type { ArtifactSpec } from '../types/artifact'
+import { isProposalArtifact } from '../lib/artifactDownload'
 import type { VizSpec } from '../types/viz'
 import type { ProposalPreview } from '../types/proposalPreview'
 import type { ProposalDraftResponse } from '../types/proposalDraft'
@@ -184,6 +187,8 @@ export function ChatPage() {
   const [proposalStateFingerprint, setProposalStateFingerprint] = useState<string | null>(null)
   const [proposalStateLoading, setProposalStateLoading] = useState(false)
   const [proposalStateError, setProposalStateError] = useState<string | null>(null)
+  const [expandedArtifact, setExpandedArtifact] = useState<ArtifactSpec | null>(null)
+  const [diagramPanelWidth, setDiagramPanelWidth] = useState(readDiagramPanelWidth)
   const proposalPreviewFetchGenRef = useRef(0)
   const proposalStateFetchGenRef = useRef(0)
   const chatIdRef = useRef<string | null>(null)
@@ -327,14 +332,25 @@ export function ChatPage() {
   )
 
   const handleExpandArtifact = useCallback(
-    (_spec: ArtifactSpec) => {
-      if (!isProposalComposer) return
-      expandProposalPanel()
-      setHistoryOpen(false)
-      setMemoryOpen(false)
+    (spec: ArtifactSpec) => {
+      if (isProposalArtifact(spec) && isProposalComposer) {
+        expandProposalPanel()
+        setHistoryOpen(false)
+        setMemoryOpen(false)
+        return
+      }
+      if (spec.kind === 'diagram_svg') {
+        setExpandedArtifact(spec)
+        setHistoryOpen(false)
+        setMemoryOpen(false)
+      }
     },
     [expandProposalPanel, isProposalComposer],
   )
+
+  const closeArtifactPanel = useCallback(() => {
+    setExpandedArtifact(null)
+  }, [])
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -365,6 +381,7 @@ export function ChatPage() {
     chatIdRef.current = null
     setChatSessionLoading(true)
     setMessages([])
+    setExpandedArtifact(null)
     invalidateProposalPanelFetches()
     setProposalPreview(null)
     setProposalPreviewError(null)
@@ -379,6 +396,7 @@ export function ChatPage() {
     setInput('')
     setPendingAttachments([])
     setError(null)
+    setExpandedArtifact(null)
     invalidateProposalPanelFetches()
     setProposalPreview(null)
     setProposalPreviewError(null)
@@ -410,6 +428,7 @@ export function ChatPage() {
       setProposalStateError(null)
       setInput('')
       setPendingAttachments([])
+      setExpandedArtifact(null)
       const rows = await api.listMessages(id)
       setMessages(rows)
       setChatId(id)
@@ -1132,7 +1151,8 @@ export function ChatPage() {
                           messages={messages}
                           loading={loading}
                           turnSyncHint={turnSyncHint}
-                          liveProposalOpen={isProposalComposer && !proposalPanelCollapsed}
+                          proposalPanelOpen={isProposalComposer && !proposalPanelCollapsed}
+                          expandedArtifactId={expandedArtifact?.artifact_id ?? null}
                           onExpandArtifact={handleExpandArtifact}
                         />
                       </>
@@ -1308,6 +1328,19 @@ export function ChatPage() {
                 )}
               </ProposalPanelShell>
             )}
+
+            <DiagramPanelShell
+              open={expandedArtifact != null}
+              width={diagramPanelWidth}
+              onWidthChange={setDiagramPanelWidth}
+            >
+              <ArtifactSidePanel
+                open={expandedArtifact != null}
+                spec={expandedArtifact}
+                embedded
+                onClose={closeArtifactPanel}
+              />
+            </DiagramPanelShell>
 
             <MemoryPanel
               open={memoryOpen}

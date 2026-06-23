@@ -1,37 +1,19 @@
 import { useEffect } from 'react'
 import { MarkdownContent } from './MarkdownContent'
+import { DiagramArtifactViewer } from './DiagramArtifactViewer'
+import { ArtifactCopyIcon } from './ArtifactCopyIcon'
 import { ArtifactDownloadIcon } from './ArtifactDownloadIcon'
 import type { ArtifactSpec } from '../types/artifact'
+import { copyArtifactSource, downloadArtifactFile, canDownloadDiagramPng } from '../lib/artifactDownload'
 
 type Props = {
   open: boolean
   spec: ArtifactSpec | null
+  embedded?: boolean
   onClose: () => void
 }
 
-function downloadArtifact(spec: ArtifactSpec) {
-  if (spec.download_url) {
-    const link = document.createElement('a')
-    link.href = spec.download_url
-    link.download = spec.filename
-    link.rel = 'noopener'
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    return
-  }
-  const blob = new Blob([spec.content], { type: 'text/markdown;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = spec.filename || 'proposal.md'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
-}
-
-export function ArtifactSidePanel({ open, spec, onClose }: Props) {
+export function ArtifactSidePanel({ open, spec, embedded = false, onClose }: Props) {
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -41,41 +23,67 @@ export function ArtifactSidePanel({ open, spec, onClose }: Props) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [open, onClose])
 
+  const panelClass = [
+    'artifact-side-panel',
+    open ? 'artifact-side-panel-open' : '',
+    embedded ? 'artifact-side-panel-embedded' : '',
+    embedded ? 'artifact-side-panel-shell-hosted' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   if (!spec) {
-    return (
-      <aside
-        className={`artifact-side-panel${open ? ' artifact-side-panel-open' : ''}`}
-        aria-hidden
-      />
-    )
+    return <aside className={panelClass} aria-hidden />
   }
 
+  const isDiagram = spec.kind === 'diagram_svg'
+  const canCopySource = Boolean(spec.source?.trim())
+  const canDownloadPng = canDownloadDiagramPng(spec)
+
   return (
-    <aside
-      className={`artifact-side-panel${open ? ' artifact-side-panel-open' : ''}`}
-      aria-hidden={!open}
-      aria-label={spec.title}
-    >
+    <aside className={panelClass} aria-hidden={!open} aria-label={spec.title}>
       <div className="artifact-side-panel-inner">
         <div className="artifact-side-panel-header">
           <h2 className="artifact-side-panel-title" title={spec.title}>
             {spec.title}
           </h2>
           <div className="artifact-side-panel-actions">
+            {canCopySource && (
+              <button
+                type="button"
+                className="viz-widget-btn"
+                aria-label="Copy source"
+                title="Copy source"
+                onClick={() => void copyArtifactSource(spec)}
+              >
+                <ArtifactCopyIcon />
+              </button>
+            )}
             <button
               type="button"
               className="viz-widget-btn"
-              aria-label="Download"
-              title="Download"
-              onClick={() => downloadArtifact(spec)}
+              aria-label="Download SVG"
+              title="Download SVG"
+              onClick={() => void downloadArtifactFile(spec, 'default')}
             >
               <ArtifactDownloadIcon />
             </button>
+            {canDownloadPng && (
+              <button
+                type="button"
+                className="viz-widget-btn viz-widget-btn-text"
+                aria-label="Download PNG"
+                title="Download PNG"
+                onClick={() => void downloadArtifactFile(spec, 'png')}
+              >
+                PNG
+              </button>
+            )}
             <button
               type="button"
               className="viz-widget-btn artifact-side-panel-close"
               onClick={onClose}
-              aria-label="Close proposal preview"
+              aria-label="Close preview"
               title="Close"
             >
               <svg
@@ -94,12 +102,16 @@ export function ArtifactSidePanel({ open, spec, onClose }: Props) {
             </button>
           </div>
         </div>
-        <div className="artifact-side-panel-scroll">
-          <MarkdownContent
-            content={spec.content}
-            className="markdown-body artifact-markdown-body"
-            allowHtml
-          />
+        <div className="artifact-side-panel-scroll artifact-side-panel-scroll-diagram">
+          {isDiagram ? (
+            <DiagramArtifactViewer spec={spec} />
+          ) : (
+            <MarkdownContent
+              content={spec.content}
+              className="markdown-body artifact-markdown-body"
+              allowHtml
+            />
+          )}
         </div>
       </div>
     </aside>

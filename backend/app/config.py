@@ -74,6 +74,18 @@ class Settings(BaseSettings):
         default=50 * 1024 * 1024, validation_alias="ATTACHMENT_MAX_TOTAL_BYTES_PER_MESSAGE"
     )
 
+    # Diagram rendering (agents/napkin-architect)
+    plantuml_renderer: str = Field(default="kroki", validation_alias="PLANTUML_RENDERER")
+    kroki_url: str = Field(default="https://kroki.io", validation_alias="KROKI_URL")
+    plantuml_jar_path: str = Field(
+        default="tools/plantuml.jar",
+        validation_alias="PLANTUML_JAR_PATH",
+    )
+    plantuml_render_timeout_seconds: float = Field(
+        default=30.0,
+        validation_alias="PLANTUML_RENDER_TIMEOUT_SECONDS",
+    )
+
     app_name: str = "agent-platform"
     debug: bool = False
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"])
