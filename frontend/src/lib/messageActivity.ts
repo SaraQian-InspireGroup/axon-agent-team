@@ -576,7 +576,7 @@ export function applyStreamArtifact(
   ]
 }
 
-export function groupMessages(messages: Message[]): ChatBlock[] {
+export function groupMessages(messages: Message[], options?: { streaming?: boolean }): ChatBlock[] {
   const blocks: ChatBlock[] = []
 
   for (const message of messages) {
@@ -601,13 +601,17 @@ export function groupMessages(messages: Message[]): ChatBlock[] {
     blocks.push({ kind: 'bubble', message })
   }
 
-  for (const block of blocks) {
-    if (
-      block.kind === 'process' &&
-      block.item.status === 'running' &&
-      block.item.kind !== 'reasoning'
-    ) {
-      block.item = { ...block.item, status: 'done' }
+  // While streaming, keep tool_call rows in "running" so the header spinner shows.
+  // After the turn finishes, collapse orphaned running tools (e.g. reload mid-call).
+  if (!options?.streaming) {
+    for (const block of blocks) {
+      if (
+        block.kind === 'process' &&
+        block.item.status === 'running' &&
+        block.item.kind !== 'reasoning'
+      ) {
+        block.item = { ...block.item, status: 'done' }
+      }
     }
   }
 

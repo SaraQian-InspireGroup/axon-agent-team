@@ -82,7 +82,7 @@ export function ChatMessageList({
   expandedArtifactId = null,
   onExpandArtifact,
 }: Props) {
-  const blocks = groupMessages(messages)
+  const blocks = groupMessages(messages, { streaming: loading })
   const showPending = shouldShowPendingIndicator(loading, messages)
   const showSyncStatus = Boolean(turnSyncHint)
 

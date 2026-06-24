@@ -102,6 +102,7 @@ function CancelIcon() {
 export function ProcessStepCard({ item }: Props) {
   const showRequest = Boolean(item.request?.trim())
   const showResponse = Boolean(item.response?.trim())
+  const showRunningHint = item.status === 'running' && item.kind !== 'reasoning'
   const showLegacyDetail =
     item.kind === 'reasoning' || (!showRequest && !showResponse && Boolean(item.detail.trim()))
   const [open, setOpen] = useState(false)
@@ -118,7 +119,7 @@ export function ProcessStepCard({ item }: Props) {
         <span className="process-step-title">{item.title}</span>
         <ChevronIcon open={open} />
       </button>
-      {open && (showRequest || showResponse || showLegacyDetail) && (
+      {open && (showRequest || showResponse || showRunningHint || showLegacyDetail) && (
         <div className="process-step-body">
           {showRequest ? (
             <div className="process-step-section">
@@ -130,6 +131,12 @@ export function ProcessStepCard({ item }: Props) {
             <div className="process-step-section">
               <div className="process-step-section-label">Response</div>
               <pre className="process-step-detail process-step-detail-compact">{item.response}</pre>
+            </div>
+          ) : null}
+          {showRunningHint && !showResponse ? (
+            <div className="process-step-section">
+              <div className="process-step-section-label">Response</div>
+              <p className="process-step-running-hint">Running…</p>
             </div>
           ) : null}
           {showLegacyDetail ? (

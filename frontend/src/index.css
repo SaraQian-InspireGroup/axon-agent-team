@@ -1439,6 +1439,13 @@ body {
   color: var(--color-brand-700);
 }
 
+.process-step-running-hint {
+  margin: 0;
+  padding: 0.35rem 0.5rem 0.45rem;
+  font-size: 10px;
+  color: var(--color-subtle);
+}
+
 /* Pending indicator — visible during TTFT / inter-step gaps */
 .chat-pending-row {
   display: flex;
