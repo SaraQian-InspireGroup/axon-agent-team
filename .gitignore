@@ -16,6 +16,7 @@ htmlcov/
 backend/.venv/
 backend/.run/
 backend/data/proposal-artifacts/
+backend/data/chat-attachments/
 frontend/.run/
 
 frontend/node_modules/

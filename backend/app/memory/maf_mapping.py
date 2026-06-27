@@ -1,9 +1,11 @@
 import json
+import uuid
 from typing import Any
 
 from agent_framework import Content, Message
 
 from app.memory.projectors.utils import ensure_dict
+from app.platform.attachment_adapters import metadata_attachment_to_maf_content
 from app.platform.platform_instructions import RUN_CANCELLED_USER_TEXT
 
 PLATFORM_MESSAGE_TYPE_KEY = "platform_message_type"
@@ -69,19 +71,12 @@ def _attachment_dicts(metadata: dict[str, Any]) -> list[dict[str, Any]]:
     return [item for item in raw if isinstance(item, dict)]
 
 
-def _attachments_to_contents(metadata: dict[str, Any]) -> list[Content]:
+def _attachments_to_contents(metadata: dict[str, Any], *, chat_id: uuid.UUID) -> list[Content]:
     contents: list[Content] = []
     for item in _attachment_dicts(metadata):
-        file_id = item.get("provider_file_id")
-        if not file_id:
-            continue
-        contents.append(
-            Content.from_hosted_file(
-                file_id=str(file_id),
-                media_type=str(item.get("mime_type") or "application/octet-stream"),
-                name=str(item.get("filename") or "attachment"),
-            )
-        )
+        content = metadata_attachment_to_maf_content(item, chat_id=chat_id)
+        if content is not None:
+            contents.append(content)
     return contents
 
 
@@ -128,7 +123,7 @@ def to_maf_messages(rows: list[dict[str, Any]]) -> list[Message]:
             text = row.get("content") or ""
             if text:
                 user_contents.append(Content.from_text(text))
-            user_contents.extend(_attachments_to_contents(metadata))
+            user_contents.extend(_attachments_to_contents(metadata, chat_id=uuid.UUID(row["chat_id"])))
             if not user_contents:
                 user_contents.append(Content.from_text(""))
             messages.append(

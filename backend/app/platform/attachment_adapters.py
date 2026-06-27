@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import uuid
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlencode, urlparse, urlunparse
@@ -13,6 +14,12 @@ from agent_framework import Content
 
 from app.config import Settings, get_settings
 from app.platform.attachment_limits import attachment_limits
+from app.platform.attachment_storage import (
+    is_image_mime,
+    is_inline_provider_file_id,
+    load_inline_attachment,
+    parse_inline_attachment_id,
+)
 from app.platform.model_registry import ModelProvider
 
 logger = logging.getLogger(__name__)
@@ -114,8 +121,15 @@ def azure_openai_file_upload_purpose(base_url: str) -> str:
     return "assistants" if is_azure_openai_base_url(base_url) else "user_data"
 
 
+def should_use_azure_inline_image(*, base_url: str, mime_type: str) -> bool:
+    """Azure Responses file_id inputs are PDF-only; images use inline vision data."""
+    return is_azure_openai_base_url(base_url) and is_image_mime(mime_type)
+
+
 def validate_azure_openai_attachment_mime(*, base_url: str, mime_type: str, filename: str) -> None:
     if not is_azure_openai_base_url(base_url):
+        return
+    if should_use_azure_inline_image(base_url=base_url, mime_type=mime_type):
         return
     normalized = (mime_type or "application/octet-stream").split(";", 1)[0].strip().lower()
     if normalized in AZURE_OPENAI_FILE_INPUT_MIME_TYPES:
@@ -123,8 +137,53 @@ def validate_azure_openai_attachment_mime(*, base_url: str, mime_type: str, file
     if filename.lower().endswith(".pdf"):
         return
     raise ValueError(
-        "Azure OpenAI currently supports PDF attachments only. "
+        "Azure OpenAI currently supports PDF file attachments and pasted/screenshot images. "
         "Convert Word/Excel files to PDF, or paste the text into your message."
+    )
+
+
+def attachment_to_maf_content(att) -> Content:
+    provider_file_id = str(getattr(att, "provider_file_id", "") or "")
+    mime_type = str(getattr(att, "mime_type", "") or "application/octet-stream")
+    filename = str(getattr(att, "filename", "") or "attachment")
+
+    if is_inline_provider_file_id(provider_file_id):
+        chat_id = getattr(att, "chat_id", None)
+        if chat_id is None:
+            raise ValueError("Inline attachment is missing chat_id")
+        attachment_id = parse_inline_attachment_id(provider_file_id)
+        data = load_inline_attachment(chat_id, attachment_id)
+        return Content.from_data(
+            data=data,
+            media_type=mime_type,
+            additional_properties={"filename": filename},
+        )
+
+    return Content.from_hosted_file(
+        file_id=provider_file_id,
+        media_type=mime_type,
+        name=filename,
+    )
+
+
+def metadata_attachment_to_maf_content(item: dict, *, chat_id: uuid.UUID) -> Content | None:
+    file_id = item.get("provider_file_id")
+    if not file_id:
+        return None
+    mime_type = str(item.get("mime_type") or "application/octet-stream")
+    filename = str(item.get("filename") or "attachment")
+    if is_inline_provider_file_id(str(file_id)):
+        attachment_id = uuid.UUID(str(item.get("id") or parse_inline_attachment_id(str(file_id))))
+        data = load_inline_attachment(chat_id, attachment_id)
+        return Content.from_data(
+            data=data,
+            media_type=mime_type,
+            additional_properties={"filename": filename},
+        )
+    return Content.from_hosted_file(
+        file_id=str(file_id),
+        media_type=mime_type,
+        name=filename,
     )
 
 
@@ -222,16 +281,7 @@ def get_attachment_upload_adapter(provider: str, settings: Settings | None = Non
 
 
 def attachments_to_maf_contents(attachments: list) -> list[Content]:
-    contents: list[Content] = []
-    for att in attachments:
-        contents.append(
-            Content.from_hosted_file(
-                file_id=att.provider_file_id,
-                media_type=att.mime_type,
-                name=att.filename,
-            )
-        )
-    return contents
+    return [attachment_to_maf_content(att) for att in attachments]
 
 
 def attachment_metadata(att) -> dict:

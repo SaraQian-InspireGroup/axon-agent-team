@@ -37,8 +37,16 @@ def test_validate_azure_openai_attachment_mime_accepts_pdf():
     )
 
 
+def test_validate_azure_openai_attachment_mime_accepts_png():
+    validate_azure_openai_attachment_mime(
+        base_url="https://example.cognitiveservices.azure.com/openai",
+        mime_type="image/png",
+        filename="screenshot.png",
+    )
+
+
 def test_validate_azure_openai_attachment_mime_rejects_docx():
-    with pytest.raises(ValueError, match="PDF attachments only"):
+    with pytest.raises(ValueError, match="PDF file attachments"):
         validate_azure_openai_attachment_mime(
             base_url="https://example.cognitiveservices.azure.com/openai",
             mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

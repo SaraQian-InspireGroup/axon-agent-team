@@ -45,8 +45,10 @@ class AttachmentRepository:
         mime_type: str,
         size_bytes: int,
         message_id: uuid.UUID | None = None,
+        attachment_id: uuid.UUID | None = None,
     ) -> ChatAttachment:
         row = ChatAttachment(
+            id=attachment_id or uuid.uuid4(),
             chat_id=chat_id,
             message_id=message_id,
             provider=provider,

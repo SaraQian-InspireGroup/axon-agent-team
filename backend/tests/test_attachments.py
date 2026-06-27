@@ -15,8 +15,10 @@ class _Attachment:
 
 
 def test_to_maf_messages_rebuilds_user_attachments():
+    chat_id = "11111111-1111-1111-1111-111111111111"
     rows = [
         {
+            "chat_id": chat_id,
             "role": "user",
             "message_type": "text",
             "content": "Summarize this",

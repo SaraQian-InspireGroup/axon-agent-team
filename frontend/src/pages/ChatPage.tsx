@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent } from 'react'
 import { api, streamChat } from '../api/client'
 import { AgentIcon } from '../components/AgentIcon'
 import { ChatHistoryPanel } from '../components/ChatHistoryPanel'
@@ -32,6 +32,7 @@ import {
   pendingAttachmentSize,
   pendingAttachmentsForValidation,
   formatAttachmentLimitMb,
+  readPastedAttachmentFiles,
   type AttachmentLimits,
   type PendingAttachment,
 } from '../lib/attachments'
@@ -716,50 +717,80 @@ export function ChatPage() {
     fileInputRef.current?.click()
   }
 
+  const addPendingAttachmentFile = useCallback(
+    async (file: File): Promise<boolean> => {
+      if (!selectedId) return false
+      if (loading || chatSessionLoading || attachmentUploading) return false
+
+      const session = getAgentSession(sessionsRef.current, selectedId)
+      const limitError = validatePendingAttachments(
+        pendingAttachmentsForValidation(session.pendingAttachments),
+        file.size,
+        attachmentLimits,
+      )
+      if (limitError) {
+        patchSession(selectedId, { error: limitError })
+        return false
+      }
+
+      if (!session.chatId) {
+        patchSession(selectedId, (prev) => ({
+          pendingAttachments: [
+            ...prev.pendingAttachments,
+            {
+              kind: 'local',
+              localId: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              file,
+            },
+          ],
+        }))
+        return true
+      }
+
+      setAttachmentUploading(true)
+      patchSession(selectedId, { error: null })
+      try {
+        const uploaded = await api.uploadChatAttachment(session.chatId, file)
+        patchSession(selectedId, (prev) => ({
+          pendingAttachments: [...prev.pendingAttachments, { kind: 'uploaded', attachment: uploaded }],
+        }))
+        return true
+      } catch (e) {
+        patchSession(selectedId, {
+          error: formatApiError(e, 'Failed to upload attachment'),
+        })
+        return false
+      } finally {
+        setAttachmentUploading(false)
+      }
+    },
+    [
+      selectedId,
+      loading,
+      chatSessionLoading,
+      attachmentUploading,
+      attachmentLimits,
+      patchSession,
+    ],
+  )
+
   const handleAttachmentSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
+    await addPendingAttachmentFile(file)
+  }
 
-    const limitError = validatePendingAttachments(
-      pendingAttachmentsForValidation(pendingAttachments),
-      file.size,
-      attachmentLimits,
-    )
-    if (limitError) {
-      if (selectedId) patchSession(selectedId, { error: limitError })
-      return
-    }
-
-    if (!chatId) {
-      if (!selectedId) return
-      patchSession(selectedId, (prev) => ({
-        pendingAttachments: [
-          ...prev.pendingAttachments,
-          { kind: 'local', localId: `local-${Date.now()}`, file },
-        ],
-      }))
-      return
-    }
-
-    setAttachmentUploading(true)
-    if (selectedId) patchSession(selectedId, { error: null })
-    try {
-      const uploaded = await api.uploadChatAttachment(chatId, file)
-      if (selectedId) {
-        patchSession(selectedId, (prev) => ({
-          pendingAttachments: [...prev.pendingAttachments, { kind: 'uploaded', attachment: uploaded }],
-        }))
+  const handleComposerPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = readPastedAttachmentFiles(event.clipboardData)
+    if (files.length === 0) return
+    event.preventDefault()
+    void (async () => {
+      for (const file of files) {
+        const added = await addPendingAttachmentFile(file)
+        if (!added) break
       }
-    } catch (e) {
-      if (selectedId) {
-        patchSession(selectedId, {
-          error: formatApiError(e, 'Failed to upload attachment'),
-        })
-      }
-    } finally {
-      setAttachmentUploading(false)
-    }
+    })()
   }
 
   const resolveAttachmentIds = useCallback(
@@ -1399,6 +1430,7 @@ export function ChatPage() {
                       <textarea
                         value={input}
                         onChange={(e) => setInputForSelected(e.target.value)}
+                        onPaste={(e) => handleComposerPaste(e)}
                         onKeyDown={(e) => {
                           if (e.nativeEvent.isComposing || e.keyCode === 229) {
                             return
@@ -1430,7 +1462,7 @@ export function ChatPage() {
                               ? 'Uploading…'
                               : pendingAttachments.length >= attachmentLimits.max_files_per_message
                                 ? `Maximum ${attachmentLimits.max_files_per_message} files per message`
-                                : `Attach file (${SUPPORTED_ATTACHMENT_LABEL}, max ${attachmentLimits.max_files_per_message} files / ${formatAttachmentLimitMb(attachmentLimits.max_total_bytes_per_message)} MB total)`
+                                : `Attach file or paste image (${SUPPORTED_ATTACHMENT_LABEL}, max ${attachmentLimits.max_files_per_message} files / ${formatAttachmentLimitMb(attachmentLimits.max_total_bytes_per_message)} MB total)`
                           }
                         >
                           {attachmentUploading ? <LoadingSpinner size="sm" /> : '+'}
