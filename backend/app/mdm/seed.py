@@ -41,7 +41,6 @@ def _service_row(service, columns: set[str]) -> dict:
         "sku": service.sku,
         "bu": service.bu,
         "department_team": service.department_team,
-        "service_name": service.service_name,
         "description": service.description,
         "scope_of_work": service.scope_of_work,
         "billing_frequency": service.billing_frequency,
@@ -54,6 +53,14 @@ def _service_row(service, columns: set[str]) -> dict:
         "footnotes": service.footnotes,
         "sku_semantic_for_ai": service.sku_semantic_for_ai,
     }
+    # mdm_services name columns: product_name + service_name_on_proposal (006–019), then service_name (020+).
+    name = service.service_name
+    if "service_name" in columns:
+        row["service_name"] = name
+    if "service_name_on_proposal" in columns:
+        row["service_name_on_proposal"] = name
+    if "product_name" in columns:
+        row["product_name"] = name
     row[_scope_column(columns)] = service.jurisdiction
     if "category_id" in columns:
         row["category_id"] = BVI_CATEGORY_ID
