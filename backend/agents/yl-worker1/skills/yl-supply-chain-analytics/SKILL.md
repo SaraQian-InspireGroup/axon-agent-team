@@ -7,12 +7,36 @@ description: 伊利奶粉分仓补货供应链只读分析：全国/分仓供需
 
 ## 写 SQL 的默认策略
 
-1. **复制下文 Few-shot**，只改 `product_code`、仓名、`adjust_date`——不从零拼列名。
-2. **默认表**：全国 → `yl_national_sales_warehouse_inventory_report`；基地 → `yl_base_warehouse_inventory_report`；分仓 → `yl_sales_warehouse_inventory_report`；
+1. **先对路由表选数据源**，再 **复制对应 Few-shot**，只改 `product_code`、仓名、`adjust_date`——不从零拼表名/列名。
+2. **默认表**：全国 → `yl_national_sales_warehouse_inventory_report`；基地 → `yl_base_warehouse_inventory_report`；分仓 → `yl_sales_warehouse_inventory_report`。
 3. **下钻再用**：`yl_spot_inventory`、`yl_transit_inventory`、`yl_forward_transfer`、`yl_lateral_transfer`、`yl_sales_plan`、`yl_actual_sales`。
 4. **最新快照**：`adjust_date = (SELECT MAX(adjust_date) FROM …)`；跨表 JOIN 对齐同一业务日。
-5. **报错再核实**：`column does not exist` 时 `describe_table`，对照文末 **Schema 附录**。
-6. **一条 `query_data` = 一条 `SELECT`**（可含 `WITH`）；仅只读。
+5. **结构不明时**：用 `list_tables` / `describe_table` / `get_schema` 核实；**表名只取自下文「表清单」或 MCP 返回值**。
+6. **`query_data` 只提交一条只读查询**：以 `SELECT` 或 `WITH` 开头、无第二条语句、无分号串联；探库不走 `query_data`。
+
+### 业务问题 → 数据源（先选表，再写 SQL）
+
+| 用户关心 | 用这张表 | 直接可用的字段 / 算法 |
+|----------|----------|------------------------|
+| 分仓缺口、库存天数、预警分级 | `yl_sales_warehouse_inventory_report` | `ship_gap`, `order_gap`, `dos_days`（见指标词典公式） |
+| 全国货源、总缺口 | `yl_national_sales_warehouse_inventory_report` | 同上（汇总口径） |
+| **计划达成 / 销售完成率 / 订单完成率** | **`yl_sales_warehouse_inventory_report` 或 `yl_national_*`** | **`plan_num`, `sell_num`, `out_put_num`, `sell_completion_rate`, `order_completion_rate`** |
+| 跨月计划输入、计划调整 | `yl_sales_plan` | `plan_year`, `plan_month`, `plan_num`, `avg_plan_num` |
+| 月度实销归档、渠道实绩 | `yl_actual_sales` | `sell_num`, `out_put_num`, `unshipped_orders`, `sell_year`, `sell_month` |
+| 基地可发、正向补货 | `yl_base_warehouse_inventory_report` + `yl_forward_transfer` | `from_store_num_h`, `from_available` |
+| 横向 / 正向调拨追溯 | `yl_lateral_transfer`, `yl_forward_transfer` | `trans_num`, `reason`, `adjust_date` |
+| 批次库龄、大日期 | `yl_spot_inventory`, `yl_big_date_inventory` | `produce_date`, `big_date_num` |
+
+**计划达成没有单独汇总表**——完成率在监控报表里已算好；跨月对比用 `yl_sales_plan` + 报表或 `yl_actual_sales` JOIN，见 [demand-fulfillment.md](references/demand-fulfillment.md)。
+
+### `query_data` 提交形态（每次调用前对照）
+
+| 步骤 | 做法 |
+|------|------|
+| 探有哪些表 / 列 | `list_tables` → `describe_table` / `get_schema` |
+| 取数 | `query_data` 传入 **一条** 以 `SELECT` 或 `WITH` 开头的 SQL |
+| 复杂分析 | 用 `WITH … AS (SELECT …)` 包在同一个 `SELECT` 里，不要拆成多条语句 |
+| 需要 LIMIT | 可写 `LIMIT n`；平台也会自动封顶 |
 
 ## 指标词典
 
@@ -74,7 +98,28 @@ WHERE s.adjust_date = (SELECT MAX(adjust_date) FROM yl_sales_warehouse_inventory
 ORDER BY dos_days ASC NULLS FIRST;
 ```
 
-### 2. 全国大盘
+### 2. 计划 vs 实销 / 完成率（用户问「达成」「完成率」时用）
+
+```sql
+SELECT
+  s.adjust_date,
+  s.from_site_name,
+  s.plan_num,
+  s.sell_num,
+  s.out_put_num,
+  s.total_unship,
+  s.sell_completion_rate,
+  s.order_completion_rate,
+  s.out_put_area,
+  s.out_put_ec
+FROM yl_sales_warehouse_inventory_report s
+WHERE s.adjust_date = (SELECT MAX(adjust_date) FROM yl_sales_warehouse_inventory_report)
+  AND s.product_code = 'MOCK_YLP001'
+  AND s.from_site_code = 'MOCK_WH_S03'   -- 按用户指定仓替换；全国则改查 yl_national_* 并去掉 site 条件
+ORDER BY s.from_site_name;
+```
+
+### 3. 全国大盘
 
 ```sql
 SELECT
@@ -97,7 +142,7 @@ WHERE n.adjust_date = (SELECT MAX(adjust_date) FROM yl_national_sales_warehouse_
   AND n.product_code = 'MOCK_YLP001';
 ```
 
-### 3. 更多场景（整段复制，勿改列名）
+### 4. 更多场景（整段复制，勿改列名）
 
 | 意图 | 文件 |
 |------|------|
@@ -116,7 +161,7 @@ WHERE n.adjust_date = (SELECT MAX(adjust_date) FROM yl_national_sales_warehouse_
 
 ## 执行与输出
 
-1. 理解范围 → 选 Few-shot 或上表 reference → `query_data`
+1. 理解范围 → **业务路由表选表** → 复制 Few-shot 或 `read_skill_resource` → **`query_data` 单条 SELECT**
 2. 对用户：业务语言，**不出现**表名/列名/SQL（见 `system_prompt.md`）
 3. 可视化默认不出图；分仓排名 ≥5 行且含 `dos_days` 时用 `intent=ranking`
 
