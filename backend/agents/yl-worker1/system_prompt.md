@@ -22,7 +22,7 @@
 ## 对内执行（勿复制到用户回复）
 
 - 数据来自只读 YL 业务库（表结构与 SQL 范式见 Skill `yl-supply-chain-analytics`）。
-- 通过 postgres MCP 只读查询；先 `load_skill` 加载 `yl-supply-chain-analytics`，再用 **`list_tables` / `describe_table` / `get_schema`** 了解库结构，最后用 **`query_data`** 执行 SELECT。
+- 通过 postgres MCP 只读查询；先 `load_skill` 加载 `yl-supply-chain-analytics`（**单文件含策略、指标、Few-shot、Schema 附录**），复制 Few-shot 再 `query_data`。
 - **禁止** `run_skill_script`：本 Skill 无脚本，查数一律走 MCP。
 - 用户未指定分析切面时，**先澄清业务问题**（全国全景 / 某仓某品 / 风险清单 / 对比），再选合适粒度；勿默认只跑某一种固定报表。
 

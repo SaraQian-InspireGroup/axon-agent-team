@@ -12,6 +12,13 @@ from app.platform.current_user import get_current_user_id
 router = APIRouter(prefix="/memories", tags=["memories"])
 
 
+async def _commit_and_out(db: AsyncSession, snapshot) -> MemoryOut:
+    """Commit then refresh ORM attrs — avoid lazy IO on expired objects (MissingGreenlet)."""
+    await db.commit()
+    await db.refresh(snapshot)
+    return _to_out(snapshot)
+
+
 def _to_out(snapshot) -> MemoryOut:
     bullets = []
     for prefix, text in parse_bullets(snapshot.content):
@@ -38,8 +45,7 @@ async def get_user_memory(db: AsyncSession = Depends(get_db)) -> MemoryOut:
     user_id = get_current_user_id()
     repo = MemoryRepository(db)
     snapshot = await repo.get_or_create_snapshot(user_id, MemoryScope("user"))
-    await db.commit()
-    return _to_out(snapshot)
+    return await _commit_and_out(db, snapshot)
 
 
 @router.get("/agents/{agent_id}", response_model=MemoryOut)
@@ -47,8 +53,7 @@ async def get_agent_memory(agent_id: uuid.UUID, db: AsyncSession = Depends(get_d
     user_id = get_current_user_id()
     repo = MemoryRepository(db)
     snapshot = await repo.get_or_create_snapshot(user_id, MemoryScope("agent", agent_id=agent_id))
-    await db.commit()
-    return _to_out(snapshot)
+    return await _commit_and_out(db, snapshot)
 
 
 @router.put("/user", response_model=MemoryOut)
@@ -56,8 +61,7 @@ async def replace_user_memory(body: MemoryReplaceIn, db: AsyncSession = Depends(
     user_id = get_current_user_id()
     repo = MemoryRepository(db)
     snapshot = await repo.replace_content(user_id, MemoryScope("user"), body.content, source="ui")
-    await db.commit()
-    return _to_out(snapshot)
+    return await _commit_and_out(db, snapshot)
 
 
 @router.put("/agents/{agent_id}", response_model=MemoryOut)
@@ -74,8 +78,7 @@ async def replace_agent_memory(
         body.content,
         source="ui",
     )
-    await db.commit()
-    return _to_out(snapshot)
+    return await _commit_and_out(db, snapshot)
 
 
 @router.post("/append", response_model=MemoryOut)
@@ -100,8 +103,7 @@ async def append_memory(body: MemoryAppendIn, db: AsyncSession = Depends(get_db)
     )
     repo = MemoryRepository(db)
     snapshot, _ = await repo.append_lines(user_id, memory_scope, lines, source=body.source)
-    await db.commit()
-    return _to_out(snapshot)
+    return await _commit_and_out(db, snapshot)
 
 
 @router.post("/remove", response_model=MemoryOut)
@@ -125,5 +127,4 @@ async def remove_memory(body: MemoryRemoveIn, db: AsyncSession = Depends(get_db)
         await repo.remove_lines(user_id, memory_scope, match=body.match)
         snapshot = await repo.get_or_create_snapshot(user_id, memory_scope)
 
-    await db.commit()
-    return _to_out(snapshot)
+    return await _commit_and_out(db, snapshot)

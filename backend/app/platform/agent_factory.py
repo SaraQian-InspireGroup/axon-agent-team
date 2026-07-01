@@ -19,8 +19,12 @@ from app.platform.platform_instructions import append_platform_instructions
 from app.platform.session_store import SessionStore
 from app.platform.skill_registry import SkillRegistry
 from app.platform.tool_registry import ToolRegistry
-from app.tools import BUILTIN_TOOLS
-from app.tools.builtin_groups import DIAGRAM_TOOL_NAMES, PROPOSAL_TOOL_NAMES, resolve_builtin_tools
+from app.tools.builtin_groups import (
+    DIAGRAM_TOOL_NAMES,
+    PROPOSAL_TOOL_NAMES,
+    VIZ_TOOL_NAMES,
+    resolve_builtin_tools,
+)
 
 
 class AgentFactory:
@@ -97,12 +101,12 @@ class AgentFactory:
         mcp_tools = await self._mcp.resolve_for_agent(agent_id, agent_config=row.config)
         allowed = list((row.config or {}).get("allowed_tools") or [])
 
-        viz_tools: list = []
-        if any(name == "sql_viz" for name, _ in normalize_hooks(row.config.get("hooks"))):
-            for viz_name in ("list_sql_results", "suggest_visualization"):
-                viz_tool = BUILTIN_TOOLS.get(viz_name)
-                if viz_tool is not None:
-                    viz_tools.append(viz_tool)
+        has_sql_viz_hook = any(
+            name == "sql_viz" for name, _ in normalize_hooks(row.config.get("hooks"))
+        )
+        viz_tools = (
+            resolve_builtin_tools(allowed, VIZ_TOOL_NAMES) if has_sql_viz_hook else []
+        )
 
         proposal_tools = resolve_builtin_tools(allowed, PROPOSAL_TOOL_NAMES)
         diagram_tools = resolve_builtin_tools(allowed, DIAGRAM_TOOL_NAMES)

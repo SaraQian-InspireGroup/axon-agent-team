@@ -1,5 +1,7 @@
 # 供需缺口与全国全景
 
+> SQL 写法与指标口径见 [SKILL.md](../SKILL.md)。下文为缺口分级等扩展片段。
+
 ## 原则
 
 - **先全国后分仓**：全国盘子不够时，分仓补货只是挪货；全国够但分仓缺是分配/调拨问题。
@@ -30,7 +32,9 @@ SELECT
        THEN (n.from_store_num_h + COALESCE(n.from_store_transit, 0)) / n.avg_plan_num
        END                    AS dos_days,
   n.sell_completion_rate,
-  n.order_completion_rate
+  n.order_completion_rate,
+  n.xs_big_date_num,
+  n.jd_big_date_num
 FROM yl_national_sales_warehouse_inventory_report n
 WHERE n.adjust_date = (SELECT MAX(adjust_date) FROM yl_national_sales_warehouse_inventory_report)
 ORDER BY n.order_gap ASC NULLS FIRST;  -- 订单缺口越小（负值越大）越紧急

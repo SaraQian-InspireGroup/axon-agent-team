@@ -5,160 +5,179 @@ description: 伊利奶粉分仓补货供应链只读分析：全国/分仓供需
 
 # 伊利奶粉供应链分析
 
-## 与 Agent 系统 Prompt 的分工
+## 写 SQL 的默认策略
 
-| 层 | 位置 | 内容 |
-|----|------|------|
-| **角色与对外表述** | `agents/yl-worker1/system_prompt.md` | 读者画像、业务语言、禁止泄露实现细节 |
-| **运行时** | `agents/yl-worker1/profile.yaml` | 只读 MCP、`YL_DATABASE_URL`、**必须加载本 Skill** |
-| **方法与数据（对内）** | 本 Skill + `references/` | 表结构、指标口径、SQL 片段——**仅供查数，勿写入用户可见正文** |
+1. **复制下文 Few-shot**，只改 `product_code`、仓名、`adjust_date`——不从零拼列名。
+2. **默认表**：全国 → `yl_national_sales_warehouse_inventory_report`；基地 → `yl_base_warehouse_inventory_report`；分仓 → `yl_sales_warehouse_inventory_report`；
+3. **下钻再用**：`yl_spot_inventory`、`yl_transit_inventory`、`yl_forward_transfer`、`yl_lateral_transfer`、`yl_sales_plan`、`yl_actual_sales`。
+4. **最新快照**：`adjust_date = (SELECT MAX(adjust_date) FROM …)`；跨表 JOIN 对齐同一业务日。
+5. **报错再核实**：`column does not exist` 时 `describe_table`，对照文末 **Schema 附录**。
+6. **一条 `query_data` = 一条 `SELECT`**（可含 `WITH`）；仅只读。
 
-触发本 Skill 后，分析原则与查数范式以本文与 references 为准；**回复正文遵守 system prompt 的「对外沟通铁律」**。
+## 指标词典
 
-## 分析哲学（高阶原则）
+| 业务名 | 来源 | 口径说明 |
+|--------|------|----------|
+| 合格现货 / 可发量 | 列 `from_store_num_h` | 销售仓/基地报表；明细表用 `store_num`（`status='合格'`）或 `invetory_deduct_sum`（抵扣后） |
+| 待检现货 | 列 `from_store_num_d` | 不可计入可发 |
+| 在途 | 列 `from_store_transit`（报表）或 `store_transit`（`yl_transit_inventory`） | 含待检+合格在途 |
+| 未发订单 | 列 `total_unship`（报表）或 `unshipped_orders`（`yl_actual_sales`） | 同一概念，**表不同、列名不同** |
+| 发货缺口 | 列 `ship_gap` | 报表已算：现货 − 未发 |
+| 订单缺口 | 列 `order_gap` | 报表已算：现货 + 在途 − 未发 |
+| 日均计划 | 列 `avg_plan_num`、`next_avg_plan_num` | 件/天 |
+| 月计划 / 销量 / 出库 | 列 `plan_num`、`sell_num`、`out_put_num` | 当月累计 |
+| 近 14 日需求 | **计算** `avg_plan_num * 14` | `AS demand_14d` |
+| 近 7 日需求 | **计算** `avg_plan_num * 7` | 紧急窗口 |
+| **库存天数 DOS** | **计算**，表内无列 | `(COALESCE(from_store_num_h,0)+COALESCE(from_store_transit,0))/NULLIF(avg_plan_num,0) AS dos_days`；对用户称「库存天数」 |
+| 可调拨量 | **计算** | `from_store_num_h - COALESCE(total_unship, 0)` |
+| 基地可分配量 | 列 `from_available`（`yl_forward_transfer`） | 正向调拨上限参考 |
+| 销售/订单完成率 | 列 `sell_completion_rate`、`order_completion_rate` | 字符串 `'88.5%'`；排序用 `REPLACE(col,'%','')::numeric` |
+| 大日期数量 | 列见 Schema 附录「大日期按表」 | 全国表用 `xs_big_date_num` / `jd_big_date_num`，不是 `big_date_num` |
+| 区域/电商出货 | 列 `out_put_area`、`out_put_ec` | 渠道结构 |
+| 库龄（批次） | **计算** | `ds::date - produce_date`（`yl_spot_inventory`） |
 
-补货分析的本质是 **在正确的时间、把正确数量的货、放在最接近真实需求的仓**，并在效率、周转、新鲜度、订单满足之间取平衡。不要把它降格为「跑一张固定报表」——应先理解用户问的是 **供给够不够、分布匀不匀、风险在哪、动没动起来** 中的哪一类，再选粒度与数据源。
+**缺口分级（默认阈值）**：
 
-### 核心原则
+| 级别 | 条件 |
+|------|------|
+| 红 / 紧急 | 现货+在途 < 7 日需求 **且** `dos_days` < 7 |
+| 黄 / 偏低-常规补货 | `dos_days` 7–14 |
+| 蓝 / 压仓 | `dos_days` > 60 |
 
-1. **供需先于库存**：先看需求窗口内的缺口，再看绝对库存高低；高库存不等于安全（可能是错配），低库存加在途可能已缓解。
-2. **分层视角**：全国汇总 → 基地仓货源 → 销售分仓履约 → 批次/日期结构；上层回答「总盘子够不够」，下层回答「谁缺谁压」。
-3. **动静态结合**：现货是当下能力，在途是近期能力，计划/销量是消耗速度；三者合看才能算库存天数与缺口。
-4. **推式 vs 拉式信号**：计划完成率低但销量高 → 推式分货滞后；备货率高但出库低 → 推式过量；用 **计划、销量、出库、未发订单** 交叉验证，勿单指标下结论。
-5. **新鲜度是硬约束**：奶粉场景下，大日期/长库龄与缺货同等重要；分析库存结构时并看 **合格/待检、生产日期、大日期监控**。
-6. **探索优先于死记**：references 提供维度地图与 SQL 片段；**每次分析仍应** `list_tables` / `describe_table` / `get_schema` 核实列名与注释，再写 SQL。片段是 few-shot，不是唯一路径。
+## Few-shot
 
-### 默认可调业务阈值（用户未指定时）
+### 1. 各销售分仓最新快照（最常用）
 
-| 信号 | 参考逻辑 | 对外称 |
-|------|----------|--------|
-| 紧急缺口 | 可发+在途 < 近 **7** 日需求 **且** 库存天数 < **7** | 红色 / 紧急补货 |
-| 常规缺口 | 库存天数 **7–14** 天 | 黄色 / 常规补货 |
-| 压仓预警 | 库存天数 > **60** 天 **且** 无促销消化计划（数据中若无促销字段，注明「需业务确认是否有促销」） | 蓝色 / 积压预警 |
+```sql
+SELECT
+  s.adjust_date,
+  s.from_site_name,
+  s.product_code,
+  s.product_name,
+  s.from_store_num_h,
+  s.from_store_transit,
+  s.total_unship,
+  s.ship_gap,
+  s.order_gap,
+  s.avg_plan_num,
+  s.plan_num,
+  s.sell_num,
+  s.out_put_num,
+  s.sell_completion_rate,
+  s.big_date_num,
+  CASE WHEN s.avg_plan_num > 0
+       THEN (COALESCE(s.from_store_num_h, 0) + COALESCE(s.from_store_transit, 0)) / s.avg_plan_num
+       END AS dos_days
+FROM yl_sales_warehouse_inventory_report s
+WHERE s.adjust_date = (SELECT MAX(adjust_date) FROM yl_sales_warehouse_inventory_report)
+  AND s.product_code = 'MOCK_YLP001'
+ORDER BY dos_days ASC NULLS FIRST;
+```
 
-需求窗口默认：**14 日**销售计划（`avg_plan_num × 14` 或报表已有计划字段）；7 日窗口用 `× 7`。DOS 口径：`(现货合格 + 在途 + 已分配未发调拨) / 日均计划`，优先用报表已算字段，缺失时再按列注释自行推导并在口径段说明。
+### 2. 全国大盘
 
-## 数据源分层
+```sql
+SELECT
+  n.adjust_date,
+  n.product_name,
+  n.from_store_num_h,
+  n.from_store_transit,
+  n.total_unship,
+  n.ship_gap,
+  n.order_gap,
+  n.avg_plan_num,
+  n.avg_plan_num * 14 AS demand_14d,
+  CASE WHEN n.avg_plan_num > 0
+       THEN (COALESCE(n.from_store_num_h, 0) + COALESCE(n.from_store_transit, 0)) / n.avg_plan_num
+       END AS dos_days,
+  n.xs_big_date_num,
+  n.jd_big_date_num
+FROM yl_national_sales_warehouse_inventory_report n
+WHERE n.adjust_date = (SELECT MAX(adjust_date) FROM yl_national_sales_warehouse_inventory_report)
+  AND n.product_code = 'MOCK_YLP001';
+```
 
-| 层级 | 表（前缀 `yl_`） | 定位 |
-|------|------------------|------|
-| **主数据** | `product`, `warehouse` | 品、仓、品牌/系列、基地 vs 销售 |
-| **计划与实绩** | `sales_plan`, `actual_sales` | 需求输入、销量、未发、出库 |
-| **库存明细** | `spot_inventory`, `transit_inventory`, `big_date_inventory` | 批次现货、在途流向、大日期 |
-| **监控报表（预聚合）** | `national_sales_warehouse_inventory_report`, `sales_warehouse_inventory_report`, `base_warehouse_inventory_report` | 全国/单仓/基地看板，缺口与完成率已算 |
-| **调拨执行** | `lateral_transfer`, `forward_transfer` | 横向（销仓↔销仓）、正向（基地→销仓） |
-| **物流追踪** | `wms_waybill`, `tms_gps` | 运单与在途轨迹（辅助，非主分析源） |
+### 3. 更多场景（整段复制，勿改列名）
 
-完整字段与维度矩阵见 [references/schema-and-dimensions.md](references/schema-and-dimensions.md)。
+| 意图 | 文件 |
+|------|------|
+| 缺口分级、全国供需 | [supply-demand-gaps.md](references/supply-demand-gaps.md) |
+| 计划达成、未发、推式/拉式 | [demand-fulfillment.md](references/demand-fulfillment.md) |
+| 大日期、库龄、待检结构 | [inventory-freshness.md](references/inventory-freshness.md) |
+| 仓间对比、调拨配对 | [cross-warehouse-balance.md](references/cross-warehouse-balance.md) |
+| JOIN、快照对齐、系列聚合 | [drilldown-joins.md](references/drilldown-joins.md) |
 
-## 可分析维度（发散地图）
+## 分析原则
 
-用户问题可映射到下列一个或多个切面；**不必每次全覆盖**，按意图选取。
+1. **供需先于库存**：先看需求窗口内缺口，再看绝对库存。
+2. **分层**：全国 → 基地 → 分仓 → 批次。
+3. **动静态结合**：现货 + 在途 + 计划/销量 → 库存天数与缺口。
+4. **新鲜度同等重要**：大日期、待检与缺货并列关注。
 
-| 切面 | 典型问题 | 主要数据源 |
-|------|----------|------------|
-| **全国供需平衡** | 全国货源够吗？总缺口多少？ | 全国报表、基地报表、计划汇总 |
-| **分仓缺口分级** | 哪些仓要紧急补货？哪些压仓？ | 销售仓报表、现货+在途+计划 |
-| **需求与履约** | 计划达成、未发订单、发货缺口 | 销售仓报表、`actual_sales` |
-| **基地货源与可分配量** | 基地还有多少可分给销仓？ | 基地报表、`forward_transfer.from_available` |
-| **仓间旱涝不均** | 谁缺谁余？可横向调拨吗？ | 多仓报表对比、`lateral_transfer` |
-| **在途与补货在途** | 货在路上吗？何时缓解？ | `transit_inventory`、报表 `from_store_transit` |
-| **新鲜度与大日期** | 哪些批次风险高？ | `big_date_inventory`、`spot_inventory.produce_date` |
-| **库存结构** | 待检 vs 合格、抵扣后库存 | 现货/报表 `from_store_num_d/h` |
-| **渠道出货结构** | 线下 vs 电商出货占比 | 报表 `out_put_area` / `out_put_ec` |
-| **品项/系列/品牌** | 哪个 SKU/系列拖后腿？ | `product` + 各事实表 |
-| **调拨追溯** | 已下发哪些正向/横向调拨？ | `forward_transfer`, `lateral_transfer` |
-| **时间趋势** | 本月 vs 下月计划、销量走势 | `sales_plan` 多期、`actual_sales` |
+## 执行与输出
 
-各切面 SQL 片段见 references（按需加载，勿机械套全流程）。
+1. 理解范围 → 选 Few-shot 或上表 reference → `query_data`
+2. 对用户：业务语言，**不出现**表名/列名/SQL（见 `system_prompt.md`）
+3. 可视化默认不出图；分仓排名 ≥5 行且含 `dos_days` 时用 `intent=ranking`
 
-## 工作流选择（意图 → 参考）
+---
 
-| 用户意图 | 参考 |
-|----------|------|
-| 全国全景、货源 vs 需求、分级缺口清单 | [supply-demand-gaps.md](references/supply-demand-gaps.md) |
-| 计划达成、未发订单、推式/拉式偏离 | [demand-fulfillment.md](references/demand-fulfillment.md) |
-| 大日期、库龄、待检/合格结构 | [inventory-freshness.md](references/inventory-freshness.md) |
-| 仓间对比、调拨配对、均衡机会 | [cross-warehouse-balance.md](references/cross-warehouse-balance.md) |
-| 表关系、JOIN 键、快照对齐 | [drilldown-joins.md](references/drilldown-joins.md) |
-| 字段含义、维度矩阵、数据覆盖检查 | [schema-and-dimensions.md](references/schema-and-dimensions.md) |
+## 附录：Schema 与表结构
 
-## 执行顺序
+### 表清单（`yl_` 前缀）
 
-1. **理解业务问题**：范围（全国/仓/品/系列）、时间、用户关心的决策（补货/调拨/监控）
-2. **探索 schema**（自由模式）：`list_tables` → 对候选表 `describe_table` / `get_schema`；确认最新 `adjust_date` 或 `ds`
-3. **选数据源**：优先用 **已聚合报表** 回答缺口/完成率；需要批次、流向、历史时再下钻明细表
-4. **`query_data`**：必须带完整非空 `SELECT`；复用 reference 片段并按实际列名调整
-5. **解读与分级**：按原则做红/黄/蓝或业务自定义分级；数字与建议分开表述
-6. **可视化（按需）**：图表能显著帮助理解时再 `suggest_visualization`（`ranking` / `matrix` / `trend` / `auto`）
+| 表 | 用途 | 时间键 |
+|----|------|--------|
+| `yl_sales_warehouse_inventory_report` | **分仓监控（默认）** | `adjust_date` |
+| `yl_national_sales_warehouse_inventory_report` | **全国监控** | `adjust_date` |
+| `yl_base_warehouse_inventory_report` | 基地监控 | `adjust_date` |
+| `yl_sales_plan` | 月计划 | `ds`, `plan_year`, `plan_month` |
+| `yl_actual_sales` | 月实绩 | `ds`, `sell_year`, `sell_month` |
+| `yl_spot_inventory` | 批次现货 | `ds`, `produce_date` |
+| `yl_transit_inventory` | 在途流向 | `ds` |
+| `yl_big_date_inventory` | 大日期清单 | — |
+| `yl_forward_transfer` / `yl_lateral_transfer` | 正向 / 横向调拨 | `adjust_date` |
+| `yl_product` / `yl_warehouse` | 主数据 | — |
+| `yl_wms_waybill` / `yl_tms_gps` | 物流辅助 | — |
 
-## 可视化（按需 suggest_visualization）
+### JOIN 与对齐
 
-SQL 成功后平台只缓存结果，不自动出图。值得可视化时再调用；同轮多次 SQL 先 `list_sql_results` 取 `source_call_id`。
+- 键：`product_code`；仓 `from_site_code`（报表）或 `site_code`（计划/现货/warehouse）
+- `yl_warehouse.site_type`：`0` 基地仓，`1` 销售分仓
+- 报表 `adjust_date` ≈ 明细 `ds`（同一业务日再 JOIN）
 
-| 场景 | intent |
-|------|--------|
-| 分仓缺口排名、压仓 TOP | `ranking` |
-| 系列×区域、仓×品矩阵 | `matrix` |
-| 计划 vs 销量趋势 | `trend` |
-| 全国汇总单指标 | `none` 或文字即可 |
+### 销售分仓报表常用列
 
-## 过滤与口径惯例
+`yl_sales_warehouse_inventory_report`：`adjust_date`, `from_site_code`, `from_site_name`, `product_code`, `product_name`, `pro_series`, `from_store_num_h`, `from_store_num_d`, `from_store_transit`, `total_unship`, `ship_gap`, `order_gap`, `avg_plan_num`, `next_avg_plan_num`, `plan_num`, `sell_num`, `out_put_num`, `sell_completion_rate`, `order_completion_rate`, `big_date`, `big_date_num`, `out_put_area`, `out_put_ec`
 
-- 主数据：`yl_product.is_delete = 0`（若列存在）
-- 仓类型：`yl_warehouse.site_type` — `0` 基地仓，`1` 销售仓
-- 快照：报表用 `adjust_date = (SELECT MAX(adjust_date) FROM …)` 或用户指定日
-- 礼盒：`from_store_num_lh_*` 组织边界下通常为 0；分析常规品可忽略
-- 百分比字段（如 `order_completion_rate`）库内可能是字符串 `'88.5%'`；排序/过滤时 `REPLACE(..., '%', '')::numeric`
+### 全国报表差异
 
-## 输出格式（用户可见）
+`yl_national_sales_warehouse_inventory_report`：汇总列名同分仓表，但**无** `from_site_name`；大日期用 `xs_big_date_num`、`jd_big_date_num`（**无** `big_date_num`）
 
-结构对齐 system prompt；下列为内容要点，**勿用表名/列名/SQL**。
+### 基地 / 明细 / 实绩
 
-### 摘要
-- 快照日期、分析范围、2–3 条核心结论
+| 表 | 常用列 |
+|----|--------|
+| `yl_base_warehouse_inventory_report` | `from_site_code`, `from_store_num_h/d`, `from_store_transit`, `month_store_in`, `now_store_in` |
+| `yl_spot_inventory` | `site_code`, `ds`, `produce_date`, `status`, `store_num`, `invetory_deduct_sum` |
+| `yl_transit_inventory` | `from_site_code`, `to_site_code`, `ds`, `store_transit`, `remark` |
+| `yl_actual_sales` | `sell_num`, `out_put_num`, `unshipped_orders`, `sell_year`, `sell_month` |
 
-### 供需与缺口（若相关）
-- 全国或分仓：可发+在途 vs 需求、缺口量、红/黄/蓝分级清单
+### 大日期字段按表
 
-### 风险与结构（若相关）
-- 大日期、长库龄、待检占比、仓间不均衡对
+| 表 | 列 |
+|----|-----|
+| `yl_sales_warehouse_inventory_report` | `big_date`, `big_date_num` |
+| `yl_national_sales_warehouse_inventory_report` | `xs_big_date`, `xs_big_date_num`, `jd_big_date`, `jd_big_date_num` |
+| `yl_base_warehouse_inventory_report` | `big_date`, `big_date_num` |
+| `yl_big_date_inventory` | `big_date_num` |
 
-### 分析口径（可选）
-- 例：「截至 6 月 15 日监控快照」「需求按近 14 日日均计划折算」「含在途未含待检」
+### 分析维度
 
-### 建议的下一步
-- 紧急正向补货、常规补货、横向调拨、促销消化、需人工核实项
+地理（全国/分仓/基地/流向）· 品项（`product_code`, `pro_series`, `brand`）· 时间（快照日/计划月/批次生产日期）· 供需（缺口、完成率、14/7 日窗口）· 结构（合格/待检/大日期/渠道出货）· 执行（调拨单）
 
-### 对内 ↔ 对外 用语对照
+### 惯例
 
-| 对内 | 对用户说 |
-|------|----------|
-| `yl_national_sales_warehouse_inventory_report` | 全国销售仓库存监控看板 |
-| `ship_gap` / `order_gap` | 发货缺口 / 订单缺口（现货±在途 vs 未发） |
-| `avg_plan_num × 14` | 近 14 日销售计划需求 |
-| `from_store_num_h` | 合格现货库存 |
-| `from_available` | 基地仓可分配量 |
-| `site_type = 1` | 销售分仓 |
-
-## 禁止
-
-- 不要 INSERT/UPDATE/DELETE
-- 不要假设固定「场景一流程」；缺口识别是能力之一，不是唯一任务
-- 不要在无 schema 确认时硬编码可能不存在的列
-
-## 场景能力自检（场景 1：全国货源与需求缺口全局识别）
-
-本 Skill **覆盖** 场景 1 的期望能力，且不限于此：
-
-| 场景 1 期望 | Skill 如何覆盖 |
-|-------------|----------------|
-| 拉取仓网实时数据、基地/销仓/订单交叉对比 | 分层数据源 + [drilldown-joins.md](references/drilldown-joins.md) + 自由 schema 探索 |
-| 批量识别缺货/压仓风险、全国供需全景 | [supply-demand-gaps.md](references/supply-demand-gaps.md) 全国汇总 + 分仓分级 |
-| 产出分级缺口预警（红/黄/蓝） | 本文「默认可调业务阈值」+ 分仓 DOS/缺口 SQL |
-| 产出积压预警表 | 蓝色阈值 + [inventory-freshness.md](references/inventory-freshness.md) |
-| 全局：基地可分配+在途 vs 全国 14 日需求 | 全国/基地报表 + 计划汇总片段 |
-| 分仓：可发+在途 vs 7 日需求、DOS | 销售仓报表 + 衍生计算 |
-| 核心字段：可发量、需求量、DOS、基地可分配、未发订单、在途 | [schema-and-dimensions.md](references/schema-and-dimensions.md) 指标词典 |
-
-**同时支持** 场景 2（大日期）、场景 3（调拨/in-transit）、计划偏离、渠道结构等——见维度地图，无需为每个场景单独写 Skill。
+- 常规分析忽略礼盒列 `*_lh_*`
+- Mock 品编码 `MOCK_YLP*`
+- 最新快照：`SELECT MAX(adjust_date) FROM yl_national_sales_warehouse_inventory_report`

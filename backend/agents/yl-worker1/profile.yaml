@@ -19,16 +19,16 @@ allowed_tools:
   - postgres_describe_table
   - postgres_get_schema
   - postgres_query_data
-# - suggest_visualization
+  # - suggest_visualization 
 
 hooks:
   sql_validator:
     max_rows: 2000
   result_truncator:
     max_observation_bytes: 50000
-  sql_viz:
-    auto: false
-    min_rows: 3
+  # sql_viz:
+  #   auto: false
+  #   min_rows: 3
 
 memory:
   working_set_turns: 15
