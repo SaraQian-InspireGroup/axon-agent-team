@@ -123,7 +123,12 @@ def to_maf_messages(rows: list[dict[str, Any]]) -> list[Message]:
             text = row.get("content") or ""
             if text:
                 user_contents.append(Content.from_text(text))
-            user_contents.extend(_attachments_to_contents(metadata, chat_id=uuid.UUID(row["chat_id"])))
+            if _attachment_dicts(metadata):
+                chat_id_raw = row.get("chat_id")
+                if chat_id_raw:
+                    user_contents.extend(
+                        _attachments_to_contents(metadata, chat_id=uuid.UUID(str(chat_id_raw)))
+                    )
             if not user_contents:
                 user_contents.append(Content.from_text(""))
             messages.append(
