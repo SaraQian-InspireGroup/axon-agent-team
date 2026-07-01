@@ -36,14 +36,28 @@ from_site_code / to_site_code  →  yl_warehouse.site_code
 | 0 | 基地仓 |
 | 1 | 销售分仓 |
 
+## ⚠️ 列名常见错误（写 SQL 前必读）
+
+以下是 AI 容易幻觉的列名——**实际 DB 中不存在**，必须替换为右侧正确名：
+
+| ❌ 幻觉列名 | ✅ 正确列名 | 所在表 |
+|------------|------------|--------|
+| `from_store_num_transit` | `from_store_transit` | `yl_sales_warehouse_inventory_report`, `yl_base_warehouse_inventory_report` |
+| `unsent_order_num` | `total_unship` | `yl_sales_warehouse_inventory_report` |
+| `unshipped_num` | `total_unship` | 同上 |
+| `available_for_transfer` | 无独立列，计算得到：`from_store_num_h - COALESCE(total_unship, 0)` | 同上 |
+| `transit_num` | `from_store_transit`（报表）或 `store_transit`（在途表） | 两张不同表 |
+| `yl_transfer_order_details` | 不存在该表；调拨用 `yl_lateral_transfer`（横向）/ `yl_forward_transfer`（正向） | — |
+
 ## 指标词典（场景 1 及相关）
 
 | 业务名 | 常见列 | 口径说明 |
 |--------|--------|----------|
 | 可发量 / 合格现货 | `from_store_num_h`, `store_num`(status=合格), `invetory_deduct_sum` | 报表用合格现货；抵扣后库存已扣未执行调拨 |
 | 待检现货 | `from_store_num_d` | 不可直接当作可发 |
-| 在途 | `from_store_transit`, `store_transit` | 含待检+合格在途（见列注释） |
-| 未发订单 | `total_unship`, `unshipped_orders`, `available_quantity`(actual_sales) | 报表 vs 销量表字段名不同 |
+| 在途 | `from_store_transit`, `store_transit` | 含待检+合格在途（见列注释）；**不是** `from_store_num_transit` |
+| 未发订单 | `total_unship`（报表）, `unshipped_orders`（actual_sales） | **不是** `unsent_order_num`；两张表字段名不同 |
+| 可调拨量（计算） | `from_store_num_h - COALESCE(total_unship, 0)` | 无独立列，需在 SQL 中推导 |
 | 发货缺口 | `ship_gap` | 现货 − 未发（报表已算） |
 | 订单缺口 | `order_gap` | 现货 + 在途 − 未发 |
 | 日均计划 | `avg_plan_num`, `next_avg_plan_num` | 件/天 |

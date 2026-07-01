@@ -15,11 +15,11 @@ mcp_servers:
 
 allowed_tools:
   - list_sql_results
-  - suggest_visualization
   - postgres_list_tables
   - postgres_describe_table
   - postgres_get_schema
   - postgres_query_data
+# - suggest_visualization
 
 hooks:
   sql_validator:

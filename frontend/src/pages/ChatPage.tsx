@@ -878,6 +878,18 @@ export function ChatPage() {
 
     streamRegistryRef.current.abort(activeChatId)
 
+    // Clear transient streaming messages (tool calls, partial text) left over from the
+    // aborted previous turn.  When a turn is aborted its finishTurnAfterStream never
+    // runs, so local-* messages never get flushed by the DB reload.  If we leave them
+    // in place the new optimistic user message gets a sequence that lands in the
+    // middle of the stale local messages, making the new bubble appear above the
+    // AI's previous (partial) response.
+    patchSession(agentId, (prev) => ({
+      messages: prev.messages.filter(
+        (msg) => !msg.metadata?.local || (msg.id.startsWith('tmp-') && msg.role === 'user'),
+      ),
+    }))
+
     let attachmentIds: string[] = []
     try {
       attachmentIds = await resolveAttachmentIds(activeChatId, sentAttachments)

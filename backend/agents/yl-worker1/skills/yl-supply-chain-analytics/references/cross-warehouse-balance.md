@@ -127,6 +127,30 @@ FROM yl_forward_transfer
 ORDER BY adjust_date DESC;
 ```
 
+## 销仓可调拨量（横向调拨备选仓）
+
+> **注意**：`from_store_transit` 是在途列的正确名；`total_unship` 是未发订单列；两者均无 `_num_` 中缀变体。
+
+```sql
+-- 找出同品项可横向调出的销售仓（可调拨 = 合格现货 − 未发订单，需 > 0）
+SELECT
+  from_site_code,
+  from_site_name,
+  product_code,
+  product_name,
+  from_store_num_h                                           AS qualified_stock,
+  from_store_transit                                         AS in_transit,
+  total_unship                                               AS unshipped_orders,
+  from_store_num_h - COALESCE(total_unship, 0)              AS available_for_transfer,
+  order_gap,
+  avg_plan_num
+FROM yl_sales_warehouse_inventory_report
+WHERE adjust_date = (SELECT MAX(adjust_date) FROM yl_sales_warehouse_inventory_report)
+  AND product_name ILIKE '%珍护%1%'
+  AND from_store_num_h - COALESCE(total_unship, 0) > 0
+ORDER BY available_for_transfer DESC;
+```
+
 ## 基地可分配 vs 销仓缺口（拉式补货）
 
 ```sql
