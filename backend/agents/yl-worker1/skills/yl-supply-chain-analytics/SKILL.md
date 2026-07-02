@@ -151,6 +151,7 @@ WHERE n.adjust_date = (SELECT MAX(adjust_date) FROM yl_national_sales_warehouse_
 | 大日期、库龄、待检结构 | [inventory-freshness.md](references/inventory-freshness.md) |
 | 仓间对比、调拨配对 | [cross-warehouse-balance.md](references/cross-warehouse-balance.md) |
 | JOIN、快照对齐、系列聚合 | [drilldown-joins.md](references/drilldown-joins.md) |
+| **调拨 / 分货多方案** | Skill **`yl-transfer-planning`**（本 Skill 只做缺口识别） |
 
 ## 分析原则
 
