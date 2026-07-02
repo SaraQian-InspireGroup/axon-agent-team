@@ -38,6 +38,7 @@ export function useNovaChat(enabled: boolean) {
   const [chatHistory, setChatHistory] = useState<ChatSummary[]>([])
   const [chatHistoryLoading, setChatHistoryLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [memoryRefreshKey, setMemoryRefreshKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [turnSyncHint, setTurnSyncHint] = useState<string | null>(null)
   const [initialized, setInitialized] = useState(false)
@@ -354,6 +355,9 @@ export function useNovaChat(enabled: boolean) {
             handle.runId = id
             setActiveRunId(id)
           }
+          if (ev.event === 'memory_updated') {
+            setMemoryRefreshKey((value) => value + 1)
+          }
           if (ev.event === 'text' && typeof ev.data.text === 'string') {
             const chunk = ev.data.text
             if (
@@ -431,6 +435,7 @@ export function useNovaChat(enabled: boolean) {
   }, [])
 
   return {
+    agentId,
     agentError,
     chatId,
     messages,
@@ -443,6 +448,7 @@ export function useNovaChat(enabled: boolean) {
     historyOpen,
     toggleHistoryOpen,
     closeHistory,
+    memoryRefreshKey,
     error,
     turnSyncHint,
     startNewSession,

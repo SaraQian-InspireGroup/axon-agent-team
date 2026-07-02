@@ -1,4 +1,4 @@
-import type { Agent, Chat, ChatSummary, Message, StreamEvent } from '../types/agent'
+import type { Agent, Chat, ChatSummary, MemoryDocument, Message, StreamEvent } from '../types/agent'
 
 const API = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
 
@@ -28,6 +28,23 @@ export const api = {
   cancelRun: (runId: string) =>
     request<{ run_id: string; chat_id: string; status: string }>(`/runs/${runId}/cancel`, {
       method: 'POST',
+    }),
+  getAgentMemory: (agentId: string) => request<MemoryDocument>(`/memories/agents/${agentId}`),
+  appendMemory: (body: {
+    scope: 'agent'
+    agent_id: string
+    lines: string[]
+    is_constraint?: boolean
+    source?: string
+  }) =>
+    request<MemoryDocument>('/memories/append', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  removeMemory: (body: { scope: 'agent'; agent_id: string; match: string }) =>
+    request<MemoryDocument>('/memories/remove', {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
 }
 

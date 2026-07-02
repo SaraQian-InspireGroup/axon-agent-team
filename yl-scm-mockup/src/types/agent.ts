@@ -38,3 +38,19 @@ export interface StreamEvent {
   event: string
   data: Record<string, unknown>
 }
+
+export interface MemoryBullet {
+  prefix: string
+  text: string
+  line: string
+  kind: string
+}
+
+export interface MemoryDocument {
+  scope: string
+  agent_id: string | null
+  content: string
+  revision: number
+  bullets: MemoryBullet[]
+  updated_at: string | null
+}

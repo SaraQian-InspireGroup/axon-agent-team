@@ -1,7 +1,8 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { ArrowUp, List, MessageSquarePlus, Pause, X } from 'lucide-react'
 import { ChatMessageList } from '../nova/ChatMessageList'
 import NovaHistoryDropdown from '../nova/NovaHistoryDropdown'
+import NovaMemoryDropdown from '../nova/NovaMemoryDropdown'
 import type { useNovaChat } from '../../hooks/useNovaChat'
 import { usePanelResize } from '../../hooks/usePanelResize'
 
@@ -21,6 +22,7 @@ export default function AgentChatPanel({
   chat,
 }: AgentChatPanelProps) {
   const {
+    agentId,
     agentError,
     chatId,
     messages,
@@ -33,6 +35,7 @@ export default function AgentChatPanel({
     historyOpen,
     toggleHistoryOpen,
     closeHistory,
+    memoryRefreshKey,
     error,
     turnSyncHint,
     startNewSession,
@@ -42,6 +45,7 @@ export default function AgentChatPanel({
   } = chat
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [memoryOpen, setMemoryOpen] = useState(false)
   const maxWidth = typeof window !== 'undefined' ? window.innerWidth * 0.4 : 640
 
   const { onResizeStart } = usePanelResize({
@@ -97,7 +101,10 @@ export default function AgentChatPanel({
               className={`agent-chat-header-btn${historyOpen ? ' agent-chat-header-btn-active' : ''}`}
               aria-label="历史会话"
               aria-expanded={historyOpen}
-              onClick={() => toggleHistoryOpen()}
+              onClick={() => {
+                setMemoryOpen(false)
+                toggleHistoryOpen()
+              }}
             >
               <List size={18} />
             </button>
@@ -116,12 +123,34 @@ export default function AgentChatPanel({
             aria-label="新建会话"
             onClick={() => {
               closeHistory()
+              setMemoryOpen(false)
               void startNewSession()
             }}
             disabled={isBusy || Boolean(agentError)}
           >
             <MessageSquarePlus size={18} />
           </button>
+          <div className="agent-chat-header-action-wrap">
+            <button
+              type="button"
+              className={`agent-chat-header-btn${memoryOpen ? ' agent-chat-header-btn-active' : ''}`}
+              aria-label="记忆"
+              aria-expanded={memoryOpen}
+              disabled={Boolean(agentError) || !agentId}
+              onClick={() => {
+                closeHistory()
+                setMemoryOpen((open) => !open)
+              }}
+            >
+              <img src="/alzheimer.png" alt="" className="agent-chat-header-memory-icon" />
+            </button>
+            <NovaMemoryDropdown
+              open={memoryOpen}
+              agentId={agentId}
+              refreshKey={memoryRefreshKey}
+              onClose={() => setMemoryOpen(false)}
+            />
+          </div>
           <button type="button" className="agent-chat-header-btn" aria-label="关闭对话窗口" onClick={onClose}>
             <X size={18} />
           </button>
