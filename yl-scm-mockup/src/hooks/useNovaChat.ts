@@ -383,8 +383,9 @@ export function useNovaChat(enabled: boolean) {
           if (ev.event === 'stream_idle') {
             handle.streamIdleSeen = true
             patchMessages((prev) => finalizeStreamLocalMessages(prev))
-            setLoading(false)
-            setActiveRunId(null)
+            // Keep loading until finishTurnAfterStream — stream_idle only means model
+            // finished; persistence + done may still follow. Clearing loading here made
+            // tool-error turns look "saved then stopped" with no follow-up text.
             setTurnSyncHint('正在保存对话…')
           }
           if (ev.event === 'error') {

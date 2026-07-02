@@ -2052,6 +2052,12 @@ body {
   justify-content: flex-end;
 }
 
+/* Extra air before a new user turn (after assistant reply or process steps) */
+.nova-chat-message-row-assistant + .nova-chat-message-row-user,
+.nova-chat-process-row + .nova-chat-message-row-user {
+  margin-top: 14px;
+}
+
 .nova-chat-message-row-assistant {
   justify-content: flex-start;
 }

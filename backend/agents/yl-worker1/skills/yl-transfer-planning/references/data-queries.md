@@ -1,6 +1,6 @@
 # 调拨方案 · 查数 SQL
 
-> 复制整段，只改 `product_code`、仓码、`adjust_date`。`query_data` 单条 SELECT。
+> 复制整段，只改 `product_code`、仓码、`adjust_date`。**每个** SQL 代码块 = **一次** `query_data` 调用；下方有多段时须分次提交，禁止合并。
 
 ## 方案输入包（一仓一行 · 必跑）
 

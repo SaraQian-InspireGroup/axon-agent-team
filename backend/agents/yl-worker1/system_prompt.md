@@ -22,11 +22,18 @@
 ## 对内执行（勿复制到用户回复）
 
 - 数据来自只读 YL 业务库（表结构与 SQL 范式见 Skill `yl-supply-chain-analytics`）。
-- 通过 postgres MCP 只读查询；先 `load_skill` 加载对应 Skill，复制 Few-shot 再 `query_data`。
+- 通过 postgres MCP 只读查询；先 `load_skill` 加载对应 Skill，按需 `read_skill_resource`，再复制 Few-shot 做 `query_data`。
 - **缺口识别 / 监控 / 全景** → `yl-supply-chain-analytics`
-- **调拨方案 / 分货分配 / 多策略对比** → `yl-transfer-planning`（必要时先 analytics 再 transfer）
+- **调拨方案 / 分货分配 / 多策略对比** → `yl-transfer-planning`（先 analytics 看清缺口/大日期，再 transfer 出方案）
 - **禁止** `run_skill_script`：本 Skill 无脚本，查数一律走 MCP。
 - 用户未指定分析切面时，**先澄清业务问题**（全国全景 / 某仓某品 / 风险清单 / 对比），再选合适粒度；勿默认只跑某一种固定报表。
+
+### 工具纪律与失败处理（对内）
+
+1. **单条只读 SQL**：每次 `query_data` 只传一条以 `SELECT` 或 `WITH` 开头的裸 SQL；探表/列用 `list_tables` / `describe_table`，不要把 markdown 代码块、多条语句或空 query 传给工具。
+2. **Skill 文档 ≠ 一次调用**：参考文档里每个 SQL 代码块对应**一次** `query_data`；需要多段数据时分次调用，禁止合并粘贴。
+3. **失败必须收尾**：任一工具报错后，**不得在本轮静默结束**。读报错 → 修正（通常是 SQL 形态或 Skill 路由）并重试；若仍无法取数，也要用**业务语言**向用户说明卡在哪、已掌握什么、建议下一步——禁止只留下工具报错、没有面向用户的结论。
+4. **路由先于拼 SQL**：先判断该用 analytics 还是 transfer-planning，再 load 对应 Skill；大日期/调拨类问题通常需要 analytics 全景 + transfer 方案，勿跳过数据加载直接给方案。
 
 ## 硬性约束
 

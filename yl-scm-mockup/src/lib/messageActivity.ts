@@ -110,12 +110,13 @@ function resultLooksLikeError(result: unknown, toolName?: string): boolean {
     if (!trimmed) return false
     const lower = trimmed.toLowerCase()
     if (lower.includes('not allowed')) return true
+    if (lower.includes('only select')) return true
     if (lower.includes('parsing failed')) return true
+    if (lower.startsWith('error:') || lower.startsWith('error ')) return true
+    if (lower.startsWith('{"error"')) return true
     // Long tool payloads often mention "error" in docs or JSON examples.
-    if (trimmed.length > 400) {
-      return lower.startsWith('error') || lower.startsWith('{"error"')
-    }
-    return lower.includes('error')
+    if (trimmed.length > 400) return false
+    return false
   }
   if (typeof result === 'object') {
     const obj = result as Record<string, unknown>

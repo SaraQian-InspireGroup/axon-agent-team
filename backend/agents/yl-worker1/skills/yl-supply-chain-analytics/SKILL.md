@@ -13,6 +13,7 @@ description: 伊利奶粉分仓补货供应链只读分析：全国/分仓供需
 4. **最新快照**：`adjust_date = (SELECT MAX(adjust_date) FROM …)`；跨表 JOIN 对齐同一业务日。
 5. **结构不明时**：用 `list_tables` / `describe_table` / `get_schema` 核实；**表名只取自下文「表清单」或 MCP 返回值**。
 6. **`query_data` 只提交一条只读查询**：以 `SELECT` 或 `WITH` 开头、无第二条语句、无分号串联；探库不走 `query_data`。
+7. **失败即改、不得停轮**：工具报错后在本轮继续——对照报错修正 SQL 形态并重试，或向用户说明；不因单次 `query_data` 失败结束回合。
 
 ### 业务问题 → 数据源（先选表，再写 SQL）
 
@@ -37,6 +38,13 @@ description: 伊利奶粉分仓补货供应链只读分析：全国/分仓供需
 | 取数 | `query_data` 传入 **一条** 以 `SELECT` 或 `WITH` 开头的 SQL |
 | 复杂分析 | 用 `WITH … AS (SELECT …)` 包在同一个 `SELECT` 里，不要拆成多条语句 |
 | 需要 LIMIT | 可写 `LIMIT n`；平台也会自动封顶 |
+
+### 工具形态（易错点 · 原则）
+
+- **参数是裸 SQL 字符串**，不是 markdown；不要把代码围栏（```sql）或说明文字传给 `query` 参数。
+- **每个 Few-shot / reference 代码块 = 一次 `query_data`**；文档里连续多个块时，分次调用，禁止一次粘贴多段。
+- **首 token 必须是 `SELECT` 或 `WITH`**；探 schema 用 MCP 元数据工具，不用 `query_data` 试探。
+- **报错「Only SELECT…」** → 检查是否多语句、空 query、非 SELECT 开头或把注释/说明当成了 query；回到 Skill 复制单条 Few-shot 再试。
 
 ## 指标词典
 
