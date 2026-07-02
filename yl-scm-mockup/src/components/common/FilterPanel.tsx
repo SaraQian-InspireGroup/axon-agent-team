@@ -14,9 +14,14 @@ export interface FilterField {
 interface FilterPanelProps {
   fields: FilterField[]
   searchLabel?: string
+  resetLabel?: string
 }
 
-export default function FilterPanel({ fields, searchLabel = '搜索' }: FilterPanelProps) {
+export default function FilterPanel({
+  fields,
+  searchLabel = '搜索',
+  resetLabel = '清空',
+}: FilterPanelProps) {
   const [expanded, setExpanded] = useState(true)
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map((f) => [f.key, f.defaultValue ?? ''])),
@@ -91,7 +96,7 @@ export default function FilterPanel({ fields, searchLabel = '搜索' }: FilterPa
             <div className="filter-actions">
               <button type="button" className="btn-clear" onClick={handleClear}>
                 <RefreshCw size={14} />
-                清空
+                {resetLabel}
               </button>
               <button type="button" className="btn-search">
                 <Search size={14} />

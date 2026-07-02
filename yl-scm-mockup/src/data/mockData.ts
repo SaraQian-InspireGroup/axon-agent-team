@@ -388,3 +388,194 @@ export const FILTER_OPTIONS = {
     '伊利牛奶片160g草莓味(盒装)1x12',
   ],
 }
+
+// --- 履约中心：分仓补录单 ---
+
+export interface BranchReplenishmentOrder {
+  id: string
+  transferOrderNo: string
+  productCode: string
+  skuCode: string
+  productName: string
+  unit: string
+  businessUnit: string
+  ecommerceBarcode: string
+  merchantOrderNo: string
+  status: string
+  transferGenStatus: string
+  transferQty: number
+  grossWeightPerTon: number
+  totalGrossWeightTon: number
+  netWeightPerTon: number
+  totalNetWeightTon: number
+  volumeM3: number
+  totalVolumeM3: number
+  tempZone: string
+  initialShipWarehouse: string
+  outboundLogicWarehouse: string
+  transitWarehouse: string
+  inboundLogicWarehouse: string
+  sourceOrderNo: string
+  actions: {
+    split: boolean
+    invalidate: boolean
+    increase: boolean
+    log: boolean
+  }
+}
+
+export const FULFILL_FILTER_OPTIONS = {
+  logicWarehouses: [
+    '天津销售仓一盘货仓',
+    '南昌分仓一盘货仓',
+    '广州分仓一盘货仓',
+    '武汉销售仓一盘货仓',
+    '合肥销售仓一盘货仓',
+  ],
+  initialShipWarehouses: [
+    '天津基地仓一盘货仓',
+    '武汉基地仓一盘货仓',
+    '呼市基地仓一盘货仓',
+    '合肥基地仓一盘货仓',
+  ],
+  statuses: ['全部', '生效', '作废'],
+  transferGenStatuses: ['全部', '未生成', '已生成'],
+}
+
+export const branchReplenishmentOrders: BranchReplenishmentOrder[] = [
+  {
+    id: '1',
+    transferOrderNo: 'TS290721812345678901234567890123456789012345678901234567890',
+    productCode: '10001234',
+    skuCode: 'SKU-80001',
+    productName: '伊利欣活中老年奶粉(听装)1x6x800g',
+    unit: 'EA',
+    businessUnit: '成人营养品事业部',
+    ecommerceBarcode: '6901234567890',
+    merchantOrderNo: 'MO202607020001',
+    status: '生效',
+    transferGenStatus: '未生成',
+    transferQty: 1200,
+    grossWeightPerTon: 0.0052,
+    totalGrossWeightTon: 6.24,
+    netWeightPerTon: 0.0048,
+    totalNetWeightTon: 5.76,
+    volumeM3: 0.012,
+    totalVolumeM3: 14.4,
+    tempZone: '常温',
+    initialShipWarehouse: '天津基地仓一盘货仓',
+    outboundLogicWarehouse: '天津基地仓一盘货仓',
+    transitWarehouse: '-',
+    inboundLogicWarehouse: '天津销售仓一盘货仓',
+    sourceOrderNo: 'SR20260702001',
+    actions: { split: true, invalidate: true, increase: true, log: true },
+  },
+  {
+    id: '2',
+    transferOrderNo: 'TS290721812345678901234567890123456789012345678901234567891',
+    productCode: '10005678',
+    skuCode: 'SKU-80002',
+    productName: '伊利欣活心语酸奶配方奶粉(听装)1x6x800g',
+    unit: 'EA',
+    businessUnit: '成人营养品事业部',
+    ecommerceBarcode: '6901234567891',
+    merchantOrderNo: 'MO202607020002',
+    status: '生效',
+    transferGenStatus: '已生成',
+    transferQty: 860,
+    grossWeightPerTon: 0.0051,
+    totalGrossWeightTon: 4.386,
+    netWeightPerTon: 0.0047,
+    totalNetWeightTon: 4.042,
+    volumeM3: 0.011,
+    totalVolumeM3: 9.46,
+    tempZone: '常温',
+    initialShipWarehouse: '武汉基地仓一盘货仓',
+    outboundLogicWarehouse: '武汉基地仓一盘货仓',
+    transitWarehouse: '郑州中转仓',
+    inboundLogicWarehouse: '南昌分仓一盘货仓',
+    sourceOrderNo: 'SR20260702002',
+    actions: { split: true, invalidate: true, increase: true, log: true },
+  },
+  {
+    id: '3',
+    transferOrderNo: 'TS290721812345678901234567890123456789012345678901234567892',
+    productCode: '10009876',
+    skuCode: 'SKU-80003',
+    productName: '伊利牛奶片160g草莓味(盒装)1x12',
+    unit: 'EA',
+    businessUnit: '成人营养品事业部',
+    ecommerceBarcode: '6901234567892',
+    merchantOrderNo: 'MO202607020003',
+    status: '生效',
+    transferGenStatus: '未生成',
+    transferQty: 2400,
+    grossWeightPerTon: 0.0016,
+    totalGrossWeightTon: 3.84,
+    netWeightPerTon: 0.0015,
+    totalNetWeightTon: 3.6,
+    volumeM3: 0.004,
+    totalVolumeM3: 9.6,
+    tempZone: '常温',
+    initialShipWarehouse: '合肥基地仓一盘货仓',
+    outboundLogicWarehouse: '合肥基地仓一盘货仓',
+    transitWarehouse: '-',
+    inboundLogicWarehouse: '广州分仓一盘货仓',
+    sourceOrderNo: 'SR20260702003',
+    actions: { split: false, invalidate: false, increase: true, log: true },
+  },
+  {
+    id: '4',
+    transferOrderNo: 'TS290721812345678901234567890123456789012345678901234567893',
+    productCode: '10003321',
+    skuCode: 'SKU-80004',
+    productName: '伊利中老年高钙低脂奶粉(袋装)1x16x400g',
+    unit: 'EA',
+    businessUnit: '成人营养品事业部',
+    ecommerceBarcode: '6901234567893',
+    merchantOrderNo: 'MO202607020004',
+    status: '作废',
+    transferGenStatus: '未生成',
+    transferQty: 500,
+    grossWeightPerTon: 0.0065,
+    totalGrossWeightTon: 3.25,
+    netWeightPerTon: 0.006,
+    totalNetWeightTon: 3,
+    volumeM3: 0.009,
+    totalVolumeM3: 4.5,
+    tempZone: '常温',
+    initialShipWarehouse: '呼市基地仓一盘货仓',
+    outboundLogicWarehouse: '呼市基地仓一盘货仓',
+    transitWarehouse: '-',
+    inboundLogicWarehouse: '武汉销售仓一盘货仓',
+    sourceOrderNo: 'SR20260702004',
+    actions: { split: true, invalidate: false, increase: true, log: true },
+  },
+  {
+    id: '5',
+    transferOrderNo: 'TS290721812345678901234567890123456789012345678901234567894',
+    productCode: '10004455',
+    skuCode: 'SKU-80005',
+    productName: '伊利欣活心活膳底配方奶粉(听装)(同仁堂联名)1x6x800g',
+    unit: 'EA',
+    businessUnit: '成人营养品事业部',
+    ecommerceBarcode: '6901234567894',
+    merchantOrderNo: 'MO202607020005',
+    status: '生效',
+    transferGenStatus: '未生成',
+    transferQty: 680,
+    grossWeightPerTon: 0.0053,
+    totalGrossWeightTon: 3.604,
+    netWeightPerTon: 0.0049,
+    totalNetWeightTon: 3.332,
+    volumeM3: 0.012,
+    totalVolumeM3: 8.16,
+    tempZone: '冷藏',
+    initialShipWarehouse: '天津基地仓一盘货仓',
+    outboundLogicWarehouse: '天津基地仓一盘货仓',
+    transitWarehouse: '济南中转仓',
+    inboundLogicWarehouse: '合肥销售仓一盘货仓',
+    sourceOrderNo: 'SR20260702005',
+    actions: { split: false, invalidate: false, increase: true, log: true },
+  },
+]

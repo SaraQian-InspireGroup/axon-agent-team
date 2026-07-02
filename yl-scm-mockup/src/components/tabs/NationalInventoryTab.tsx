@@ -1,4 +1,6 @@
 import FilterPanel from '../common/FilterPanel'
+import TableCheckbox from '../common/TableCheckbox'
+import { useRowSelection } from '../../hooks/useRowSelection'
 import {
   BASE_WAREHOUSES,
   FILTER_OPTIONS,
@@ -33,9 +35,15 @@ function ScrollNumCell({ value }: { value: number | null | undefined }) {
   return <span>{formatNum(value)}</span>
 }
 
+function nationalInventoryRowId(row: (typeof nationalInventoryRows)[number]): string {
+  return `${row.date}-${row.productName}`
+}
+
 export default function NationalInventoryTab() {
   const baseCount = BASE_WAREHOUSES.length
   const salesCount = SALES_CITIES.length
+  const rowIds = nationalInventoryRows.map(nationalInventoryRowId)
+  const { selected, allSelected, indeterminate, toggleRow, toggleAll } = useRowSelection(rowIds)
 
   return (
     <>
@@ -85,6 +93,14 @@ export default function NationalInventoryTab() {
         <table className="data-table inventory-table">
           <thead>
             <tr>
+              <th rowSpan={2} className="inv-fix-col-check">
+                <TableCheckbox
+                  checked={allSelected}
+                  indeterminate={indeterminate}
+                  onChange={toggleAll}
+                  ariaLabel="全选"
+                />
+              </th>
               <th rowSpan={2} className={invFixCol(1)}>
                 日期
               </th>
@@ -134,8 +150,17 @@ export default function NationalInventoryTab() {
             </tr>
           </thead>
           <tbody>
-            {nationalInventoryRows.map((row) => (
-              <tr key={row.productName}>
+            {nationalInventoryRows.map((row) => {
+              const rowId = nationalInventoryRowId(row)
+              return (
+              <tr key={rowId}>
+                <td className="inv-fix-col-check">
+                  <TableCheckbox
+                    checked={selected.has(rowId)}
+                    onChange={(checked) => toggleRow(rowId, checked)}
+                    ariaLabel={`选择 ${row.productName}`}
+                  />
+                </td>
                 <td className={invFixCol(1)}>{row.date}</td>
                 <td className={invFixCol(2)}>{row.series}</td>
                 <td className={`${invFixCol(3)} col-product-name`}>{row.productName}</td>
@@ -168,7 +193,8 @@ export default function NationalInventoryTab() {
                   )
                 })}
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>

@@ -1,93 +1,65 @@
-import {
-  Boxes,
-  ChevronDown,
-  ClipboardList,
-  Database,
-  FileSpreadsheet,
-  GitBranch,
-  History,
-  Package,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Truck,
-  User,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-
-interface NavItem {
-  id: string
-  label: string
-  icon: LucideIcon
-  active?: boolean
-  interactive?: boolean
-  children?: Omit<NavItem, 'icon'>[]
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { id: 'user', label: '个人中心', icon: User },
-  { id: 'basic', label: '基础数据维护', icon: Database },
-  { id: 'production-report', label: '排产计划报表', icon: FileSpreadsheet },
-  {
-    id: 'replenishment',
-    label: '补货管理',
-    icon: Package,
-    interactive: true,
-    children: [
-      { id: 'horizontal', label: '横向调拨' },
-      { id: 'base-transfer', label: '正向分货基地调拨' },
-      {
-        id: 'sales-transfer',
-        label: '正向分货销售仓调拨',
-        active: true,
-        interactive: true,
-      },
-      { id: 'pending-config', label: '基地仓待检不可发布库存配置' },
-      { id: 'deduction-history', label: '正向分货扣减历史汇总' },
-    ],
-  },
-  { id: 'milk-history', label: '奶粉分量下发历史', icon: History },
-  { id: 'inventory-report', label: '库存计划报表', icon: FileSpreadsheet },
-  { id: 'inventory-mgmt', label: '库存管理', icon: Boxes },
-  { id: 'logistics', label: '物流需求计划', icon: Truck },
-  { id: 'production-plan', label: '生产计划', icon: ClipboardList },
-  { id: 'workflow', label: '流程中心', icon: GitBranch },
-]
+import { ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import type { SideNavItemConfig } from '../../config/navigation'
 
 interface SideNavProps {
   collapsed: boolean
   onToggle: () => void
+  items: SideNavItemConfig[]
+  activeId: string
+  onSelect?: (id: string) => void
 }
 
-export default function SideNav({ collapsed, onToggle }: SideNavProps) {
+export default function SideNav({
+  collapsed,
+  onToggle,
+  items,
+  activeId,
+  onSelect,
+}: SideNavProps) {
   return (
     <aside className={`side-nav${collapsed ? ' side-nav-collapsed' : ''}`}>
       <div className="side-nav-scroll">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           if (item.children) {
+            const expanded = item.expanded ?? item.children.some((child) => child.id === activeId)
             return (
-              <div key={item.id} className="side-nav-group side-nav-group-expanded">
-                <div className="side-nav-group-label side-nav-group-label-expanded">
-                  <item.icon size={16} className="side-nav-item-icon" />
+              <div
+                key={item.id}
+                className={`side-nav-group${expanded ? ' side-nav-group-expanded' : ''}`}
+              >
+                <div
+                  className={`side-nav-group-label${expanded ? ' side-nav-group-label-expanded' : ''}`}
+                >
+                  {item.icon ? <item.icon size={16} className="side-nav-item-icon" /> : null}
                   <span>{item.label}</span>
-                  <ChevronDown size={14} className="side-nav-chevron side-nav-chevron-expanded" />
+                  <ChevronDown
+                    size={14}
+                    className={`side-nav-chevron${expanded ? ' side-nav-chevron-expanded' : ''}`}
+                  />
                 </div>
-                {item.children.map((child) => (
-                  <button
-                    key={child.id}
-                    type="button"
-                    className={[
-                      'side-nav-item',
-                      'side-nav-sub-item',
-                      child.interactive ? 'side-nav-item-interactive' : '',
-                      child.active ? 'side-nav-item-active' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    onClick={child.interactive ? undefined : (e) => e.preventDefault()}
-                  >
-                    <span>{child.label}</span>
-                  </button>
-                ))}
+                {expanded
+                  ? item.children.map((child) => (
+                      <button
+                        key={child.id}
+                        type="button"
+                        className={[
+                          'side-nav-item',
+                          'side-nav-sub-item',
+                          child.interactive ? 'side-nav-item-interactive' : '',
+                          child.id === activeId ? 'side-nav-item-active' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        onClick={
+                          child.interactive
+                            ? () => onSelect?.(child.id)
+                            : (event) => event.preventDefault()
+                        }
+                      >
+                        <span>{child.label}</span>
+                      </button>
+                    ))
+                  : null}
               </div>
             )
           }
@@ -96,10 +68,20 @@ export default function SideNav({ collapsed, onToggle }: SideNavProps) {
             <button
               key={item.id}
               type="button"
-              className="side-nav-item"
-              onClick={(e) => e.preventDefault()}
+              className={[
+                'side-nav-item',
+                item.interactive ? 'side-nav-item-interactive' : '',
+                item.id === activeId ? 'side-nav-item-active' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              onClick={
+                item.interactive
+                  ? () => onSelect?.(item.id)
+                  : (event) => event.preventDefault()
+              }
             >
-              <item.icon size={16} className="side-nav-item-icon" />
+              {item.icon ? <item.icon size={16} className="side-nav-item-icon" /> : null}
               <span>{item.label}</span>
             </button>
           )

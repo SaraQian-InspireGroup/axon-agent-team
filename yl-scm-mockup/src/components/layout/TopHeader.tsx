@@ -5,13 +5,26 @@ import {
   LayoutGrid,
   Settings,
 } from 'lucide-react'
+import type { CenterId } from '../../config/navigation'
 
-const HEADER_TABS = [
-  { id: 'plan', label: '计划中心', active: true },
-  { id: 'fulfill', label: '履约中心', active: false },
+const HEADER_TABS: { id: CenterId; label: string }[] = [
+  { id: 'plan', label: '计划中心' },
+  { id: 'fulfill', label: '履约中心' },
 ]
 
-export default function TopHeader() {
+interface TopHeaderProps {
+  activeCenter: CenterId
+  onCenterChange: (center: CenterId) => void
+  chatOpen: boolean
+  onToggleChat: () => void
+}
+
+export default function TopHeader({
+  activeCenter,
+  onCenterChange,
+  chatOpen,
+  onToggleChat,
+}: TopHeaderProps) {
   return (
     <header className="top-header">
       <div className="top-header-brand">
@@ -27,7 +40,8 @@ export default function TopHeader() {
           <button
             key={tab.id}
             type="button"
-            className={`top-header-nav-tab${tab.active ? ' top-header-nav-tab-active' : ''}`}
+            className={`top-header-nav-tab${activeCenter === tab.id ? ' top-header-nav-tab-active' : ''}`}
+            onClick={() => onCenterChange(tab.id)}
           >
             {tab.label}
           </button>
@@ -46,6 +60,15 @@ export default function TopHeader() {
         </button>
         <button type="button" className="top-header-icon-btn" aria-label="设置">
           <Settings size={18} />
+        </button>
+        <button
+          type="button"
+          className={`top-header-ai-btn${chatOpen ? ' top-header-ai-btn-active' : ''}`}
+          aria-label="AI 助手"
+          aria-pressed={chatOpen}
+          onClick={onToggleChat}
+        >
+          <img src="/artificial-intellegence.png" alt="" className="top-header-ai-icon" />
         </button>
         <div className="top-header-notify-wrap">
           <button type="button" className="top-header-icon-btn" aria-label="通知">

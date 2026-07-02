@@ -1,4 +1,6 @@
 import FilterPanel from '../common/FilterPanel'
+import TableCheckbox from '../common/TableCheckbox'
+import { useRowSelection } from '../../hooks/useRowSelection'
 import {
   FILTER_OPTIONS,
   FIXED_INVENTORY_HEADERS,
@@ -70,6 +72,9 @@ function InventoryCells({ row }: { row: TransferRow }) {
 }
 
 export default function TransferAllocationTab() {
+  const rowIds = transferRows.map((row) => row.id)
+  const { selected, allSelected, indeterminate, toggleRow, toggleAll } = useRowSelection(rowIds)
+
   return (
     <>
       <FilterPanel
@@ -137,6 +142,14 @@ export default function TransferAllocationTab() {
         <table className="data-table transfer-table">
           <thead>
             <tr>
+              <th rowSpan={3} className="fix-col-check">
+                <TableCheckbox
+                  checked={allSelected}
+                  indeterminate={indeterminate}
+                  onChange={toggleAll}
+                  ariaLabel="全选"
+                />
+              </th>
               <th rowSpan={3} className={fixColClass(1)}>
                 基地仓
               </th>
@@ -192,6 +205,13 @@ export default function TransferAllocationTab() {
               const regionMap = Object.fromEntries(row.regions.map((r) => [r.region, r]))
               return (
                 <tr key={row.id}>
+                  <td className="fix-col-check">
+                    <TableCheckbox
+                      checked={selected.has(row.id)}
+                      onChange={(checked) => toggleRow(row.id, checked)}
+                      ariaLabel={`选择 ${row.productName}`}
+                    />
+                  </td>
                   <td className={fixColClass(1)}>{row.baseWarehouse}</td>
                   <td className={`${fixColClass(2)} col-product-name`}>{row.productName}</td>
                   <td className={fixColClass(3)}>
