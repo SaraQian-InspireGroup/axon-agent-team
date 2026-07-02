@@ -1,15 +1,14 @@
 # 伊利供应链 Mockup 前端
 
-独立的 Pilot 项目，用于复刻「供应链数字化 OPERATION PLATFORM」界面 Mockup。与仓库内 `frontend/` 和 `backend/` **无任何代码或构建关联**，可随时迁移或删除。
+独立的 Pilot 项目，用于复刻「供应链数字化 OPERATION PLATFORM」界面 Mockup。与仓库内 `frontend/` **无代码依赖**，可单独 `npm install && npm run build` 部署；Nova 对话通过 HTTP 调用同仓库 `backend/` 的 Agent API（运行时依赖，非构建耦合）。
 
 ## 技术栈
-
-与主 `frontend` 一致：
 
 - React 19 + TypeScript
 - Vite 8
 - Tailwind CSS 4
 - lucide-react
+- react-markdown + remark-gfm（Nova 助手回复渲染）
 
 ## 开发
 
@@ -19,24 +18,37 @@ npm install
 npm run dev
 ```
 
-默认端口 **5174**（避免与主 frontend 的 5173 冲突）。
+默认端口 **5174**。开发模式下 Vite 将 `/api` 代理到 `http://127.0.0.1:8000`，需同时启动 backend：
 
-## 构建
+```bash
+cd backend && uv run uvicorn app.main:app --reload --port 8000
+```
+
+## 独立部署
 
 ```bash
 npm run build
-npm run preview
+npm run preview   # 或把 dist/ 交给任意静态托管
 ```
+
+生产环境请配置 backend API 地址（二选一）：
+
+1. 复制 `.env.example` 为 `.env`，设置 `VITE_API_BASE_URL=https://your-api-host/api/v1`
+2. 或在 Nginx 等反向代理上将 `/api` 转发到 Agent Platform backend
+
+构建产物仅包含静态资源，不依赖 monorepo 内其他前端包。
+
+## Nova（yl-worker1）
+
+- Header 右侧 AI 图标打开 Nova 面板
+- 固定绑定 backend agent `yl-worker1`（通过 `/api/v1/agents` 按 slug 解析）
+- 支持：会话历史弹窗、新建会话、SSE 流式对话、Reasoning/Tool 折叠步骤、暂停取消
+- 助手回复使用 Markdown 渲染（表格、列表、标题等）
 
 ## 页面说明
 
-- **顶部 Header**：平台名称、计划中心/履约中心 Tab、用户信息（固定）
-- **左侧 Side Nav**：完整菜单结构；仅「补货管理 → 正向分货销售仓调拨」高亮可用；底部可折叠/展开
-- **内容 Tab**（冻结不随页面滚动）：
-  1. **正向分货销售仓调拨** — 筛选：事业部/产品名称/基地仓/销售分仓/产品系列
-  2. **全国库存监控** — 筛选：日期/事业部/产品名称/产品系列
-  3. 其余 Tab 为 disabled 占位
+- **计划中心**：正向分货销售仓调拨、全国库存监控等 Tab
+- **履约中心**：分仓补录单
+- 其余菜单为 disabled 占位
 
-## 未来对接
-
-可在 `panel-scroll` 区域或独立路由嵌入 backend agent 面板；当前数据来自 `src/data/mockData.ts`。
+Mock 表格数据来自 `src/data/mockData.ts`；Nova 对话数据来自 backend。

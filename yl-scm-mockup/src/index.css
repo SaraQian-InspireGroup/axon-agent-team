@@ -1726,6 +1726,82 @@ body {
   gap: 2px;
 }
 
+.agent-chat-header-action-wrap {
+  position: relative;
+}
+
+.nova-history-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: min(280px, calc(100vw - 24px));
+  max-height: min(360px, 50vh);
+  overflow: hidden;
+  border: 1px solid rgba(0, 85, 165, 0.14);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow:
+    0 10px 30px rgba(0, 85, 165, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.nova-history-dropdown-title {
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid rgba(0, 85, 165, 0.08);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-ice-gray);
+}
+
+.nova-history-dropdown-list {
+  max-height: min(300px, calc(50vh - 48px));
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+
+.nova-history-dropdown-empty {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--text-ice-gray);
+}
+
+.nova-history-dropdown-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nova-history-dropdown-item:hover,
+.nova-history-dropdown-item-active {
+  background: rgba(0, 85, 165, 0.06);
+}
+
+.nova-history-dropdown-item-title {
+  width: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-midnight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nova-history-dropdown-item-time {
+  font-size: 11px;
+  color: var(--text-ice-gray);
+}
+
 .agent-chat-header-btn {
   display: inline-flex;
   align-items: center;
@@ -1918,6 +1994,386 @@ body {
 .agent-chat-send-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.agent-chat-error-banner {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.18);
+  color: #b91c1c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.agent-chat-history-empty {
+  padding: 12px;
+  color: var(--text-ice-gray);
+  font-size: 12px;
+}
+
+.agent-chat-history-group {
+  margin-bottom: 12px;
+}
+
+.agent-chat-history-group-label {
+  margin: 0 0 6px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-ice-gray);
+}
+
+.agent-chat-history-item-active {
+  border-color: rgba(0, 85, 165, 0.35) !important;
+  background: rgba(0, 85, 165, 0.08) !important;
+}
+
+/* Nova chat timeline (aligned with platform frontend, blue theme) */
+.nova-chat-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nova-chat-process-row {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.nova-chat-message-row {
+  display: flex;
+  width: 100%;
+}
+
+.nova-chat-message-row-user {
+  justify-content: flex-end;
+}
+
+.nova-chat-message-row-assistant {
+  justify-content: flex-start;
+}
+
+.nova-msg-user {
+  max-width: 88%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border-bottom-right-radius: 4px;
+  background: rgba(0, 85, 165, 0.1);
+  border: 1px solid rgba(0, 85, 165, 0.18);
+  color: var(--text-midnight);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.nova-msg-assistant {
+  max-width: 88%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border-bottom-left-radius: 4px;
+  background: #f1f5f9;
+  color: var(--text-midnight);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.nova-msg-error {
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.18);
+  color: #b91c1c;
+}
+
+.nova-msg-cancelled {
+  opacity: 0.85;
+}
+
+.nova-msg-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.nova-msg-stream-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: var(--yili-blue-core);
+  animation: nova-stream-pulse 1s ease-in-out infinite;
+}
+
+@keyframes nova-stream-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.nova-chat-cancel-row {
+  display: flex;
+  justify-content: center;
+}
+
+.nova-chat-cancel-notice {
+  margin: 4px 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  font-size: 11px;
+  color: var(--text-ice-gray);
+}
+
+.nova-chat-pending-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.nova-chat-pending-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--yili-blue-core);
+  animation: nova-stream-pulse 1s ease-in-out infinite;
+}
+
+.nova-chat-pending-hint {
+  font-size: 12px;
+  color: var(--text-ice-gray);
+}
+
+.process-step {
+  width: 100%;
+  max-width: 92%;
+}
+
+.process-step-header {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.process-step-title {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-ice-gray);
+}
+
+.process-step-running .process-step-title {
+  color: var(--text-midnight);
+}
+
+.process-step-cancel-icon,
+.process-step-check,
+.process-step-error-icon,
+.process-step-spinner,
+.process-step-chevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.process-step-check {
+  color: #64748b;
+}
+
+.process-step-error-icon {
+  color: #dc2626;
+}
+
+.process-step-spinner {
+  color: var(--yili-blue-core);
+  animation: process-spin 0.9s linear infinite;
+}
+
+@keyframes process-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.process-step-chevron {
+  color: #94a3b8;
+  transition: transform 0.15s ease;
+}
+
+.process-step-chevron-open {
+  transform: rotate(180deg);
+}
+
+.process-step-body {
+  margin-top: 2px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 85, 165, 0.12);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.process-step-section + .process-step-section {
+  border-top: 1px solid rgba(0, 85, 165, 0.1);
+}
+
+.process-step-section-label {
+  padding: 6px 8px 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-ice-gray);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.process-step-detail {
+  margin: 0;
+  padding: 6px 8px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-midnight);
+}
+
+.process-step-running-hint {
+  margin: 0;
+  padding: 6px 8px 8px;
+  font-size: 11px;
+  color: var(--text-ice-gray);
+}
+
+.nova-markdown-body {
+  font-size: inherit;
+  line-height: 1.6;
+  color: inherit;
+  word-break: break-word;
+}
+
+.nova-markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.nova-markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.nova-markdown-body p {
+  margin: 0.45em 0;
+}
+
+.nova-markdown-body h1,
+.nova-markdown-body h2,
+.nova-markdown-body h3,
+.nova-markdown-body h4 {
+  margin: 0.7em 0 0.35em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-midnight);
+}
+
+.nova-markdown-body h1 {
+  font-size: 1.2em;
+}
+
+.nova-markdown-body h2 {
+  font-size: 1.12em;
+}
+
+.nova-markdown-body h3 {
+  font-size: 1.04em;
+}
+
+.nova-markdown-body ul,
+.nova-markdown-body ol {
+  margin: 0.45em 0;
+  padding-left: 1.2em;
+}
+
+.nova-markdown-body ul {
+  list-style-type: disc;
+}
+
+.nova-markdown-body ol {
+  list-style-type: decimal;
+}
+
+.nova-markdown-body li {
+  margin: 0.2em 0;
+}
+
+.nova-markdown-body blockquote {
+  margin: 0.5em 0;
+  padding: 0.35em 0.75em;
+  border-left: 3px solid rgba(0, 85, 165, 0.35);
+  background: rgba(0, 85, 165, 0.04);
+  color: var(--text-midnight);
+}
+
+.nova-markdown-body code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(0, 85, 165, 0.08);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.nova-markdown-body pre {
+  margin: 0.5em 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.nova-markdown-body pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.nova-markdown-body a {
+  color: var(--yili-blue-core);
+  text-decoration: underline;
+}
+
+.nova-markdown-body table {
+  width: 100%;
+  margin: 0.5em 0;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.nova-markdown-body th,
+.nova-markdown-body td {
+  padding: 6px 8px;
+  border: 1px solid rgba(0, 85, 165, 0.14);
+  text-align: left;
+  vertical-align: top;
+}
+
+.nova-markdown-body th {
+  background: rgba(0, 85, 165, 0.06);
+  font-weight: 600;
+}
+
+.nova-markdown-body hr {
+  margin: 0.75em 0;
+  border: none;
+  border-top: 1px solid rgba(0, 85, 165, 0.12);
 }
 
 .data-table.fulfillment-table thead th {

@@ -1,38 +1,45 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react'
-import {
-  ArrowUp,
-  List,
-  MessageSquarePlus,
-  Pause,
-  X,
-} from 'lucide-react'
-import { useAgentChat } from '../../hooks/useAgentChat'
+import { ArrowUp, List, MessageSquarePlus, Pause, X } from 'lucide-react'
+import { ChatMessageList } from '../nova/ChatMessageList'
+import NovaHistoryDropdown from '../nova/NovaHistoryDropdown'
+import type { useNovaChat } from '../../hooks/useNovaChat'
 import { usePanelResize } from '../../hooks/usePanelResize'
+
+type NovaChatState = ReturnType<typeof useNovaChat>
 
 interface AgentChatPanelProps {
   width: number
   onWidthChange: (width: number) => void
   onClose: () => void
+  chat: NovaChatState
 }
 
 export default function AgentChatPanel({
   width,
   onWidthChange,
   onClose,
+  chat,
 }: AgentChatPanelProps) {
   const {
-    historySessions,
-    activeSession,
+    agentError,
+    chatId,
+    messages,
     input,
     setInput,
-    isStreaming,
+    loading,
+    chatSessionLoading,
+    chatHistory,
+    chatHistoryLoading,
     historyOpen,
-    setHistoryOpen,
+    toggleHistoryOpen,
+    closeHistory,
+    error,
+    turnSyncHint,
     startNewSession,
-    loadSession,
+    loadHistorySession,
     sendMessage,
-    pauseStreaming,
-  } = useAgentChat()
+    stopStreaming,
+  } = chat
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const maxWidth = typeof window !== 'undefined' ? window.innerWidth * 0.4 : 640
@@ -47,14 +54,14 @@ export default function AgentChatPanel({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [activeSession?.messages, isStreaming])
+  }, [messages, loading, turnSyncHint])
 
   const handleSubmit = () => {
-    if (isStreaming) {
-      pauseStreaming()
+    if (loading) {
+      void stopStreaming()
       return
     }
-    sendMessage()
+    void sendMessage()
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -63,6 +70,9 @@ export default function AgentChatPanel({
       handleSubmit()
     }
   }
+
+  const panelError = agentError ?? error
+  const isBusy = loading || chatSessionLoading
 
   return (
     <aside className="agent-chat-panel" style={{ width }}>
@@ -81,69 +91,58 @@ export default function AgentChatPanel({
           <span>Nova</span>
         </div>
         <div className="agent-chat-header-actions">
-          <button
-            type="button"
-            className={`agent-chat-header-btn${historyOpen ? ' agent-chat-header-btn-active' : ''}`}
-            aria-label="历史会话"
-            onClick={() => setHistoryOpen((value) => !value)}
-          >
-            <List size={18} />
-          </button>
+          <div className="agent-chat-header-action-wrap">
+            <button
+              type="button"
+              className={`agent-chat-header-btn${historyOpen ? ' agent-chat-header-btn-active' : ''}`}
+              aria-label="历史会话"
+              aria-expanded={historyOpen}
+              onClick={() => toggleHistoryOpen()}
+            >
+              <List size={18} />
+            </button>
+            <NovaHistoryDropdown
+              open={historyOpen}
+              chats={chatHistory}
+              activeChatId={chatId}
+              loading={chatHistoryLoading}
+              onClose={closeHistory}
+              onSelect={(id) => void loadHistorySession(id)}
+            />
+          </div>
           <button
             type="button"
             className="agent-chat-header-btn"
             aria-label="新建会话"
-            onClick={startNewSession}
+            onClick={() => {
+              closeHistory()
+              void startNewSession()
+            }}
+            disabled={isBusy || Boolean(agentError)}
           >
             <MessageSquarePlus size={18} />
           </button>
-          <button
-            type="button"
-            className="agent-chat-header-btn"
-            aria-label="关闭对话窗口"
-            onClick={onClose}
-          >
+          <button type="button" className="agent-chat-header-btn" aria-label="关闭对话窗口" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
       </div>
 
       <div className="agent-chat-body">
-        {historyOpen ? (
-          <div className="agent-chat-history">
-            <div className="agent-chat-history-title">历史会话</div>
-            {[...historySessions].map((session) => (
-              <button
-                key={session.id}
-                type="button"
-                className="agent-chat-history-item"
-                onClick={() => loadSession(session.id)}
-              >
-                <span className="agent-chat-history-item-title">{session.title}</span>
-                <span className="agent-chat-history-item-time">{session.updatedAt}</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="agent-chat-messages">
-            {activeSession?.messages.map((message) => (
-              <div
-                key={message.id}
-                className={`agent-chat-message agent-chat-message-${message.role}`}
-              >
-                <div className="agent-chat-message-bubble">{message.content}</div>
-              </div>
-            ))}
-            {isStreaming ? (
-              <div className="agent-chat-message agent-chat-message-assistant">
-                <div className="agent-chat-message-bubble agent-chat-typing">
-                  正在思考...
-                </div>
-              </div>
-            ) : null}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
+        <div className="agent-chat-messages">
+          {agentError ? <div className="agent-chat-error-banner">{agentError}</div> : null}
+          {chatSessionLoading && messages.length === 0 ? (
+            <div className="agent-chat-history-empty">加载会话中…</div>
+          ) : (
+            <>
+              <ChatMessageList messages={messages} loading={loading} turnSyncHint={turnSyncHint} />
+              {panelError && !agentError ? (
+                <div className="agent-chat-error-banner">{panelError}</div>
+              ) : null}
+            </>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       <div className="agent-chat-composer">
@@ -155,16 +154,16 @@ export default function AgentChatPanel({
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isStreaming}
+            disabled={Boolean(agentError) || (loading && !chatId)}
           />
           <button
             type="button"
             className="agent-chat-send-btn"
-            aria-label={isStreaming ? '暂停' : '发送'}
+            aria-label={loading ? '暂停' : '发送'}
             onClick={handleSubmit}
-            disabled={!isStreaming && !input.trim()}
+            disabled={Boolean(agentError) || (!loading && !input.trim())}
           >
-            {isStreaming ? <Pause size={16} fill="currentColor" /> : <ArrowUp size={16} />}
+            {loading ? <Pause size={16} fill="currentColor" /> : <ArrowUp size={16} />}
           </button>
         </div>
       </div>

@@ -11,6 +11,7 @@ import SideNav from './SideNav'
 import PlanMainPanel from './PlanMainPanel'
 import FulfillmentMainPanel from './FulfillmentMainPanel'
 import AgentChatPanel from './AgentChatPanel'
+import { useNovaChat } from '../../hooks/useNovaChat'
 
 const DEFAULT_CHAT_WIDTH = 380
 const MIN_CHAT_WIDTH = 320
@@ -26,6 +27,7 @@ export default function AppShell() {
   const [fulfillNavId, setFulfillNavId] = useState(DEFAULT_FULFILL_NAV_ID)
   const [chatOpen, setChatOpen] = useState(false)
   const [chatWidth, setChatWidth] = useState(DEFAULT_CHAT_WIDTH)
+  const novaChat = useNovaChat(chatOpen)
 
   const sideNavItems = activeCenter === 'plan' ? PLAN_SIDE_NAV : FULFILL_SIDE_NAV
   const activeNavId = activeCenter === 'plan' ? planNavId : fulfillNavId
@@ -79,6 +81,7 @@ export default function AppShell() {
             width={chatWidth}
             onWidthChange={handleChatWidthChange}
             onClose={() => setChatOpen(false)}
+            chat={novaChat}
           />
         ) : null}
       </div>
