@@ -1722,6 +1722,169 @@ body {
   color: rgba(0, 85, 165, 0.35);
 }
 
+/* --- 履约中心：创建补货单弹窗 --- */
+.fulfill-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.fulfill-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(880px, 100%);
+  max-height: min(90vh, 820px);
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 24px 48px rgba(0, 40, 80, 0.18);
+  overflow: hidden;
+}
+
+.fulfill-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(0, 85, 165, 0.1);
+  background: rgba(244, 248, 252, 0.9);
+}
+
+.fulfill-modal-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-deep-blue, #0f172a);
+}
+
+.fulfill-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-ice-gray);
+  cursor: pointer;
+}
+
+.fulfill-modal-close:hover {
+  background: rgba(0, 85, 165, 0.08);
+  color: var(--yili-blue-core);
+}
+
+.fulfill-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 20px;
+}
+
+.fulfill-form-section + .fulfill-form-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px dashed rgba(0, 85, 165, 0.12);
+}
+
+.fulfill-form-section-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--yili-blue-core);
+}
+
+.fulfill-form-section-hint {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: var(--text-ice-gray);
+  line-height: 1.5;
+}
+
+.fulfill-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+
+.fulfill-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fulfill-form-field-wide {
+  grid-column: 1 / -1;
+}
+
+.fulfill-form-label {
+  font-size: 12px;
+  color: var(--text-ice-gray);
+}
+
+.fulfill-form-required {
+  color: #dc2626;
+}
+
+.fulfill-form-input,
+.fulfill-form-select,
+.fulfill-form-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid rgba(0, 85, 165, 0.18);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-deep-blue, #0f172a);
+  background: #fff;
+}
+
+.fulfill-form-input:focus,
+.fulfill-form-select:focus,
+.fulfill-form-textarea:focus {
+  outline: none;
+  border-color: var(--yili-blue-core);
+  box-shadow: 0 0 0 2px rgba(0, 85, 165, 0.12);
+}
+
+.fulfill-form-textarea {
+  resize: vertical;
+  min-height: 56px;
+}
+
+.fulfill-form-error {
+  margin: 14px 0 0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.fulfill-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0, 85, 165, 0.08);
+}
+
+@media (max-width: 720px) {
+  .fulfill-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .main-content-sidenav-collapsed {
   margin-left: var(--sidenav-collapsed-width);
 }

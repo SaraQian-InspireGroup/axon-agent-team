@@ -265,8 +265,8 @@ export interface BranchReplenishmentOrder {
   productName: string
   unit: string
   businessUnit: string
-  ecommerceBarcode: string
-  merchantOrderNo: string
+  ecommerceBarcode: string | null
+  merchantOrderNo: string | null
   status: string
   transferGenStatus: string
   transferQty: number

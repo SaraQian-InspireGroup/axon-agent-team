@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     )
 
     yl_database_url: str = ""
+    mockup_database_url: str = ""
     mockup_cors_origins: str = "http://127.0.0.1:5174,http://localhost:5174"
     default_business_unit: str = "成人营养品事业部"
     default_business_code: str = "CRYYBU"
@@ -33,5 +34,12 @@ settings = get_settings()
 @lru_cache
 def load_region_config() -> dict:
     path = CONFIG_DIR / "region_map.yaml"
+    with path.open(encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+@lru_cache
+def load_fulfillment_config() -> dict:
+    path = CONFIG_DIR / "fulfillment_map.yaml"
     with path.open(encoding="utf-8") as f:
         return yaml.safe_load(f)
