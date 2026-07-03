@@ -2,8 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$ROOT/.." && pwd)"
+# shellcheck source=../scripts/dev-ports.sh
+source "$REPO_ROOT/scripts/dev-ports.sh"
+
 PID_FILE="$ROOT/.run/uvicorn.pid"
-PORT="${PORT:-8000}"
+PORT="${PORT:-$PLATFORM_BACKEND_PORT}"
 
 stop_pid() {
   local pid="$1"

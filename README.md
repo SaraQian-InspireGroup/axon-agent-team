@@ -85,6 +85,22 @@ curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/api/v1/agents
 ```
 
+### YL SCM Mockup（计划/履约 UI + 独立 API）
+
+与 Platform **端口分离**，可同时运行：
+
+```bash
+./scripts/start-mockup.sh   # 前端 5174 + mockup API 5001
+./scripts/stop-mockup.sh
+```
+
+| 栈 | 前端 | 后端 |
+|----|------|------|
+| Platform | 5173 | 8000 |
+| Mockup | 5174 | 5001 |
+
+端口定义见 `scripts/dev-ports.sh`；若环境变量配错导致四端口重复，启动脚本会报错退出。
+
 ## 冒烟测试
 
 ```bash

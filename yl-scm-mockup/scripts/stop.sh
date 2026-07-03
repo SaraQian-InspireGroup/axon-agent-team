@@ -7,14 +7,14 @@ REPO_ROOT="$(cd "$ROOT/.." && pwd)"
 source "$REPO_ROOT/scripts/dev-ports.sh"
 
 PID_FILE="$ROOT/.run/vite.pid"
-PORT="${FRONTEND_PORT:-$PLATFORM_FRONTEND_PORT}"
+PORT="$MOCKUP_FRONTEND_PORT"
 
 stop_pid() {
   local pid="$1"
   if ! kill -0 "$pid" 2>/dev/null; then
     return 1
   fi
-  echo "Stopping frontend (pid=$pid)..."
+  echo "Stopping mockup frontend (pid=$pid)..."
   kill "$pid" 2>/dev/null || true
   for _ in $(seq 1 10); do
     if ! kill -0 "$pid" 2>/dev/null; then
@@ -36,14 +36,13 @@ if [[ -f "$PID_FILE" ]]; then
   rm -f "$PID_FILE"
 fi
 
-# Always clear anything still bound to the dev port (stale pid files, orphan node)
 for port_pid in $(lsof -ti:"$PORT" 2>/dev/null || true); do
   stop_pid "$port_pid" || kill -9 "$port_pid" 2>/dev/null || true
   stopped=1
 done
 
 if [[ "$stopped" -eq 1 ]]; then
-  echo "Frontend stopped."
+  echo "Mockup frontend stopped."
 else
-  echo "Frontend is not running."
+  echo "Mockup frontend is not running."
 fi

@@ -2,12 +2,17 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$ROOT/.." && pwd)"
+# shellcheck source=../scripts/dev-ports.sh
+source "$REPO_ROOT/scripts/dev-ports.sh"
+validate_platform_ports
+
 RUN_DIR="$ROOT/.run"
 PID_FILE="$RUN_DIR/uvicorn.pid"
 LOG_FILE="$RUN_DIR/uvicorn.log"
 VENV="$ROOT/.venv"
-HOST="${HOST:-127.0.0.1}"
-PORT="${PORT:-8000}"
+HOST="${HOST:-$PLATFORM_BACKEND_HOST}"
+PORT="${PORT:-$PLATFORM_BACKEND_PORT}"
 
 mkdir -p "$RUN_DIR"
 

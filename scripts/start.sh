@@ -2,6 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=dev-ports.sh
+source "$ROOT/scripts/dev-ports.sh"
+validate_platform_ports
 
 echo "==> Starting backend..."
 "$ROOT/backend/scripts/start.sh"
@@ -24,6 +27,8 @@ echo "==> Starting frontend..."
 
 echo ""
 echo "Platform is up."
-echo "  Frontend:  http://${FRONTEND_HOST:-127.0.0.1}:${FRONTEND_PORT:-5173}"
-echo "  Backend:   http://${HOST:-127.0.0.1}:${PORT:-8000}"
-echo "  Swagger:   http://${HOST:-127.0.0.1}:${PORT:-8000}/docs"
+echo "  Frontend:  http://${FRONTEND_HOST}:${FRONTEND_PORT}"
+echo "  Backend:   http://${HOST}:${PORT}"
+echo "  Swagger:   http://${HOST}:${PORT}/docs"
+echo ""
+echo "Mockup stack uses separate ports (5174 / 5001) — run ./scripts/start-mockup.sh"

@@ -29,16 +29,13 @@ export interface TransferRow {
 }
 
 export const TRANSFER_REGIONS = [
-  '自贡',
   '呼市',
   '武汉',
   '合肥',
-  '南京',
   '天津',
   '郑州',
   '沈阳',
   '广州',
-  '新疆',
 ]
 
 export const REGION_METRIC_HEADERS = [
@@ -100,39 +97,40 @@ export const transferRows: TransferRow[] = [
     qualified: 28218.7,
     qualifiedUnpublish: 0.7,
     availableQty: 2842.8,
-    regions: [
-      makeRegion('自贡', 1, {
-        assignQty: 120,
-        issuedNotShipped: 45,
-        preProdStockRate: 81.2,
-        postProdStockRate: 100,
-        orderCompleteRate: 0,
-        stockDaysAfter: 29,
-        nextMonthDays: 31,
-      }),
-      makeRegion('呼市', 2, {
-        assignQty: 80,
-        issuedNotShipped: 22,
-        preProdStockRate: 164,
-        postProdStockRate: 92.5,
-        orderCompleteRate: 1,
-        stockDaysAfter: 35,
-        nextMonthDays: 52,
-      }),
-      makeRegion('武汉', 3, {
-        preProdStockRate: 88,
-        postProdStockRate: 95,
-        stockDaysAfter: 14,
-        nextMonthDays: 15,
-      }),
-      makeRegion('合肥', 4),
-      makeRegion('南京', 5),
-      makeRegion('天津', 6),
-      makeRegion('郑州', 7),
-      makeRegion('沈阳', 8),
-      makeRegion('广州', 9),
-      makeRegion('新疆', 10),
-    ],
+    regions: TRANSFER_REGIONS.map((region) => {
+      if (region === '呼市') {
+        return makeRegion('呼市', 2, {
+          assignQty: 80,
+          issuedNotShipped: 22,
+          preProdStockRate: 164,
+          postProdStockRate: 92.5,
+          orderCompleteRate: 1,
+          stockDaysAfter: 35,
+          nextMonthDays: 52,
+        })
+      }
+      if (region === '武汉') {
+        return makeRegion('武汉', 3, {
+          preProdStockRate: 88,
+          postProdStockRate: 95,
+          stockDaysAfter: 14,
+          nextMonthDays: 15,
+        })
+      }
+      if (region === '广州') {
+        return makeRegion('广州', 9, {
+          assignQty: 120,
+          issuedNotShipped: 45,
+          preProdStockRate: 81.2,
+          postProdStockRate: 100,
+          orderCompleteRate: 0,
+          stockDaysAfter: 29,
+          nextMonthDays: 31,
+        })
+      }
+      const seed = TRANSFER_REGIONS.indexOf(region) + 1
+      return makeRegion(region, seed)
+    }),
   },
   {
     id: '2',
@@ -191,10 +189,11 @@ export interface NationalInventoryRow {
   date: string
   series: string
   productName: string
+  productCode: string
   totalInventory: number
-  baseWarehouses: Record<string, number>
-  salesSpot: Record<string, number>
-  salesUnshipped: Record<string, number>
+  baseWarehouses: Record<string, number | null>
+  salesSpot: Record<string, number | null>
+  salesUnshipped: Record<string, number | null>
   salesGaps: Record<string, number | null>
 }
 
@@ -206,159 +205,26 @@ export const INVENTORY_SCROLL_SECTIONS = [
 ] as const
 
 export const BASE_WAREHOUSES = [
-  '武汉基地',
   '呼市基地',
   '天津基地',
-  '杜尔伯特基地',
-  '合肥基地',
-  '辽宁基地',
-  '金泽基地',
-  '多伦多基地',
+  '杜蒙基地',
+  '武汉基地',
 ]
 
 export const SALES_CITIES = [
-  '兰州',
-  '武汉',
-  '天津',
-  '郑州',
-  '西安',
-  '呼市',
-  '沈阳',
-  '广州',
   '合肥',
-  '荆门',
-  '南昌',
+  '天津',
+  '广州',
+  '郑州',
+  '成都',
+  '武汉',
+  '呼市',
   '济南',
-  '徐州',
   '柳州',
-  '自贡',
-  '新疆',
-  '南京',
 ]
 
-function buildSalesCityValues(
-  seed: number,
-  gaps?: Record<string, number | null>,
-): {
-  spot: Record<string, number>
-  unshipped: Record<string, number>
-  gaps: Record<string, number | null>
-} {
-  const spot: Record<string, number> = {}
-  const unshipped: Record<string, number> = {}
-  const gapMap: Record<string, number | null> = {}
-
-  SALES_CITIES.forEach((city, i) => {
-    const n = seed * 13 + i * 47
-    spot[city] = 80 + (n % 900)
-    unshipped[city] = (n % 120) + 5
-    gapMap[city] = gaps?.[city] ?? (i % 5 === 0 ? null : (n % 180) - 60)
-  })
-
-  return { spot, unshipped, gaps: gapMap }
-}
-
-export const nationalInventoryRows: NationalInventoryRow[] = [
-  {
-    date: '2026-07-02',
-    series: '中老年',
-    productName: '伊利欣活心活膳底配方奶粉(听装)(同仁堂联名)1x6x800g',
-    totalInventory: 12580,
-    baseWarehouses: {
-      武汉基地: 3200,
-      呼市基地: 1800,
-      天津基地: 2100,
-      杜尔伯特基地: 980,
-      合肥基地: 1500,
-      辽宁基地: 1200,
-      金泽基地: 900,
-      多伦多基地: 900,
-    },
-    ...(() => {
-      const s = buildSalesCityValues(1, {
-        兰州: -42,
-        武汉: -54,
-        天津: 120,
-        郑州: -12,
-        西安: -18,
-        呼市: 200,
-        沈阳: -16,
-        广州: 350,
-        合肥: -45,
-        荆门: 60,
-        南昌: -71,
-        济南: 95,
-        徐州: null,
-        柳州: null,
-        自贡: 85,
-        新疆: 180,
-        南京: 42,
-      })
-      return { salesSpot: s.spot, salesUnshipped: s.unshipped, salesGaps: s.gaps }
-    })(),
-  },
-  {
-    date: '2026-07-02',
-    series: '中老年',
-    productName: '伊利欣活心语酸奶配方奶粉(听装)(同二官联名) 1x6x800g',
-    totalInventory: 8920,
-    baseWarehouses: {
-      武汉基地: 2400,
-      呼市基地: 1100,
-      天津基地: 1300,
-      杜尔伯特基地: 620,
-      合肥基地: 980,
-      辽宁基地: 850,
-      金泽基地: 670,
-      多伦多基地: 500,
-    },
-    ...(() => {
-      const s = buildSalesCityValues(2, {
-        兰州: 90,
-        武汉: 150,
-        天津: -35,
-        郑州: 80,
-        西安: 42,
-        呼市: 110,
-        沈阳: 65,
-        广州: -48,
-        合肥: 200,
-        荆门: -8,
-        南昌: 75,
-        济南: -30,
-        徐州: 45,
-        柳州: -28,
-        自贡: -22,
-        新疆: -15,
-        南京: 88,
-      })
-      return { salesSpot: s.spot, salesUnshipped: s.unshipped, salesGaps: s.gaps }
-    })(),
-  },
-  {
-    date: '2026-07-02',
-    series: '奶片奶贝',
-    productName: '伊利牛奶片160g草莓味(盒装)1x12',
-    totalInventory: 45600,
-    baseWarehouses: {
-      武汉基地: 12800,
-      呼市基地: 5600,
-      天津基地: 4200,
-      杜尔伯特基地: 3100,
-      合肥基地: 6800,
-      辽宁基地: 4500,
-      金泽基地: 5200,
-      多伦多基地: 3400,
-    },
-    ...(() => {
-      const s = buildSalesCityValues(3)
-      SALES_CITIES.forEach((city) => {
-        s.gaps[city] = 120 + (s.spot[city] % 400)
-      })
-      return { salesSpot: s.spot, salesUnshipped: s.unshipped, salesGaps: s.gaps }
-    })(),
-  },
-]
+/** Tab2 已接后端 API */
+export const nationalInventoryRows: NationalInventoryRow[] = []
 
 /** @deprecated use nationalInventoryRows */
 export interface InventoryGapRow {

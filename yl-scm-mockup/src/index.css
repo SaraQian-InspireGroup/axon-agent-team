@@ -12,6 +12,7 @@
   --text-midnight: #0a1931;
   --text-ice-gray: #526a80;
   --yili-blue-core: #0055a5;
+  --btn-primary-bg: #1a1a1a;
   --yili-blue-track: rgba(0, 85, 165, 0.06);
   --status-danger: #dc2626;
   --status-success: #16a34a;
@@ -599,6 +600,17 @@ body {
   flex: 1;
 }
 
+.filter-field-compact {
+  min-width: 128px;
+  max-width: 168px;
+}
+
+.filter-field-compact .filter-select,
+.filter-field-compact .filter-input {
+  width: 100%;
+  max-width: 168px;
+}
+
 .filter-label {
   font-size: 12px;
   color: var(--text-ice-gray);
@@ -647,11 +659,15 @@ body {
   padding: 0 16px;
   border: none;
   border-radius: 4px;
-  background: var(--yili-blue-core);
+  background: var(--btn-primary-bg);
   font-family: inherit;
   font-size: 12px;
   color: #fff;
   cursor: pointer;
+}
+
+.btn-search:hover {
+  background: #333;
 }
 
 .action-toolbar {
@@ -673,11 +689,15 @@ body {
   padding: 0 14px;
   border: none;
   border-radius: 3px;
-  background: var(--yili-blue-core);
+  background: var(--btn-primary-bg);
   font-family: inherit;
   font-size: 12px;
   color: #fff;
   cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: #333;
 }
 
 .btn-outline {
@@ -707,27 +727,79 @@ body {
 
 .transfer-table-container {
   overflow-x: auto;
+  position: relative;
+}
+
+.transfer-table-container--loading {
+  min-height: calc(var(--transfer-thead-height, 88px) + 240px);
+}
+
+.transfer-table-container--loading .transfer-table tbody {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 表头行数不同：蒙层仅覆盖 tbody，不遮挡 thead */
+.transfer-table-container--allocation {
+  --transfer-thead-height: 88px;
+}
+
+.transfer-table-container--inventory {
+  --transfer-thead-height: 60px;
+}
+
+.transfer-table-loading {
+  position: absolute;
+  top: var(--transfer-thead-height, 88px);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 160px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.transfer-table-loading-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.transfer-table-loading-text {
+  font-size: 13px;
+  color: var(--text-ice-gray);
+}
+
+.transfer-table-loading-placeholder td {
+  height: 240px;
+  padding: 0;
+  border: none;
+  background: transparent;
 }
 
 .transfer-table {
   --table-header-fixed: #0087cd;
   --table-header-scroll: #a4d8fb;
-  --inv-col-w: 66px;
-  --region-col-w: 56px;
-  --check-col-w: 40px;
+  --inv-col-w: 53px;
+  --region-col-w: 45px;
+  --check-col-w: 32px;
   --fix-check: 0px;
-  --fix-1: 40px;
-  --fix-2: 120px;
-  --fix-3: 380px;
-  --fix-4: 476px;
-  --fix-5: 542px;
-  --fix-6: 608px;
-  --fix-7: 674px;
-  --fix-8: 740px;
-  --fix-9: 806px;
-  --fix-10: 872px;
-  --fix-inventory-width: 462px;
-  --fix-total-width: 938px;
+  --fix-1: 32px;
+  --fix-2: 96px;
+  --fix-3: 304px;
+  --fix-4: 381px;
+  --fix-5: 434px;
+  --fix-6: 486px;
+  --fix-7: 539px;
+  --fix-8: 592px;
+  --fix-9: 645px;
+  --fix-10: 698px;
+  --fix-inventory-width: 370px;
+  --fix-total-width: 750px;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -790,27 +862,27 @@ body {
   position: sticky;
   left: var(--fix-1);
   z-index: 11;
-  width: 80px;
-  min-width: 80px;
-  max-width: 80px;
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
 }
 
 .transfer-table .fix-col-2 {
   position: sticky;
   left: var(--fix-2);
   z-index: 12;
-  width: 260px;
-  min-width: 260px;
-  max-width: 260px;
+  width: 208px;
+  min-width: 208px;
+  max-width: 208px;
 }
 
 .transfer-table .fix-col-3 {
   position: sticky;
   left: var(--fix-3);
   z-index: 13;
-  width: 96px;
-  min-width: 96px;
-  max-width: 96px;
+  width: 77px;
+  min-width: 77px;
+  max-width: 77px;
 }
 
 .transfer-table .fix-col-4,
@@ -910,6 +982,7 @@ body {
   background: var(--table-header-fixed) !important;
   color: #fff !important;
   font-weight: 500;
+  border: 1px solid #fff !important;
 }
 
 .transfer-table thead .header-scroll-sub {
@@ -923,6 +996,12 @@ body {
   padding: 5px 3px;
   position: relative;
   z-index: 1;
+  border: 1px solid #fff !important;
+}
+
+.transfer-table thead th.col-region,
+.transfer-table thead th.col-region-group {
+  border: 1px solid #fff !important;
 }
 
 .transfer-table thead .header-fixed.col-region-group {
@@ -1000,7 +1079,7 @@ body {
 }
 
 .transfer-table .cell-input {
-  width: 42px;
+  width: 34px;
   height: 20px;
   font-size: 10px;
   padding: 0 2px;
@@ -1025,7 +1104,7 @@ body {
 }
 
 .cell-input-wide {
-  width: 58px;
+  width: 46px;
 }
 
 /* --- 全国库存监控 table --- */
@@ -1169,6 +1248,7 @@ body {
   font-weight: 500;
   position: relative;
   z-index: 1;
+  border: 1px solid #fff !important;
 }
 
 .inventory-table thead .header-unshipped-group {
@@ -1177,6 +1257,7 @@ body {
   font-weight: 500;
   position: relative;
   z-index: 1;
+  border: 1px solid #fff !important;
 }
 
 .inventory-table thead .header-gap-group {
@@ -1185,6 +1266,7 @@ body {
   font-weight: 500;
   position: relative;
   z-index: 1;
+  border: 1px solid #fff !important;
 }
 
 .inventory-table thead .header-scroll-sub {
@@ -1198,6 +1280,7 @@ body {
   padding: 5px 2px;
   position: relative;
   z-index: 1;
+  border: 1px solid #fff !important;
 }
 
 .inventory-table .col-product-name {

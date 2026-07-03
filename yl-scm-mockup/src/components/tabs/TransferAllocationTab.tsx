@@ -1,19 +1,41 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import FilterPanel from '../common/FilterPanel'
 import TableCheckbox from '../common/TableCheckbox'
 import { useRowSelection } from '../../hooks/useRowSelection'
+import { mockupApi } from '../../api/mockupClient'
 import {
-  FILTER_OPTIONS,
   FIXED_INVENTORY_HEADERS,
   REGION_METRIC_HEADERS,
   TRANSFER_REGIONS,
   getDaysCellClass,
   getInventoryDaysLevel,
-  transferRows,
 } from '../../data/mockData'
 import type { RegionAllocation, TransferRow } from '../../data/mockData'
 
 const REGION_COL_COUNT = REGION_METRIC_HEADERS.length
-const INVENTORY_COL_COUNT = FIXED_INVENTORY_HEADERS.level3.length + 2 // 2 transit + 4 pre + 1 available
+const INVENTORY_COL_COUNT = FIXED_INVENTORY_HEADERS.level3.length + 2
+const TOTAL_COL_SPAN = 4 + INVENTORY_COL_COUNT + TRANSFER_REGIONS.length * REGION_COL_COUNT
+
+function TableLoadingOverlay() {
+  return (
+    <div className="transfer-table-loading" role="status" aria-live="polite" aria-label="正在加载数据">
+      <svg
+        className="process-step-spinner transfer-table-loading-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        aria-hidden
+      >
+        <path d="M12 2v4" />
+        <path d="M12 18v4" opacity="0.3" />
+        <path d="m4.93 4.93 2.83 2.83" opacity="0.7" />
+        <path d="m16.24 16.24 2.83 2.83" opacity="0.3" />
+      </svg>
+      <span className="transfer-table-loading-text">正在查询数据…</span>
+    </div>
+  )
+}
 
 function fixColClass(index: number, last = false): string {
   const classes = [`fix-col-${index}`]
@@ -33,7 +55,30 @@ function StockRateCell({ value }: { value: number | null }) {
   )
 }
 
-function RegionCells({ region }: { region: RegionAllocation }) {
+function isEmptyRegion(region: RegionAllocation): boolean {
+  return (
+    (region.assignQty === '' || region.assignQty === 0) &&
+    region.issuedNotShipped === 0 &&
+    region.preProdStockRate === null &&
+    region.postProdStockRate === null &&
+    region.orderCompleteRate === 0 &&
+    region.stockDaysAfter === 0 &&
+    region.nextMonthDays === 0
+  )
+}
+
+function RegionCells({ region }: { region: RegionAllocation | null }) {
+  if (!region || isEmptyRegion(region)) {
+    return (
+      <>
+        {REGION_METRIC_HEADERS.map((header) => (
+          <td key={header} className="col-region">
+            -
+          </td>
+        ))}
+      </>
+    )
+  }
   return (
     <>
       <td className="col-region">
@@ -72,49 +117,103 @@ function InventoryCells({ row }: { row: TransferRow }) {
 }
 
 export default function TransferAllocationTab() {
-  const rowIds = transferRows.map((row) => row.id)
+  const [rows, setRows] = useState<TransferRow[]>([])
+  const [updatedAt, setUpdatedAt] = useState<string>('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [filterOptions, setFilterOptions] = useState({
+    businessUnits: ['成人营养品事业部'],
+    productSeries: [] as string[],
+    baseWarehouses: [] as string[],
+    salesWarehouses: [] as string[],
+    products: [] as string[],
+  })
+
+  const loadData = useCallback(async (filters: Record<string, string> = {}) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const params: Record<string, string> = {}
+      if (filters.businessUnit) params.business_unit = filters.businessUnit
+      if (filters.productName) params.product_name = filters.productName
+      if (filters.baseWarehouse) params.base_warehouse = filters.baseWarehouse
+      if (filters.salesWarehouse) params.sales_warehouse = filters.salesWarehouse
+      if (filters.productSeries) params.product_series = filters.productSeries
+      const result = await mockupApi.fetchTransferAllocation(params)
+      setRows(result.rows)
+      setUpdatedAt(result.updatedAt)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '加载失败')
+      setRows([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    mockupApi
+      .fetchPlanFilters()
+      .then((opts) => {
+        setFilterOptions({
+          businessUnits: opts.business_units,
+          productSeries: opts.product_series,
+          baseWarehouses: opts.base_warehouses,
+          salesWarehouses: opts.sales_warehouses,
+          products: opts.products.map((p) => p.name),
+        })
+      })
+      .catch(() => {})
+    loadData()
+  }, [loadData])
+
+  const filterFields = useMemo(
+    () => [
+      {
+        key: 'businessUnit',
+        label: '事业部',
+        type: 'select' as const,
+        options: filterOptions.businessUnits,
+        defaultValue: filterOptions.businessUnits[0] ?? '',
+      },
+      {
+        key: 'productSeries',
+        label: '产品系列',
+        type: 'select' as const,
+        options: filterOptions.productSeries,
+      },
+      {
+        key: 'productName',
+        label: '产品名称',
+        type: 'select' as const,
+        options: filterOptions.products,
+        compact: true,
+        placeholder: '请输入产品名称/编码',
+      },
+      {
+        key: 'baseWarehouse',
+        label: '基地仓',
+        type: 'select' as const,
+        options: filterOptions.baseWarehouses,
+      },
+      {
+        key: 'salesWarehouse',
+        label: '销售分仓',
+        type: 'select' as const,
+        options: filterOptions.salesWarehouses,
+      },
+    ],
+    [filterOptions],
+  )
+
+  const rowIds = rows.map((row) => row.id)
   const { selected, allSelected, indeterminate, toggleRow, toggleAll } = useRowSelection(rowIds)
 
   return (
     <>
       <FilterPanel
-        fields={[
-          {
-            key: 'businessUnit',
-            label: '事业部',
-            type: 'select',
-            options: FILTER_OPTIONS.businessUnits,
-            defaultValue: FILTER_OPTIONS.businessUnits[0],
-          },
-          {
-            key: 'productName',
-            label: '产品名称',
-            type: 'select',
-            options: FILTER_OPTIONS.products,
-            wide: true,
-            placeholder: '请输入产品名称/编码',
-          },
-          {
-            key: 'baseWarehouse',
-            label: '基地仓',
-            type: 'select',
-            options: FILTER_OPTIONS.baseWarehouses,
-            defaultValue: '武汉基地',
-          },
-          {
-            key: 'salesWarehouse',
-            label: '销售分仓',
-            type: 'select',
-            options: FILTER_OPTIONS.salesWarehouses,
-          },
-          {
-            key: 'productSeries',
-            label: '产品系列',
-            type: 'select',
-            options: FILTER_OPTIONS.productSeries,
-            defaultValue: '中老年',
-          },
-        ]}
+        fields={filterFields}
+        onSearch={loadData}
+        onClear={() => loadData()}
       />
 
       <div className="action-toolbar">
@@ -135,10 +234,15 @@ export default function TransferAllocationTab() {
             一键提取
           </button>
         </div>
-        <span className="toolbar-meta">更新时间: 2026-07-02 08:17</span>
+        <span className="toolbar-meta">
+          {loading ? '加载中…' : error ? `错误: ${error}` : `更新时间: ${updatedAt}`}
+        </span>
       </div>
 
-      <div className="table-container transfer-table-container">
+      <div
+        className={`table-container transfer-table-container transfer-table-container--allocation${loading ? ' transfer-table-container--loading' : ''}`}
+      >
+        {loading ? <TableLoadingOverlay /> : null}
         <table className="data-table transfer-table">
           <thead>
             <tr>
@@ -201,43 +305,45 @@ export default function TransferAllocationTab() {
             </tr>
           </thead>
           <tbody>
-            {transferRows.map((row) => {
-              const regionMap = Object.fromEntries(row.regions.map((r) => [r.region, r]))
-              return (
-                <tr key={row.id}>
-                  <td className="fix-col-check">
-                    <TableCheckbox
-                      checked={selected.has(row.id)}
-                      onChange={(checked) => toggleRow(row.id, checked)}
-                      ariaLabel={`选择 ${row.productName}`}
-                    />
-                  </td>
-                  <td className={fixColClass(1)}>{row.baseWarehouse}</td>
-                  <td className={`${fixColClass(2)} col-product-name`}>{row.productName}</td>
-                  <td className={fixColClass(3)}>
-                    <input
-                      type="number"
-                      className="cell-input cell-input-wide"
-                      defaultValue={row.monthlyInbound === '' ? '' : row.monthlyInbound}
-                    />
-                  </td>
-                  <InventoryCells row={row} />
-                  {TRANSFER_REGIONS.map((region) => {
-                    const data = regionMap[region]
-                    if (!data) {
-                      return REGION_METRIC_HEADERS.map((header) => (
-                        <td key={`${row.id}-${region}-${header}`} className="col-region">
-                          -
-                        </td>
-                      ))
-                    }
-                    return (
-                      <RegionCells key={`${row.id}-${region}`} region={data} />
-                    )
-                  })}
-                </tr>
-              )
-            })}
+            {loading && rows.length === 0 ? (
+              <tr className="transfer-table-loading-placeholder" aria-hidden="true">
+                <td colSpan={TOTAL_COL_SPAN} />
+              </tr>
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={TOTAL_COL_SPAN}>
+                  暂无数据
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => {
+                const regionMap = Object.fromEntries(row.regions.map((r) => [r.region, r]))
+                return (
+                  <tr key={row.id}>
+                    <td className="fix-col-check">
+                      <TableCheckbox
+                        checked={selected.has(row.id)}
+                        onChange={(checked) => toggleRow(row.id, checked)}
+                        ariaLabel={`选择 ${row.productName}`}
+                      />
+                    </td>
+                    <td className={fixColClass(1)}>{row.baseWarehouse}</td>
+                    <td className={`${fixColClass(2)} col-product-name`}>{row.productName}</td>
+                    <td className={fixColClass(3)}>
+                      <input
+                        type="number"
+                        className="cell-input cell-input-wide"
+                        defaultValue={row.monthlyInbound === '' ? '' : row.monthlyInbound}
+                      />
+                    </td>
+                    <InventoryCells row={row} />
+                    {TRANSFER_REGIONS.map((region) => (
+                      <RegionCells key={`${row.id}-${region}`} region={regionMap[region] ?? null} />
+                    ))}
+                  </tr>
+                )
+              })
+            )}
           </tbody>
         </table>
       </div>

@@ -8,6 +8,7 @@ export interface FilterField {
   placeholder?: string
   options?: string[]
   wide?: boolean
+  compact?: boolean
   defaultValue?: string
 }
 
@@ -15,12 +16,16 @@ interface FilterPanelProps {
   fields: FilterField[]
   searchLabel?: string
   resetLabel?: string
+  onSearch?: (values: Record<string, string>) => void
+  onClear?: () => void
 }
 
 export default function FilterPanel({
   fields,
-  searchLabel = '搜索',
+  searchLabel = '查询',
   resetLabel = '清空',
+  onSearch,
+  onClear,
 }: FilterPanelProps) {
   const [expanded, setExpanded] = useState(true)
   const [values, setValues] = useState<Record<string, string>>(() =>
@@ -29,6 +34,7 @@ export default function FilterPanel({
 
   const handleClear = () => {
     setValues(Object.fromEntries(fields.map((f) => [f.key, ''])))
+    onClear?.()
   }
 
   return (
@@ -57,7 +63,7 @@ export default function FilterPanel({
             {fields.map((field) => (
               <div
                 key={field.key}
-                className={`filter-field${field.wide ? ' filter-field-wide' : ''}`}
+                className={`filter-field${field.wide ? ' filter-field-wide' : ''}${field.compact ? ' filter-field-compact' : ''}`}
               >
                 <label className="filter-label" htmlFor={field.key}>
                   {field.label}
@@ -98,7 +104,7 @@ export default function FilterPanel({
                 <RefreshCw size={14} />
                 {resetLabel}
               </button>
-              <button type="button" className="btn-search">
+              <button type="button" className="btn-search" onClick={() => onSearch?.(values)}>
                 <Search size={14} />
                 {searchLabel}
               </button>
