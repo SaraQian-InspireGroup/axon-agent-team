@@ -7,7 +7,7 @@ from app.api.schemas import MemoryAppendIn, MemoryOut, MemoryRemoveIn, MemoryRep
 from app.db.session import get_db
 from app.memory.long_term.formatter import parse_bullets, validate_line
 from app.memory.long_term.repository import MemoryRepository, MemoryScope
-from app.platform.current_user import get_current_user_id
+from app.platform.current_user import get_current_user, get_current_user_id
 
 router = APIRouter(prefix="/memories", tags=["memories"])
 
@@ -41,24 +41,32 @@ def _to_out(snapshot) -> MemoryOut:
 
 
 @router.get("/user", response_model=MemoryOut)
-async def get_user_memory(db: AsyncSession = Depends(get_db)) -> MemoryOut:
-    user_id = get_current_user_id()
+async def get_user_memory(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> MemoryOut:
     repo = MemoryRepository(db)
     snapshot = await repo.get_or_create_snapshot(user_id, MemoryScope("user"))
     return await _commit_and_out(db, snapshot)
 
 
 @router.get("/agents/{agent_id}", response_model=MemoryOut)
-async def get_agent_memory(agent_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> MemoryOut:
-    user_id = get_current_user_id()
+async def get_agent_memory(
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> MemoryOut:
     repo = MemoryRepository(db)
     snapshot = await repo.get_or_create_snapshot(user_id, MemoryScope("agent", agent_id=agent_id))
     return await _commit_and_out(db, snapshot)
 
 
 @router.put("/user", response_model=MemoryOut)
-async def replace_user_memory(body: MemoryReplaceIn, db: AsyncSession = Depends(get_db)) -> MemoryOut:
-    user_id = get_current_user_id()
+async def replace_user_memory(
+    body: MemoryReplaceIn,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> MemoryOut:
     repo = MemoryRepository(db)
     snapshot = await repo.replace_content(user_id, MemoryScope("user"), body.content, source="ui")
     return await _commit_and_out(db, snapshot)
@@ -68,9 +76,9 @@ async def replace_user_memory(body: MemoryReplaceIn, db: AsyncSession = Depends(
 async def replace_agent_memory(
     agent_id: uuid.UUID,
     body: MemoryReplaceIn,
+    user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ) -> MemoryOut:
-    user_id = get_current_user_id()
     repo = MemoryRepository(db)
     snapshot = await repo.replace_content(
         user_id,
@@ -82,8 +90,11 @@ async def replace_agent_memory(
 
 
 @router.post("/append", response_model=MemoryOut)
-async def append_memory(body: MemoryAppendIn, db: AsyncSession = Depends(get_db)) -> MemoryOut:
-    user_id = get_current_user_id()
+async def append_memory(
+    body: MemoryAppendIn,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> MemoryOut:
     if body.scope == "agent" and body.agent_id is None:
         raise HTTPException(status_code=400, detail="agent_id required for agent scope")
     if body.scope == "user" and body.agent_id is not None:
@@ -107,8 +118,11 @@ async def append_memory(body: MemoryAppendIn, db: AsyncSession = Depends(get_db)
 
 
 @router.post("/remove", response_model=MemoryOut)
-async def remove_memory(body: MemoryRemoveIn, db: AsyncSession = Depends(get_db)) -> MemoryOut:
-    user_id = get_current_user_id()
+async def remove_memory(
+    body: MemoryRemoveIn,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> MemoryOut:
     if body.scope == "agent" and body.agent_id is None:
         raise HTTPException(status_code=400, detail="agent_id required for agent scope")
 

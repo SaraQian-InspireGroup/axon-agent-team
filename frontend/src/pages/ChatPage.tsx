@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent } from 'react'
 import { api, streamChat } from '../api/client'
+import { useAuth } from '../context/AuthContext'
 import { AgentIcon } from '../components/AgentIcon'
 import { ChatHistoryPanel } from '../components/ChatHistoryPanel'
 import { MemoryPanel } from '../components/MemoryPanel'
@@ -14,7 +15,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner'
 import { PanelLoadingState } from '../components/PanelLoadingState'
 import { NewChatIcon } from '../components/NewChatIcon'
 import { SidebarToggleIcon } from '../components/SidebarToggleIcon'
-import { UserIcon } from '../components/UserIcon'
+import { SidebarUserMenu } from '../components/SidebarUserMenu'
 import { formatAgentLabel } from '../lib/agentLabel'
 import {
   getAgentSession,
@@ -164,6 +165,7 @@ function formatAttachmentSize(sizeBytes: number): string {
 }
 
 export function ChatPage() {
+  const { user, logout } = useAuth()
   const [agents, setAgents] = useState<Agent[]>([])
   const [agentsLoading, setAgentsLoading] = useState(true)
   const [agentsError, setAgentsError] = useState<string | null>(null)
@@ -172,7 +174,6 @@ export function ChatPage() {
   const [attachmentUploading, setAttachmentUploading] = useState(false)
   const [attachmentLimits, setAttachmentLimits] = useState<AttachmentLimits>(DEFAULT_ATTACHMENT_LIMITS)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed)
-  const [userEmail, setUserEmail] = useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [proposalPanelWidth, setProposalPanelWidth] = useState(readProposalPanelWidth)
@@ -628,13 +629,6 @@ export function ChatPage() {
   useEffect(() => {
     void loadAgents({ autoSelect: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only bootstrap
-  }, [])
-
-  useEffect(() => {
-    void api.getCurrentUser().then(
-      (user) => setUserEmail(user.email),
-      () => setUserEmail(null),
-    )
   }, [])
 
   useEffect(() => {
@@ -1273,19 +1267,7 @@ export function ChatPage() {
         </ul>
 
         <div className="agent-sidebar-footer">
-          {!sidebarCollapsed && (
-            <div
-              className="agent-sidebar-user"
-              title={userEmail ?? undefined}
-            >
-              <span className="agent-sidebar-avatar">
-                <UserIcon className="h-4 w-4" />
-              </span>
-              {userEmail && (
-                <span className="agent-sidebar-email">{userEmail}</span>
-              )}
-            </div>
-          )}
+          <SidebarUserMenu user={user} collapsed={sidebarCollapsed} onLogout={logout} />
           <button
             type="button"
             className="agent-sidebar-toggle-btn"

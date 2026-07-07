@@ -85,6 +85,35 @@ curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:8000/api/v1/agents
 ```
 
+### 登录与用户
+
+平台使用 **邮箱 + 密码** 登录，会话为 **HttpOnly Cookie + 服务端 session**（无自助注册）。
+
+1. 执行数据库迁移：
+
+```bash
+cd backend
+source .venv/bin/activate
+alembic upgrade head
+```
+
+2. 预置用户密码（bcrypt 哈希写入 DB）：
+
+```bash
+python scripts/set_user_password.py --email you@example.com --name "Your Name"
+```
+
+3. 启动前后端后访问 http://127.0.0.1:5173 ，未登录会跳转 `/login`。
+
+本地调试可设 `AUTH_DISABLED=true` 跳过密码校验（仍使用 seed 开发用户）。
+
+| 变量 | 说明 |
+|------|------|
+| `AUTH_DISABLED` | `true` 时免登录（仅开发） |
+| `AUTH_COOKIE_NAME` | Session cookie 名，默认 `ap_session` |
+| `AUTH_SESSION_TTL_HOURS` | 会话有效期（小时），默认 168 |
+| `AUTH_COOKIE_SECURE` | 生产 HTTPS 下设 `true` |
+
 ## 冒烟测试
 
 ```bash

@@ -15,8 +15,13 @@ import type { ProposalDraftResponse } from '../types/proposalDraft'
 
 const API = '/api/v1'
 
+const defaultFetchInit: RequestInit = {
+  credentials: 'include',
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, {
+    ...defaultFetchInit,
     headers: { 'Content-Type': 'application/json', ...init?.headers },
     ...init,
   })
@@ -29,7 +34,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  getCurrentUser: () => request<User>('/users/me'),
+  authMe: () => request<User>('/auth/me'),
+  login: (email: string, password: string) =>
+    request<User>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+  logout: () =>
+    request<void>('/auth/logout', {
+      method: 'POST',
+    }),
+  getCurrentUser: () => request<User>('/auth/me'),
   listAgents: () => request<Agent[]>('/agents'),
   getAgent: (id: string) => request<Agent>(`/agents/${id}`),
 
@@ -49,6 +64,7 @@ export const api = {
     const form = new FormData()
     form.append('file', file)
     const res = await fetch(`${API}/chats/${chatId}/attachments`, {
+      ...defaultFetchInit,
       method: 'POST',
       body: form,
     })
@@ -120,6 +136,7 @@ export async function streamChat(
   attachmentIds: string[] = [],
 ): Promise<void> {
   const res = await fetch(`${API}/chats/${chatId}/stream`, {
+    ...defaultFetchInit,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content, attachment_ids: attachmentIds }),

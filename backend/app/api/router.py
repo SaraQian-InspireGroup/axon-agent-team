@@ -1,8 +1,9 @@
 from fastapi import APIRouter
 
-from app.api.routes import agents, chats, config, memories, runs, users
+from app.api.routes import agents, auth, chats, config, memories, runs, users
 
 api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(auth.router)
 api_router.include_router(users.router)
 api_router.include_router(agents.router)
 api_router.include_router(chats.router)

@@ -91,6 +91,23 @@ class Settings(BaseSettings):
     debug: bool = False
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173", "http://localhost:3000"])
 
+    auth_disabled: bool = Field(default=False, validation_alias="AUTH_DISABLED")
+    auth_cookie_name: str = Field(default="ap_session", validation_alias="AUTH_COOKIE_NAME")
+    auth_cookie_secure: bool = Field(default=False, validation_alias="AUTH_COOKIE_SECURE")
+    auth_cookie_samesite: str = Field(default="lax", validation_alias="AUTH_COOKIE_SAMESITE")
+    auth_session_ttl_hours: int = Field(default=168, validation_alias="AUTH_SESSION_TTL_HOURS")
+
+    @field_validator("auth_cookie_samesite", mode="before")
+    @classmethod
+    def normalize_samesite(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+    @property
+    def auth_session_ttl_seconds(self) -> int:
+        return max(1, self.auth_session_ttl_hours) * 3600
+
     @field_validator(
         "azure_openai_deployment",
         "utility_model_deployment",
