@@ -1,5 +1,7 @@
+import { resolveApiPath } from './apiBase'
+
 export async function downloadBinaryUrl(downloadUrl: string, filename: string): Promise<void> {
-  const res = await fetch(downloadUrl)
+  const res = await fetch(resolveApiPath(downloadUrl), { credentials: 'include' })
   if (!res.ok) {
     throw new Error(await res.text())
   }

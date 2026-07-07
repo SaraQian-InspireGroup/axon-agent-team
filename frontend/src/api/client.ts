@@ -12,8 +12,9 @@ import type { AttachmentLimits } from '../lib/attachments'
 import { DEFAULT_ATTACHMENT_LIMITS } from '../lib/attachments'
 import type { ProposalExportResponse, ProposalPreview } from '../types/proposalPreview'
 import type { ProposalDraftResponse } from '../types/proposalDraft'
+import { API_V1 } from '../lib/apiBase'
 
-const API = '/api/v1'
+const API = API_V1
 
 const defaultFetchInit: RequestInit = {
   credentials: 'include',

@@ -145,6 +145,76 @@ CLAUDE_AZURE_FOUNDRY_MODEL=claude-sonnet-4-6
 
 Key 与 Endpoint 必须来自**同一 Azure 资源、同一区域**（例如都是 China East / Southeast Asia 等）。
 
+## Vercel 环境变量（首次部署）
+
+后端变量较多，可用脚本批量上传**非敏感**配置；API Key、数据库 URL 等请在 Vercel Dashboard 手动填写。
+
+```bash
+# 1. 安装最新 Vercel CLI
+npm i -g vercel@latest
+
+# 2. 切换 Vercel 账号（与 git 邮箱无关）
+#
+# 若 `vercel login` 浏览器跳回旧账号 / 无法完成授权，改用 Token（推荐）：
+#   1) 浏览器无痕窗口登录 abigail830 的 Vercel → Settings → Tokens → Create
+#   2) export VERCEL_TOKEN="vercel_xxx"   # 仅当前终端有效
+#   3) vercel whoami
+#
+# 或尝试 Device Flow（先 logout，无痕窗口打开终端给的链接）：
+#   vercel logout
+#   vercel login
+#   vercel whoami
+
+# 3. 在后端目录关联 Vercel 项目
+cd backend
+vercel link
+
+# 4. 预览 / 上传（可在 backend/scripts/vercel-env.expected-user 写入期望的 Vercel 用户名）
+python scripts/sync_vercel_env.py --dry-run
+python scripts/sync_vercel_env.py --expected-vercel-user YOUR_VERCEL_USERNAME
+
+# 可选：从本地 .env 上传非敏感项（已有值的 URL 等）
+python scripts/sync_vercel_env.py --from .env
+
+# 可选：连敏感项一起上传（Vercel 标记为 sensitive）
+python scripts/sync_vercel_env.py --from .env --include-sensitive --mark-sensitive --force
+```
+
+敏感项列表见 `backend/scripts/vercel-env.sensitive-keys.txt`，可自行增删。
+
+生产环境还需在 Vercel 手动设置例如：
+
+| 变量 | 建议值 |
+|------|--------|
+| `DATABASE_URL` | Neon / Supabase 等 |
+| `AZURE_API_KEY` | Azure 密钥 |
+| `CORS_ORIGINS` | 前端 Vercel 域名，如 `https://xxx.vercel.app` |
+| `AUTH_COOKIE_SECURE` | `true` |
+
+## 前后端如何连接（Vercel 双仓库）
+
+本地：前端请求 `/api/v1`，Vite proxy 转到 `127.0.0.1:8000`。
+
+生产二选一：
+
+### 方式 A — 前端 Rewrite 代理（推荐）
+
+1. 编辑 `frontend/vercel.json`，将 `YOUR-BACKEND.vercel.app` 换成后端域名。
+2. 不设置 `VITE_API_BASE_URL`。
+3. 浏览器只访问前端域名，`/api/*` 由 Vercel 转发 → Cookie 同源，`AUTH_COOKIE_SAMESITE=lax` 即可。
+4. 后端：`AUTH_COOKIE_SECURE=true`，`CORS_ORIGINS` 包含前端 URL。
+
+### 方式 B — 跨域直连
+
+1. 前端 Vercel：`VITE_API_BASE_URL=https://你的后端.vercel.app`（build 时注入，改后需 redeploy）。
+2. 后端：`CORS_ORIGINS=https://你的前端.vercel.app`，`AUTH_COOKIE_SECURE=true`，`AUTH_COOKIE_SAMESITE=none`。
+
+| | 方式 A | 方式 B |
+|--|--------|--------|
+| 前端 env | 无 | `VITE_API_BASE_URL` |
+| 后端 CORS | 建议 | **必须** |
+| Cookie | `SameSite=lax` | `SameSite=none` + Secure |
+
 ## 相关文档
 
 - Agent 配置：`backend/agents/README.md`

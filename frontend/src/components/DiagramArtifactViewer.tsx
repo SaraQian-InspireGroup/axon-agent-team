@@ -7,6 +7,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from 'react'
 import type { ArtifactSpec } from '../types/artifact'
+import { resolveApiPath } from '../lib/apiBase'
 import { prepareSvgForDisplay } from '../lib/svgDisplay'
 
 type Props = {
@@ -42,7 +43,7 @@ export function DiagramArtifactViewer({ spec }: Props) {
     if (inlineSvg || !spec.download_url) return
 
     let cancelled = false
-    void fetch(spec.download_url)
+    void fetch(resolveApiPath(spec.download_url), { credentials: 'include' })
       .then(async (res) => {
         if (!res.ok) throw new Error(await res.text())
         return res.text()
