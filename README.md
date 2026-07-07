@@ -10,7 +10,7 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
-cp .env.example .env   # 填写 DATABASE_URL、模型密钥、ODI_KNOWLEDGE_POSTGRES_URL 等
+cp .env.example .env   # 填写 DATABASE_URL、模型密钥、YL_DATABASE_URL 等
 
 # 前端
 cd frontend
@@ -120,7 +120,7 @@ python scripts/set_user_password.py --email you@example.com --name "Your Name"
 cd backend
 source .venv/bin/activate
 
-# 验证 odi-analysis agent 的 postgres MCP 工具已挂载
+# 验证 yl-worker1 agent 的 postgres MCP 工具已挂载（需 npx 可用）
 python scripts/smoke_mcp_agent.py
 
 # 单元测试
@@ -132,10 +132,12 @@ pytest tests/ -q
 | 日志 | 是否阻塞聊天 | 处理 |
 |------|-------------|------|
 | `Redis connection failed — session cache will use DB only` | 否 | 本地可改 `REDIS_URL=redis://127.0.0.1:6379` 或忽略 |
-| `Connected to database: ... odi_knowledge_ai` | — | MCP postgres 正常 |
+| `Failed to start MCP server 'npx'` / MCP connection errors | **是** | 确认 Node.js / `npx` 可用；`./scripts/start.sh` 会自动加载 nvm 并设置 `NPX_PATH` |
 | `anthropic.AuthenticationError: 401 Unauthorized` | **是** | 修正 `CLAUDE_AZURE_API_KEY` / `CLAUDE_AZURE_FOUNDRY_ENDPOINT` |
 
-`odi-analysis` 使用 `azure_anthropic`，必须在 `backend/.env` 配置：
+**YL-Worker-001** 与 SP 分析师通过 stdio MCP 启动成熟 MCP 包，由 MCP server 直接连接远程数据库。本地启动时需 Node.js / `npx`；Vercel Python serverless 无法可靠 spawn `npx`，生产若继续部署在 Vercel，需要改用这些 MCP 包自带的 remote HTTP 模式或换成长驻后端。
+
+MCP agent 使用 `azure_anthropic`，必须在 `backend/.env` 配置：
 
 ```bash
 CLAUDE_AZURE_API_KEY=<Azure AI Foundry 资源的 API Key>
