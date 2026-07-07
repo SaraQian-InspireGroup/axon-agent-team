@@ -807,15 +807,16 @@ export function ChatPage() {
     if (!selectedId || !chatId) return
     const stream = streamRegistryRef.current.get(chatId)
     const runId = stream?.runId ?? activeRunId
-    if (!runId) return
-
-    try {
-      await api.cancelRun(runId)
-    } catch {
-      /* idempotent */
-    }
 
     streamRegistryRef.current.abort(chatId)
+
+    if (runId) {
+      try {
+        await api.cancelRun(runId)
+      } catch {
+        /* idempotent */
+      }
+    }
 
     try {
       await reloadMessagesAfterStream(selectedId, chatId)
@@ -1466,7 +1467,7 @@ export function ChatPage() {
                           onClick={() => (loading ? void stopStreaming() : void send())}
                           disabled={
                             chatSessionLoading ||
-                            (loading ? !activeRunId : !input.trim() && pendingAttachments.length === 0)
+                            (!loading && !input.trim() && pendingAttachments.length === 0)
                           }
                           className={`chat-send-btn${loading ? ' chat-send-btn-stop' : ''}`}
                           aria-label={loading ? 'Stop generating' : 'Send'}
