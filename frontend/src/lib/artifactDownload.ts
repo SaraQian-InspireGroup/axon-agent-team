@@ -26,7 +26,7 @@ export async function downloadArtifactFile(
     variant === 'png' ? resolvePngFilename(spec) : spec.filename
 
   if (url) {
-    if (isProposalWord(spec) || variant === 'png') {
+    if (isProposalWord(spec) || variant === 'png' || isDiagramArtifact(spec)) {
       await downloadBinaryUrl(url, filename)
       return
     }

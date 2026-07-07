@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import type { ArtifactSpec } from '../types/artifact'
 import { copyArtifactSource, downloadArtifactFile, canDownloadDiagramPng } from '../lib/artifactDownload'
 import { ArtifactCopyIcon } from './ArtifactCopyIcon'
 import { ArtifactDownloadIcon } from './ArtifactDownloadIcon'
+import { LoadingSpinner } from './LoadingSpinner'
 import { VizMaximizeIcon } from './VizMaximizeIcon'
+
+type DownloadVariant = 'png' | 'svg'
 
 type Props = {
   spec: ArtifactSpec
@@ -19,8 +23,20 @@ export function DiagramArtifactActions({
   onExpand,
   onClose,
 }: Props) {
+  const [downloading, setDownloading] = useState<DownloadVariant | null>(null)
   const canCopySource = Boolean(spec.source?.trim())
   const canDownloadPng = canDownloadDiagramPng(spec)
+  const isDownloading = downloading !== null
+
+  async function handleDownload(variant: DownloadVariant) {
+    if (isDownloading) return
+    setDownloading(variant)
+    try {
+      await downloadArtifactFile(spec, variant === 'png' ? 'png' : 'default')
+    } finally {
+      setDownloading(null)
+    }
+  }
 
   return (
     <div
@@ -42,22 +58,25 @@ export function DiagramArtifactActions({
       <button
         type="button"
         className="diagram-artifact-action-btn"
-        aria-label="Download PNG"
-        title="Download PNG"
-        disabled={!canDownloadPng}
-        onClick={() => void downloadArtifactFile(spec, 'png')}
+        aria-label={downloading === 'png' ? 'Downloading PNG' : 'Download PNG'}
+        title={downloading === 'png' ? 'Downloading…' : 'Download PNG'}
+        disabled={!canDownloadPng || isDownloading}
+        aria-busy={downloading === 'png'}
+        onClick={() => void handleDownload('png')}
       >
-        <ArtifactDownloadIcon />
+        {downloading === 'png' ? <LoadingSpinner size="sm" /> : <ArtifactDownloadIcon />}
         <span>PNG</span>
       </button>
       <button
         type="button"
         className="diagram-artifact-action-btn"
-        aria-label="Download SVG"
-        title="Download SVG"
-        onClick={() => void downloadArtifactFile(spec, 'default')}
+        aria-label={downloading === 'svg' ? 'Downloading SVG' : 'Download SVG'}
+        title={downloading === 'svg' ? 'Downloading…' : 'Download SVG'}
+        disabled={isDownloading}
+        aria-busy={downloading === 'svg'}
+        onClick={() => void handleDownload('svg')}
       >
-        <ArtifactDownloadIcon />
+        {downloading === 'svg' ? <LoadingSpinner size="sm" /> : <ArtifactDownloadIcon />}
         <span>SVG</span>
       </button>
       {variant === 'card' ? (
