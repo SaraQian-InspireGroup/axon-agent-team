@@ -125,7 +125,24 @@ python scripts/smoke_mcp_agent.py
 
 # 单元测试
 pytest tests/ -q
+
+# yl-worker2 本体 Tool 集成测试（需 YL PG mock 数据）
+# 1. 在 .env 配置 YL_DATABASE_URL
+# 2. 加载 mock：bash scripts/load_yl_mock_ylp001.sh
+pytest tests/yl_worker2/ -v
 ```
+
+### YL-Worker-002（本体驱动补调）
+
+| 项 | 说明 |
+|----|------|
+| Agent 配置 | `backend/agents/yl-worker2/`（`yl-oip-ontology-core` + `system_prompt`） |
+| 实现代码 | `backend/app/yl_worker2/`（19 个 Tool + Webhook） |
+| Mock 数据 | `bash backend/scripts/load_yl_mock_ylp001.sh` |
+| 人触发 Script1 | UI 选 YL-Worker-002，发送「开始今日巡检」 |
+| 外系统 Script2 | `POST /api/v1/agents/yl-worker2/triggers`（默认自动 `run_message`） |
+| 方案文档 | `docs/yl-worker2-ontology-plan.md` |
+| 实体访问层规划 | `docs/yl-worker2-entity-access-layer.md` |
 
 ## 常见日志说明
 
