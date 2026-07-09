@@ -13,6 +13,10 @@ build/
 .coverage
 htmlcov/
 
+.cursor/
+_deploy/
+node_modules/
+
 backend/.venv/
 backend/.run/
 backend/data/proposal-artifacts/
