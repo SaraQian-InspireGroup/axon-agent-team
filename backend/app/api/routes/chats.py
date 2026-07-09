@@ -18,6 +18,9 @@ from app.api.schemas import (
     ProposalExportOut,
     ProposalExportRequest,
     ProposalPreviewOut,
+    FulfillmentFormOut,
+    FulfillmentFormPatchIn,
+    FulfillmentFormsOut,
 )
 from app.db.models import AgentModel, Chat
 from app.platform.current_user import get_current_user, get_current_user_id, get_owned_chat
@@ -26,6 +29,12 @@ from app.services.attachment_service import AttachmentService
 from app.services.chat_run import ChatRunService, list_chat_messages
 from app.services.stream_errors import user_facing_stream_error
 from app.services.proposal_preview_service import get_chat_proposal_draft, get_chat_proposal_preview, load_chat_proposal_draft
+from app.services.fulfillment_forms_service import (
+    confirm_chat_fulfillment_form,
+    get_chat_fulfillment_forms,
+    patch_chat_fulfillment_form,
+    reject_chat_fulfillment_form,
+)
 from app.proposal.export_service import ProposalExportError, generate_proposal_docx
 from app.proposal.storage import load_artifact_payload
 
@@ -112,6 +121,62 @@ async def get_proposal_draft(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ProposalDraftOut(**payload)
+
+
+@router.get("/{chat_id}/fulfillment/forms", response_model=FulfillmentFormsOut)
+async def get_fulfillment_forms(
+    chat: Chat = Depends(get_owned_chat),
+    db: AsyncSession = Depends(get_db),
+) -> FulfillmentFormsOut:
+    try:
+        payload = await get_chat_fulfillment_forms(db, chat.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FulfillmentFormsOut(**payload)
+
+
+@router.patch("/{chat_id}/fulfillment/forms/{form_id}", response_model=FulfillmentFormOut)
+async def patch_fulfillment_form(
+    form_id: str,
+    body: FulfillmentFormPatchIn,
+    chat: Chat = Depends(get_owned_chat),
+    db: AsyncSession = Depends(get_db),
+) -> FulfillmentFormOut:
+    try:
+        result = await patch_chat_fulfillment_form(db, chat.id, form_id, body.payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FulfillmentFormOut(status="updated", form=result["form"])
+
+
+@router.post("/{chat_id}/fulfillment/forms/{form_id}/confirm", response_model=FulfillmentFormOut)
+async def confirm_fulfillment_form(
+    form_id: str,
+    chat: Chat = Depends(get_owned_chat),
+    db: AsyncSession = Depends(get_db),
+) -> FulfillmentFormOut:
+    try:
+        result = await confirm_chat_fulfillment_form(db, chat.id, form_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FulfillmentFormOut(
+        status=result["status"],
+        form=result["form"],
+        fulfillment_item=result.get("fulfillment_item"),
+    )
+
+
+@router.post("/{chat_id}/fulfillment/forms/{form_id}/reject", response_model=FulfillmentFormOut)
+async def reject_fulfillment_form(
+    form_id: str,
+    chat: Chat = Depends(get_owned_chat),
+    db: AsyncSession = Depends(get_db),
+) -> FulfillmentFormOut:
+    try:
+        result = await reject_chat_fulfillment_form(db, chat.id, form_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FulfillmentFormOut(status=result["status"], form=result["form"])
 
 
 @router.post("/{chat_id}/proposal/export", response_model=ProposalExportOut)

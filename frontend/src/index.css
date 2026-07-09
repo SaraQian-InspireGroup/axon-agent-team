@@ -480,6 +480,171 @@ body {
   min-width: 0;
 }
 
+/* Fulfillment forms — inline in chat timeline; reuses proposal-draft + global tokens */
+.chat-process-with-fulfillment {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  width: 100%;
+}
+
+.chat-fulfillment-row {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.ff-inline-block {
+  width: 100%;
+  max-width: 85%;
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  background: #fff;
+  overflow: hidden;
+}
+
+.ff-inline-header {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+}
+
+.ff-inline-header:hover {
+  background: var(--color-brand-50);
+}
+
+.ff-inline-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.ff-inline-chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--color-muted);
+  transition: transform 0.15s ease;
+}
+
+.ff-inline-chevron-open {
+  transform: rotate(180deg);
+}
+
+.ff-inline-body {
+  padding: 0.5rem 0.75rem 0.75rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ff-inline-subtitle {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.ff-inline-placeholder {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+}
+
+.proposal-draft-bagel.ff-bagel-review {
+  border-color: var(--color-brand-300);
+  background: var(--color-brand-50);
+  color: var(--color-brand-700);
+}
+
+.proposal-draft-bagel.ff-bagel-cancelled {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted);
+}
+
+.ff-form-body {
+  padding: 0.5rem 0.75rem 0.75rem;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.ff-form-route {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.ff-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 0.625rem;
+}
+
+.ff-form-field {
+  min-width: 0;
+}
+
+.ff-form-field-full {
+  grid-column: 1 / -1;
+}
+
+.ff-readonly-value {
+  min-height: 1.875rem;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--color-ink);
+  word-break: break-word;
+}
+
+.ff-form-section-label {
+  margin: 0.125rem 0 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+
+.ff-form-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.ff-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.375rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.ff-form-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #b91c1c;
+}
+
+.ff-form-success {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #166534;
+}
+
 .proposal-preview-shell {
   position: relative;
   display: flex;

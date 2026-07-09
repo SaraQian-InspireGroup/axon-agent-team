@@ -3,6 +3,7 @@ import type { PendingAttachment } from './attachments'
 import type { TurnSyncPhase } from './turnSync'
 import type { ArtifactSpec } from '../types/artifact'
 import type { ProposalPreview } from '../types/proposalPreview'
+import type { FulfillmentForm } from '../types/fulfillmentForms'
 import type { ChatSummary, Message } from '../types'
 
 export type AgentChatSession = {
@@ -31,6 +32,9 @@ export type AgentChatSession = {
   proposalStateFingerprint: string | null
   proposalStateLoading: boolean
   proposalStateError: string | null
+  fulfillmentForms: FulfillmentForm[]
+  fulfillmentFormsLoading: boolean
+  fulfillmentFormsError: string | null
 }
 
 export function createEmptyAgentSession(agentId: string): AgentChatSession {
@@ -59,6 +63,9 @@ export function createEmptyAgentSession(agentId: string): AgentChatSession {
     proposalStateFingerprint: null,
     proposalStateLoading: false,
     proposalStateError: null,
+    fulfillmentForms: [],
+    fulfillmentFormsLoading: false,
+    fulfillmentFormsError: null,
   }
 }
 

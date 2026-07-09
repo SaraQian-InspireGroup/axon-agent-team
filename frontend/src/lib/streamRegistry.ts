@@ -9,6 +9,8 @@ export type ActiveStream = {
   reloadedAfterStream: boolean
   previewFreshFromStream: boolean
   isProposalComposer: boolean
+  isYlWorker2: boolean
+  fulfillmentFormsFromStream: boolean
 }
 
 export class StreamRegistry {

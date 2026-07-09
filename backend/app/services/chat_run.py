@@ -21,8 +21,17 @@ from app.platform.session_store import SessionStore
 from app.platform.user_message_input import build_user_run_input, link_attachments_metadata
 from app.services.attachment_service import AttachmentService
 from app.services.stream_errors import user_facing_stream_error
-from app.proposal.context import get_run_proposal_state, init_run_proposal_state, reset_run_proposal_state
+from app.yl_worker2.fulfillment.context import (
+    get_run_fulfillment_forms_state,
+    init_run_fulfillment_forms_state,
+    reset_run_fulfillment_forms_state,
+)
+from app.yl_worker2.fulfillment.store import (
+    load_fulfillment_forms_from_payload,
+    persist_fulfillment_forms_if_dirty,
+)
 from app.diagram.context import get_run_diagram_state, init_run_diagram_state, reset_run_diagram_state
+from app.proposal.context import get_run_proposal_state, init_run_proposal_state, reset_run_proposal_state
 from app.proposal.draft import build_draft_preview
 from app.proposal.store import (
     load_proposal_draft_from_payload,
@@ -40,6 +49,7 @@ _TOOL_ROW_TYPES = frozenset({"tool_call", "tool_result", "mcp_call", "mcp_result
 
 _PROPOSAL_AGENT_SLUG = "proposal-composer"
 _DIAGRAM_AGENT_SLUG = "napkin-architect"
+_YL_WORKER2_AGENT_SLUG = "yl-worker2"
 
 
 class ChatRunService:
@@ -154,6 +164,15 @@ class ChatRunService:
             return
         init_run_diagram_state(chat_id=chat.id)
 
+    async def _prepare_fulfillment_forms_context(self, chat: Chat) -> None:
+        agent = await self._db.get(AgentModel, chat.agent_id)
+        if not agent or agent.slug != _YL_WORKER2_AGENT_SLUG:
+            reset_run_fulfillment_forms_state()
+            return
+        payload = await self._sessions.get_payload(chat.id)
+        initial = load_fulfillment_forms_from_payload(payload)
+        init_run_fulfillment_forms_state(chat_id=chat.id, initial_forms=initial)
+
     async def _finalize_success(
         self,
         chat_id: uuid.UUID,
@@ -170,6 +189,7 @@ class ChatRunService:
         else:
             await self._persist_agent_messages(chat_id, response, skip_tool_rows=False)
         await persist_proposal_draft_if_dirty(self._sessions, chat_id)
+        await persist_fulfillment_forms_if_dirty(self._sessions, chat_id)
         await self._sessions.append_completed_turn(
             chat_id,
             memory_config,
@@ -193,6 +213,7 @@ class ChatRunService:
             elif accumulator is not None and accumulator.has_content():
                 await accumulator.persist(self._messages, chat_id)
             await persist_proposal_draft_if_dirty(self._sessions, chat_id)
+            await persist_fulfillment_forms_if_dirty(self._sessions, chat_id)
             await self._persist_run_error(chat_id, exc)
             await self._db.commit()
         except Exception:
@@ -238,6 +259,7 @@ class ChatRunService:
         memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
         await self._prepare_proposal_context(chat)
+        await self._prepare_fulfillment_forms_context(chat)
         await self._prepare_diagram_context(chat)
         attachments = await self._resolve_attachments(chat, attachment_ids or [])
         if not content.strip() and not attachments:
@@ -302,6 +324,7 @@ class ChatRunService:
         memory_config = await self._memory_config_for_chat(chat)
         session = await self._sessions.get_or_create(chat_id)
         await self._prepare_proposal_context(chat)
+        await self._prepare_fulfillment_forms_context(chat)
         await self._prepare_diagram_context(chat)
         attachments = await self._resolve_attachments(chat, attachment_ids or [])
         if not content.strip() and not attachments:

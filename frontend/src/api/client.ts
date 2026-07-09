@@ -12,6 +12,10 @@ import type { AttachmentLimits } from '../lib/attachments'
 import { DEFAULT_ATTACHMENT_LIMITS } from '../lib/attachments'
 import type { ProposalExportResponse, ProposalPreview } from '../types/proposalPreview'
 import type { ProposalDraftResponse } from '../types/proposalDraft'
+import type {
+  FulfillmentFormActionResponse,
+  FulfillmentFormsResponse,
+} from '../types/fulfillmentForms'
 import { API_V1 } from '../lib/apiBase'
 
 const API = API_V1
@@ -87,6 +91,25 @@ export const api = {
     request<ProposalExportResponse>(`/chats/${chatId}/proposal/export`, {
       method: 'POST',
       body: JSON.stringify({ format: 'docx', force }),
+    }),
+
+  getFulfillmentForms: (chatId: string) =>
+    request<FulfillmentFormsResponse>(`/chats/${chatId}/fulfillment/forms`),
+
+  patchFulfillmentForm: (chatId: string, formId: string, payload: Record<string, unknown>) =>
+    request<FulfillmentFormActionResponse>(`/chats/${chatId}/fulfillment/forms/${formId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ payload }),
+    }),
+
+  confirmFulfillmentForm: (chatId: string, formId: string) =>
+    request<FulfillmentFormActionResponse>(`/chats/${chatId}/fulfillment/forms/${formId}/confirm`, {
+      method: 'POST',
+    }),
+
+  rejectFulfillmentForm: (chatId: string, formId: string) =>
+    request<FulfillmentFormActionResponse>(`/chats/${chatId}/fulfillment/forms/${formId}/reject`, {
+      method: 'POST',
     }),
 
   cancelRun: (runId: string) =>

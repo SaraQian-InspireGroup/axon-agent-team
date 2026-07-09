@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     redis_url: str = Field(validation_alias="REDIS_URL")
     yl_database_url: str | None = Field(default=None, validation_alias="YL_DATABASE_URL")
 
+    fulfillment_api_base_url: str | None = Field(
+        default="https://yl-backend.evolving.team/api/v1",
+        validation_alias="FULFILLMENT_API_BASE_URL",
+    )
+    fulfillment_api_key: str | None = Field(default=None, validation_alias="FULFILLMENT_API_KEY")
+
     # Fernet key for encrypting MCP credentials at rest in the database
     mcp_secrets_key: str | None = Field(default=None, validation_alias="MCP_SECRETS_KEY")
 

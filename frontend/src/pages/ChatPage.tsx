@@ -7,6 +7,7 @@ import { MemoryPanel } from '../components/MemoryPanel'
 import { ProposalLivePanel } from '../components/ProposalLivePanel'
 import { ProposalPanelShell, readProposalPanelWidth, type ProposalPanelTab } from '../components/ProposalPanelShell'
 import { ProposalStatePanel } from '../components/ProposalStatePanel'
+import { useFulfillmentPanel } from '../hooks/useFulfillmentPanel'
 import { ChatHistoryIcon } from '../components/ChatHistoryIcon'
 import { ChatMessageList } from '../components/ChatMessageList'
 import { ArtifactSidePanel } from '../components/ArtifactSidePanel'
@@ -60,6 +61,7 @@ import type { Agent, ChatSummary, Message } from '../types'
 
 const SIDEBAR_COLLAPSED_KEY = 'agent-platform:sidebar-collapsed'
 const PROPOSAL_COMPOSER_SLUG = 'proposal-composer'
+const YL_WORKER2_SLUG = 'yl-worker2'
 
 function pickMostRecentChatId(rows: ChatSummary[]): string | null {
   if (rows.length === 0) return null
@@ -233,6 +235,9 @@ export function ChatPage() {
     proposalStateFingerprint,
     proposalStateLoading,
     proposalStateError,
+    fulfillmentForms,
+    fulfillmentFormsLoading,
+    fulfillmentFormsError,
   } = session
 
   const SCROLL_PIN_THRESHOLD_PX = 80
@@ -254,7 +259,16 @@ export function ChatPage() {
 
   const selected = agents.find((a) => a.id === selectedId) ?? null
   const isProposalComposer = selected?.slug === PROPOSAL_COMPOSER_SLUG
+  const isYlWorker2 = selected?.slug === YL_WORKER2_SLUG
   const showChat = !agentsLoading && selected != null
+
+  const fulfillment = useFulfillmentPanel({
+    selectedId,
+    chatId,
+    isYlWorker2,
+    chatSessionLoading,
+    patchSession,
+  })
 
   useEffect(() => {
     if (selectedId) {
@@ -835,6 +849,7 @@ export function ChatPage() {
     const agentId = selectedId
     const agentSlug = agents.find((a) => a.id === agentId)?.slug
     const composer = agentSlug === PROPOSAL_COMPOSER_SLUG
+    const ylWorker = agentSlug === YL_WORKER2_SLUG
     const currentSession = getAgentSession(sessionsRef.current, agentId)
     const text = currentSession.input.trim()
     const sentAttachments = [...currentSession.pendingAttachments]
@@ -941,6 +956,8 @@ export function ChatPage() {
       reloadedAfterStream: false,
       previewFreshFromStream: false,
       isProposalComposer: composer,
+      isYlWorker2: ylWorker,
+      fulfillmentFormsFromStream: false,
     }
     streamRegistryRef.current.set(activeChatId, streamHandle)
 
@@ -984,6 +1001,7 @@ export function ChatPage() {
           patchStreamSession({ turnSyncPhase: 'refreshing-draft' })
           await fetchProposalState(agentId, activeChatId)
         }
+        await fulfillment.afterStreamTurn(handle, agentId, activeChatId)
       } finally {
         if (streamRegistryRef.current.isActive(activeChatId, generation)) {
           patchStreamSession({
@@ -1091,6 +1109,15 @@ export function ChatPage() {
             }))
           }
           if (ev.event === 'tool_result' && ev.data) {
+            fulfillment.handleStreamToolResult(
+              String(ev.data?.tool_name || ''),
+              parseToolResultObject(ev.data?.result),
+              ylWorker,
+              agentId,
+              activeChatId,
+              patchStreamSession,
+              handle,
+            )
             handle.segmentText = ''
             patchStreamSession((prev) => ({
               messages: applyStreamToolResult(prev.messages, activeChatId, ev.data),
@@ -1142,12 +1169,14 @@ export function ChatPage() {
     if (!selectedId || loading || chatSessionLoading) return
     setHistoryOpen(false)
     proposalFetchKeyRef.current = null
+    fulfillment.resetFetchKey()
     patchSession(selectedId, { error: null })
     try {
       await createAndOpenChat(selectedId)
       patchSession(selectedId, {
         proposalPanelTab: 'preview',
         proposalPanelCollapsed: isProposalComposer ? false : true,
+        ...fulfillment.newChatPatch(),
       })
     } catch (e) {
       patchSession(selectedId, {
@@ -1162,6 +1191,7 @@ export function ChatPage() {
     if (current.loading && current.chatId === id) return
     setHistoryOpen(false)
     proposalFetchKeyRef.current = null
+    fulfillment.resetFetchKey()
     try {
       await openChatById(selectedId, id)
     } catch (e) {
@@ -1372,6 +1402,11 @@ export function ChatPage() {
                           proposalPanelOpen={isProposalComposer && !proposalPanelCollapsed}
                           expandedArtifactId={expandedArtifact?.artifact_id ?? null}
                           onExpandArtifact={handleExpandArtifact}
+                          fulfillmentChatId={isYlWorker2 ? chatId : null}
+                          fulfillmentForms={isYlWorker2 ? fulfillmentForms : []}
+                          fulfillmentFormsLoading={isYlWorker2 ? fulfillmentFormsLoading : false}
+                          fulfillmentFormsError={isYlWorker2 ? fulfillmentFormsError : null}
+                          onFulfillmentFormsChange={isYlWorker2 ? fulfillment.setForms : undefined}
                         />
                       </>
                     )}
