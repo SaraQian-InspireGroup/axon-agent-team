@@ -10,7 +10,7 @@
 | 生成 Proposal | `session_state_version.is_proposal_generated = 1` 的会话（去重 `session_id`） |
 | 漏斗 | 新建 → 有消息 → 有非空 `business_case_services` → `is_proposal_generated` |
 
-时间窗默认：`chat_sessions.created_at` 或 `last_activity_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`。
+时间窗默认：`chat_sessions.created_at` 或 `last_activity_at >= NOW() - INTERVAL '30 days'`。
 
 ## 新建与活跃
 
@@ -21,7 +21,7 @@ SELECT
 FROM chat_sessions cs
 WHERE cs.is_template = 0
   AND cs.proposal_type IN ('incorp_sg_sme', 'SME', 'sg_sme')
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '30 days'
 LIMIT 2000;
 ```
 
@@ -34,7 +34,7 @@ SELECT
 FROM chat_sessions cs
 WHERE cs.is_template = 0
   AND cs.proposal_type IN ('incorp_sg_sme', 'SME', 'sg_sme')
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '90 days'
 GROUP BY DATE(cs.created_at)
 ORDER BY day
 LIMIT 2000;
@@ -51,7 +51,7 @@ FROM chat_messages cm
 JOIN chat_sessions cs ON cs.id = cm.session_id
 WHERE cs.is_template = 0
   AND cs.proposal_type IN ('incorp_sg_sme', 'SME', 'sg_sme')
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '30 days'
 GROUP BY cm.session_id
 ORDER BY message_count DESC
 LIMIT 50;
@@ -65,7 +65,7 @@ FROM session_state_version ssv
 JOIN chat_sessions cs ON cs.id = ssv.session_id
 WHERE cs.is_template = 0
   AND ssv.is_proposal_generated = 1
-  AND ssv.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+  AND ssv.created_at >= NOW() - INTERVAL '30 days'
 LIMIT 2000;
 ```
 
@@ -73,13 +73,13 @@ LIMIT 2000;
 
 ```sql
 SELECT
-  JSON_UNQUOTE(JSON_EXTRACT(st.state, '$.stage')) AS stage,
+  st.state->>'stage' AS stage,
   COUNT(*) AS cnt
 FROM chat_states st
 JOIN chat_sessions cs ON cs.id = st.session_id
 WHERE cs.is_template = 0
   AND cs.proposal_type IN ('incorp_sg_sme', 'SME', 'sg_sme')
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '30 days'
 GROUP BY stage
 ORDER BY cnt DESC
 LIMIT 2000;

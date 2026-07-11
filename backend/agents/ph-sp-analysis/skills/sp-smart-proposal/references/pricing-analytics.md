@@ -32,7 +32,7 @@ JOIN JSON_TABLE(
 ) AS jt ON TRUE
 WHERE cs.is_template = 0
   AND cs.proposal_type IN ('incorp_ph_general', 'incorp_ph_recruitment')
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '90 days'
   AND jt.amount REGEXP '^[0-9]+(\\.[0-9]+)?$'
 GROUP BY jt.sku
 HAVING n >= 5
@@ -60,7 +60,7 @@ JOIN JSON_TABLE(
   )
 ) AS jt ON TRUE
 WHERE cs.is_template = 0
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '90 days'
   AND jt.total REGEXP '^[0-9]+(\\.[0-9]+)?$'
 GROUP BY jt.currency
 LIMIT 200;
@@ -86,7 +86,7 @@ JOIN JSON_TABLE(
 ) AS jt ON TRUE
 JOIN service_and_fee_ph_incorp cat ON cat.sku = jt.sku AND cat.is_active = 1
 WHERE cs.is_template = 0
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '30 days'
   AND jt.amount REGEXP '^[0-9]+(\\.[0-9]+)?$'
 LIMIT 500;
 ```
@@ -102,7 +102,7 @@ SELECT
 FROM chat_states st
 JOIN chat_sessions cs ON cs.id = st.session_id
 WHERE cs.is_template = 0
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '60 days'
 LIMIT 2000;
 ```
 

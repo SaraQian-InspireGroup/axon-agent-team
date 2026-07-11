@@ -17,7 +17,7 @@ SELECT
 FROM deal_info di
 JOIN chat_sessions cs ON cs.id = di.session_id
 WHERE cs.is_template = 0
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '90 days'
 LIMIT 2000;
 ```
 
@@ -30,7 +30,7 @@ SELECT
 FROM deal_info di
 JOIN chat_sessions cs ON cs.id = di.session_id
 WHERE cs.is_template = 0
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '90 days'
   AND di.pipeline_name IS NOT NULL AND di.pipeline_name <> ''
 GROUP BY di.pipeline_name
 ORDER BY cnt DESC
@@ -47,7 +47,7 @@ SELECT
 FROM deal_info di
 JOIN chat_sessions cs ON cs.id = di.session_id
 WHERE cs.is_template = 0
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '90 days'
 GROUP BY di.deal_source_layer_1, di.deal_source_layer_2
 ORDER BY cnt DESC
 LIMIT 100;
@@ -64,7 +64,7 @@ JOIN chat_sessions cs ON cs.id = di.session_id
 LEFT JOIN session_state_version ssv
   ON ssv.session_id = di.session_id AND ssv.is_proposal_generated = 1
 WHERE cs.is_template = 0
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '90 days'
 LIMIT 2000;
 ```
 
@@ -72,7 +72,7 @@ LIMIT 2000;
 
 `deal_info.line_items` 为 JSON 数组；结构与 HubSpot 同步字段相关。分析前：
 
-1. `mysql_query` 查询 `information_schema.columns` 确认列
+1. `postgres_query_data` 查询 `information_schema.columns` 确认列
 2. 小样本 `SELECT line_items FROM deal_info WHERE line_items IS NOT NULL LIMIT 5`
 3. 再用 `JSON_TABLE` 展开 `name` / `sku` / `price` 等键（键名以样本为准）
 

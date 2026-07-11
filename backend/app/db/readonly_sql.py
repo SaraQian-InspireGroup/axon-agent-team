@@ -47,14 +47,57 @@ def limited_query(query: str, limit: int) -> str:
     return query
 
 
-async def postgres_connect(database_url: str) -> asyncpg.Connection:
+def _postgres_has_config(env: dict[str, str]) -> bool:
+    if env.get("DATABASE_URL", "").strip():
+        return True
+    return bool(
+        env.get("DB_HOST")
+        or env.get("POSTGRES_HOST")
+        or env.get("DB_USER")
+        or env.get("POSTGRES_USER")
+    )
+
+
+def _postgres_ssl_mode(env: dict[str, str], host: str) -> str | bool | None:
+    ssl_mode = (env.get("DB_SSL_MODE") or env.get("POSTGRES_SSL_MODE") or "").strip().lower()
+    if ssl_mode in {"require", "verify-full", "verify-ca"}:
+        return "require"
+    if ssl_mode in {"disable", "false", "0", "prefer", "allow"}:
+        return False
+    if "postgres.database.azure.com" in host:
+        return "require"
+    return None
+
+
+async def postgres_connect_from_env(env: dict[str, str]) -> asyncpg.Connection:
+    host = env.get("DB_HOST") or env.get("POSTGRES_HOST")
+    user = env.get("DB_USER") or env.get("POSTGRES_USER")
+    if host or user:
+        connect_host = host or "localhost"
+        ssl = _postgres_ssl_mode(env, connect_host)
+        kwargs: dict[str, Any] = {
+            "host": connect_host,
+            "port": int(env.get("DB_PORT") or env.get("POSTGRES_PORT") or "5432"),
+            "user": user or "postgres",
+            "password": env.get("DB_PASSWORD") or env.get("POSTGRES_PASSWORD") or "",
+            "database": env.get("DB_NAME") or env.get("POSTGRES_DB") or "postgres",
+        }
+        if ssl is not None:
+            kwargs["ssl"] = ssl
+        return await asyncpg.connect(**kwargs)
+
+    database_url = env.get("DATABASE_URL", "").strip()
     if not database_url:
-        raise RuntimeError("DATABASE_URL is required")
+        raise RuntimeError("DATABASE_URL or DB_HOST/DB_USER is required")
     return await asyncpg.connect(database_url)
 
 
-async def postgres_list_tables(database_url: str, schema: str = "public") -> str:
-    conn = await postgres_connect(database_url)
+async def postgres_connect(database_url: str) -> asyncpg.Connection:
+    return await postgres_connect_from_env({"DATABASE_URL": database_url})
+
+
+async def postgres_list_tables(env: dict[str, str], schema: str = "public") -> str:
+    conn = await postgres_connect_from_env(env)
     try:
         rows = await conn.fetch(
             """
@@ -71,11 +114,11 @@ async def postgres_list_tables(database_url: str, schema: str = "public") -> str
 
 
 async def postgres_describe_table(
-    database_url: str,
+    env: dict[str, str],
     table_name: str,
     schema: str = "public",
 ) -> str:
-    conn = await postgres_connect(database_url)
+    conn = await postgres_connect_from_env(env)
     try:
         rows = await conn.fetch(
             """
@@ -94,8 +137,8 @@ async def postgres_describe_table(
         await conn.close()
 
 
-async def postgres_get_schema(database_url: str, schema: str = "public") -> str:
-    conn = await postgres_connect(database_url)
+async def postgres_get_schema(env: dict[str, str], schema: str = "public") -> str:
+    conn = await postgres_connect_from_env(env)
     try:
         rows = await conn.fetch(
             """
@@ -117,14 +160,14 @@ async def postgres_get_schema(database_url: str, schema: str = "public") -> str:
 
 
 async def postgres_query_data(
-    database_url: str,
+    env: dict[str, str],
     query: str,
     max_rows: int = MAX_ROWS,
 ) -> str:
     readonly = readonly_query(query)
     limit = max(1, min(int(max_rows or MAX_ROWS), MAX_ROWS))
     sql = limited_query(readonly, limit)
-    conn = await postgres_connect(database_url)
+    conn = await postgres_connect_from_env(env)
     try:
         async with conn.transaction():
             await conn.execute("set transaction read only")

@@ -22,14 +22,14 @@
 
 ## 对内执行（仅指导你的操作，**勿复制到用户回复**）
 
-- 数据来自只读 MySQL 业务库；表关系、proposalState 路径、分析范式见 Skill `sp-smart-proposal`。
-- 通过 mysql MCP 只读查询；先 `load_skill` 加载 `sp-smart-proposal`，再用 **`mysql_query`** 查询 `information_schema` 确认结构，最后用 **`mysql_query`** 执行 SELECT。
-- **`mysql_query` 必须带完整 `sql` 参数**（非空 SELECT）。**禁止**在无 SQL 时调用（空 `{}` 会直接失败）。
+- 数据来自只读 PostgreSQL 业务库；表关系、proposalState 路径、分析范式见 Skill `sp-smart-proposal`。
+- 通过 postgres MCP 只读查询；先 `load_skill` 加载 `sp-smart-proposal`，再用 **`postgres_list_tables` / `postgres_describe_table` / `postgres_get_schema`** 确认结构，最后用 **`postgres_query_data`** 执行 SELECT。
+- **`postgres_query_data` 必须带完整 `sql` 参数**（非空 SELECT）。**禁止**在无 SQL 时调用（空 `{}` 会直接失败）。
 - **禁止**使用 `run_skill_script`：本 Skill 无脚本，数据库查询一律走上述 MCP 工具。
 
 ## 硬性约束
 
-1. **只读**：仅通过 mysql MCP 执行 SELECT；禁止任何写操作。
+1. **只读**：仅通过 postgres MCP 执行 SELECT；禁止任何写操作。
 2. **过滤惯例**（生成 SQL 时应包含）：
    - `chat_sessions.is_template = 0`（排除模板）
    - 默认 `proposal_type` 为`incorp_ph_general`, `incorp_ph_recruitment`；用户指定其他类型时再放宽

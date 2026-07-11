@@ -31,7 +31,7 @@ JOIN JSON_TABLE(
 ) AS jt ON TRUE
 WHERE cs.is_template = 0
   AND cs.proposal_type IN ('incorp_au_advisory', 'incorp_au_audit')
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '60 days'
   AND jt.sku IS NOT NULL AND jt.sku <> ''
 GROUP BY jt.sku, jt.service_name
 ORDER BY proposal_count DESC, proposal_lines DESC
@@ -53,7 +53,7 @@ JOIN JSON_TABLE(
 ) AS jt ON TRUE
 WHERE cs.is_template = 0
   AND cs.proposal_type IN ('incorp_au_advisory', 'incorp_au_audit')
-  AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY)
+  AND cs.created_at >= NOW() - INTERVAL '60 days'
 GROUP BY jt.case_name
 ORDER BY proposal_count DESC
 LIMIT 100;
@@ -77,7 +77,7 @@ WITH session_skus AS (
   ) AS jt ON TRUE
   WHERE cs.is_template = 0
     AND cs.proposal_type IN ('incorp_au_advisory', 'incorp_au_audit')
-    AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+    AND cs.created_at >= NOW() - INTERVAL '90 days'
     AND jt.sku IS NOT NULL AND jt.sku <> ''
 )
 SELECT
@@ -113,7 +113,7 @@ LEFT JOIN (
     COLUMNS (sku VARCHAR(128) PATH '$.sku')
   ) AS jt ON TRUE
   WHERE cs.is_template = 0
-    AND cs.created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY)
+    AND cs.created_at >= NOW() - INTERVAL '60 days'
   GROUP BY jt.sku
 ) AS usage_stats ON usage_stats.sku = cat.sku
 WHERE cat.is_active = 1
