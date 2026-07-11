@@ -31,7 +31,7 @@
 
 1. **只读**：仅通过 postgres MCP 执行 SELECT；禁止任何写操作。
 2. **过滤惯例**（生成 SQL 时应包含）：
-   - `chat_sessions.is_template = 0`（排除模板）
+   - `NOT chat_sessions.is_template`（排除模板）
    - 默认 `proposal_type` 为 SG SME（`incorp_sg_sme` 及别名 `SME`、`sg_sme`）；用户指定其他类型时再放宽
    - 排除内部/测试账号：按 Skill §过滤惯例（邮箱域名或用户表规则）
 3. **时间轴**：默认用 `chat_sessions.created_at` 或 `last_activity_at` 做趋势；历史阶段/漏斗用 `session_state_version.created_at`。

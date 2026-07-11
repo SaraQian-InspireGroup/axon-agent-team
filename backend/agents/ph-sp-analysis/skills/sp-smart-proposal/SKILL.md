@@ -18,7 +18,7 @@ description: >-
 | **角色与对外表述** | `agents/ph-sp-analysis/system_prompt.md` | 读者画像、业务语言、PII、禁止泄露实现细节 |
 | **运行时** | `agents/ph-sp-analysis/profile.yaml` | 只读 MCP、**必须加载本 Skill** |
 | **数据内核（对内）** | 本文 §数据模型 + §proposalState | 表 JOIN、JSON 路径、选用规则——**仅供查数** |
-| **专题 SQL（对内）** | `references/*.md` | 按意图按需 `read_skill_resource` |
+| **专题 SQL（对内）** | `references/*.md` | PostgreSQL 语法模板；按意图按需 `read_skill_resource` |
 
 触发本 Skill 后，查数步骤以本文与 references 为准；**回复正文遵守 system prompt 的「对外沟通铁律」**。
 
@@ -86,7 +86,7 @@ service_and_fee_ph_incorp ── catalog（SKU / 标准定价，对照 state 与
 
 ### PostgreSQL JSON 展开范式（SKU 列表）
 
-先用 **`postgres_describe_table` / `postgres_get_schema`** 确认列名与 JSON 类型，再复用 reference 中模板（将 MySQL `JSON_TABLE` 改写为 `jsonb_array_elements`）。典型：从最新态展开所有 SKU：
+先用 **`postgres_describe_table` / `postgres_get_schema`** 确认列名与 JSON 类型，再复用 `references/*.md` 中模板（均为 PostgreSQL 语法）。典型：从最新态展开所有 SKU：
 
 ```sql
 SELECT
@@ -96,12 +96,12 @@ SELECT
 FROM chat_sessions cs
 JOIN chat_states st ON st.session_id = cs.id
 CROSS JOIN LATERAL jsonb_array_elements(
-  COALESCE(st.state->'business_case_services'->'business_cases', '[]'::jsonb)
+  COALESCE(st.state::jsonb->'business_case_services'->'business_cases', '[]'::jsonb)
 ) AS bc(bc_elem)
 CROSS JOIN LATERAL jsonb_array_elements(
   COALESCE(bc_elem->'services', '[]'::jsonb)
 ) AS svc(svc_elem)
-WHERE cs.is_template = 0
+WHERE NOT cs.is_template
   AND cs.proposal_type IN ('incorp_ph_general', 'incorp_ph_recruitment')
   AND LOWER(cs.user_mail) NOT IN (
     'huiman.cao@incorp.asia', 'wei.wang@incorp.asia', 'ping.qian@incorp.asia',
@@ -129,8 +129,9 @@ SQL 成功后平台**只缓存**，不自动出图。总结或解读时若图表
 1. **确定回复语言**（与 system prompt 一致）
 2. **postgres MCP**：用 **`postgres_list_tables` / `postgres_describe_table` / `postgres_get_schema`** 确认结构，再用 **`postgres_query_data`** 执行业务 SELECT
 3. **`postgres_query_data` 必须带非空 `sql`**；平台会注入/校验 `LIMIT`（`hooks.sql_validator`）
-4. 按 §意图路由 用 `read_skill_resource` 加载对应 reference 中的 SQL 模板
-5. **禁止 `run_skill_script`**
+4. 按 §意图路由 用 `read_skill_resource` 加载对应 reference 中的 **PostgreSQL** SQL 模板
+5. **禁止**使用 MySQL 语法（`JSON_TABLE`、`REGEXP`、`JSON_KEYS`、`SUM(布尔)`）
+6. **禁止 `run_skill_script`**
 
 ## 意图路由
 
@@ -145,7 +146,7 @@ SQL 成功后平台**只缓存**，不自动出图。总结或解读时若图表
 
 ## 过滤惯例
 
-- `chat_sessions.is_template = 0`
+- NOT chat_sessions.is_template
 - `proposal_type IN ('incorp_ph_general', 'incorp_ph_recruitment')` 除非用户指定其他类型
 - **内部用户（默认必排）**：除非用户明确要求包含内部账号，**所有**活跃、漏斗、SKU、定价、deal 等分析 SQL 都必须排除下列邮箱（`users.email` 或 `chat_sessions.user_mail`，用 `LOWER()` 做大小写不敏感匹配）：
 
@@ -182,13 +183,14 @@ SQL 成功后平台**只缓存**，不自动出图。总结或解读时若图表
   ```
 
   无 `users` JOIN 时，对 `cs.user_mail` 单独应用同一 `NOT IN`。报告「分析口径」中默认写一句「已排除内部用户」；若用户要求含内部数据，须在口径中显式说明。
-- 目录对照：`service_and_fee_ph_incorp.is_active = 1`
+- 目录对照：`service_and_fee_ph_incorp.is_active IS TRUE`
 - 所有分析 SQL 带 `LIMIT`（平台上限 2000 行）
 
 ## 易错写法
 
 - 空参数调用 `postgres_query_data`
-- 未查询 `information_schema.columns` 就猜列名（如 `user_email` vs `user_mail`）
+- 未用 `postgres_describe_table` 就猜列名（如 `user_email` vs `user_mail`）
+- 直接复制 MySQL 写法（`JSON_TABLE`、`REGEXP` 等）
 - 用 `session_state_version` 做「当前服务清单」截面（应使用 `chat_states`）
 - 在正文向用户展示 `client_profile.contact_email` 等 PII
 
