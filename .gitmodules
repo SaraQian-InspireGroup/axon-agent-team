@@ -1,0 +1,6 @@
+[submodule "backend"]
+	path = backend
+	url = git@github.com:abigail830/agent-team-backend.git
+[submodule "frontend"]
+	path = frontend
+	url = git@github.com:abigail830/agent-team-frontend.git
