@@ -9,8 +9,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BACKEND_REMOTE="git@github.com:abigail830/agent-team-backend.git"
-FRONTEND_REMOTE="git@github.com:abigail830/agent-team-frontend.git"
+BACKEND_REMOTE="git@github-abigail830:abigail830/agent-team-backend.git"
+FRONTEND_REMOTE="git@github-abigail830:abigail830/agent-team-frontend.git"
 
 say() { printf '==> %s\n' "$*"; }
 
