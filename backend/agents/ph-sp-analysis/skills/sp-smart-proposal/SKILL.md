@@ -190,7 +190,10 @@ SQL 成功后平台**只缓存**，不自动出图。总结或解读时若图表
 
 - 空参数调用 `postgres_query_data`
 - 未用 `postgres_describe_table` 就猜列名（如 `user_email` vs `user_mail`）
-- 直接复制 MySQL 写法（`JSON_TABLE`、`REGEXP` 等）
+- 直接复制 MySQL 写法（`JSON_TABLE`、`REGEXP`、`DATE_SUB`、`is_template = 0` 等）
+- 把 `users.role` 当成用户身份列（**`users` 无 `role`**；角色在 `chat_messages.role`）
+- 把 `chat_states` 写成 `cs.chat_states`（须 `JOIN chat_states st ON st.session_id = cs.id`）
+- 在 `session_state_version` 上读 `state`（应为 **`state_data`**）
 - 用 `session_state_version` 做「当前服务清单」截面（应使用 `chat_states`）
 - 在正文向用户展示 `client_profile.contact_email` 等 PII
 

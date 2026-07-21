@@ -16,14 +16,14 @@ export type ChatBlock =
   | { kind: 'bubble'; message: Message }
   | { kind: 'process'; id: string; item: ActivityEntry }
   | { kind: 'viz'; id: string; spec: VizSpec }
-  | { kind: 'artifact'; id: string; spec: ArtifactSpec }
+  | { kind: 'artifact'; id: string; spec: ArtifactSpec; createdAt?: string | null }
 
 function parseArtifactSpec(metadata: Record<string, unknown> | undefined): ArtifactSpec | null {
   const raw = metadata?.spec
   if (!raw || typeof raw !== 'object') return null
   const spec = raw as ArtifactSpec
   if (!spec.kind || !spec.title) return null
-  if (!spec.content && !spec.download_url) return null
+  if (!spec.content && !spec.download_url && !spec.preview_url && !spec.source) return null
   return spec
 }
 
@@ -140,6 +140,7 @@ function resultLooksLikeError(result: unknown, toolName?: string): boolean {
   }
   if (typeof result === 'object') {
     const obj = result as Record<string, unknown>
+    if (obj.ok === false) return true
     if (typeof obj.error === 'string' && obj.error.trim()) return true
     if (obj.status === 'error') return true
   }
@@ -594,7 +595,7 @@ export function groupMessages(messages: Message[], options?: { streaming?: boole
     if (message.message_type === 'artifact') {
       const spec = parseArtifactSpec(message.metadata)
       if (spec) {
-        blocks.push({ kind: 'artifact', id: message.id, spec })
+        blocks.push({ kind: 'artifact', id: message.id, spec, createdAt: message.created_at })
         continue
       }
     }
@@ -602,13 +603,15 @@ export function groupMessages(messages: Message[], options?: { streaming?: boole
   }
 
   // While streaming, keep tool_call rows in "running" so the header spinner shows.
-  // After the turn finishes, collapse orphaned running tools (e.g. reload mid-call).
+  // After the turn finishes, collapse orphaned running tools (e.g. reload mid-call),
+  // but only when no tool_result merged into the same process block.
   if (!options?.streaming) {
     for (const block of blocks) {
       if (
         block.kind === 'process' &&
         block.item.status === 'running' &&
-        block.item.kind !== 'reasoning'
+        block.item.kind !== 'reasoning' &&
+        !block.item.response?.trim()
       ) {
         block.item = { ...block.item, status: 'done' }
       }

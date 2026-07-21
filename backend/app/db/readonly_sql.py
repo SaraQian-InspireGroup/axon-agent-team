@@ -26,6 +26,32 @@ def json_result(value: Any) -> str:
     return json.dumps(value, default=json_default, ensure_ascii=False)
 
 
+def sql_tool_error_result(exc: BaseException, *, query: str | None = None) -> str:
+    """Return a structured JSON error payload for SQL tools (kept as tool success)."""
+    message = str(exc).strip() or repr(exc)
+    lowered = message.lower()
+    hint = "Use postgres_describe_table or postgres_get_schema to verify columns, fix SQL, then retry."
+    if "does not exist" in lowered and "column" in lowered:
+        hint = (
+            "Column name is wrong. Call postgres_describe_table on the referenced table(s), "
+            "then rewrite SQL. Common pitfalls: users has no role (use chat_messages.role); "
+            "chat_states is a separate table (JOIN chat_states st ON st.session_id = cs.id)."
+        )
+    elif "does not exist" in lowered and "relation" in lowered:
+        hint = "Table name is wrong. Call postgres_list_tables or postgres_get_schema, then retry."
+    elif "syntax error" in lowered:
+        hint = "PostgreSQL syntax error. Remove MySQL-only constructs (JSON_TABLE, REGEXP, DATE_SUB) and retry."
+    payload: dict[str, Any] = {
+        "ok": False,
+        "error_type": type(exc).__name__,
+        "error": message,
+        "hint": hint,
+    }
+    if query:
+        payload["query_preview"] = query.strip()[:500]
+    return json_result(payload)
+
+
 def readonly_query(sql: str, *, mysql: bool = False) -> str:
     query = sql.strip().rstrip(";")
     if ";" in query:
@@ -164,7 +190,11 @@ async def postgres_query_data(
     query: str,
     max_rows: int = MAX_ROWS,
 ) -> str:
-    readonly = readonly_query(query)
+    try:
+        readonly = readonly_query(query)
+    except ValueError as exc:
+        return sql_tool_error_result(exc, query=query)
+
     limit = max(1, min(int(max_rows or MAX_ROWS), MAX_ROWS))
     sql = limited_query(readonly, limit)
     conn = await postgres_connect_from_env(env)
@@ -172,7 +202,9 @@ async def postgres_query_data(
         async with conn.transaction():
             await conn.execute("set transaction read only")
             rows = await conn.fetch(sql, timeout=30)
-        return json_result({"row_count": len(rows), "rows": [dict(row) for row in rows]})
+        return json_result({"ok": True, "row_count": len(rows), "rows": [dict(row) for row in rows]})
+    except Exception as exc:
+        return sql_tool_error_result(exc, query=query)
     finally:
         await conn.close()
 

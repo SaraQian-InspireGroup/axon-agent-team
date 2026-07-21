@@ -3,7 +3,8 @@ export type ArtifactKind =
   | 'proposal_document'
   | 'proposal_word'
   | 'diagram_svg'
-export type ArtifactFormat = 'markdown' | 'docx' | 'svg'
+  | 'slide_deck'
+export type ArtifactFormat = 'markdown' | 'docx' | 'svg' | 'slidev' | 'html' | 'pdf'
 
 export type ArtifactSpec = {
   kind: ArtifactKind
@@ -15,6 +16,9 @@ export type ArtifactSpec = {
   download_url?: string | null
   png_download_url?: string | null
   png_filename?: string | null
+  pdf_download_url?: string | null
+  pdf_filename?: string | null
+  preview_url?: string | null
   preview_truncated?: boolean
   source?: string | null
 }

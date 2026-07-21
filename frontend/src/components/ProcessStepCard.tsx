@@ -99,6 +99,13 @@ function CancelIcon() {
   )
 }
 
+function runningHintForTitle(title: string): string {
+  if (title === 'render_slidev') return 'Building slides…'
+  if (title === 'render_html_ppt') return 'Publishing HTML deck…'
+  if (title === 'load_slide') return 'Loading…'
+  return 'Running…'
+}
+
 export function ProcessStepCard({ item }: Props) {
   const showRequest = Boolean(item.request?.trim())
   const showResponse = Boolean(item.response?.trim())
@@ -117,6 +124,9 @@ export function ProcessStepCard({ item }: Props) {
       >
         <StatusIcon status={item.status} />
         <span className="process-step-title">{item.title}</span>
+        {showRunningHint ? (
+          <span className="process-step-running-label">{runningHintForTitle(item.title)}</span>
+        ) : null}
         <ChevronIcon open={open} />
       </button>
       {open && (showRequest || showResponse || showRunningHint || showLegacyDetail) && (

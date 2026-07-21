@@ -36,7 +36,8 @@ from app.services.fulfillment_forms_service import (
     reject_chat_fulfillment_form,
 )
 from app.proposal.export_service import ProposalExportError, generate_proposal_docx
-from app.proposal.storage import load_artifact_payload
+from app.artifacts.resolver import load_artifact_payload, load_preview_payload
+from app.artifacts.preview_html import SLIDE_PREVIEW_CSP, prepare_slide_preview_html
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
@@ -224,6 +225,40 @@ async def download_artifact(
         headers={
             "Content-Disposition": f'attachment; filename="{payload.filename}"',
         },
+    )
+
+
+@router.get("/{chat_id}/artifacts/{artifact_id}/preview")
+@router.get("/{chat_id}/artifacts/{artifact_id}/preview/")
+async def preview_artifact_index(
+    artifact_id: str,
+    chat: Chat = Depends(get_owned_chat),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    return await preview_artifact(artifact_id, "index.html", chat, db)
+
+
+@router.get("/{chat_id}/artifacts/{artifact_id}/preview/{file_path:path}")
+async def preview_artifact(
+    artifact_id: str,
+    file_path: str,
+    chat: Chat = Depends(get_owned_chat),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    _ = db
+    payload = load_preview_payload(chat.id, artifact_id, file_path)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Preview file not found")
+    data = payload.data
+    headers: dict[str, str] = {}
+    if payload.media_type.startswith("text/html"):
+        base_href = f"/api/v1/chats/{chat.id}/artifacts/{artifact_id}/preview/"
+        data = prepare_slide_preview_html(data, base_href=base_href)
+        headers["Content-Security-Policy"] = SLIDE_PREVIEW_CSP
+    return StreamingResponse(
+        iter([data]),
+        media_type=payload.media_type,
+        headers=headers,
     )
 
 

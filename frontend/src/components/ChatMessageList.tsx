@@ -4,7 +4,8 @@ import { VizBubble } from './VizBubble'
 import { ArtifactBubble } from './ArtifactBubble'
 import { FulfillmentInlineBlock } from './fulfillment/FulfillmentInlineBlock'
 import { groupMessages, shouldShowPendingIndicator, type ChatBlock } from '../lib/messageActivity'
-import { isProposalArtifact } from '../lib/artifactDownload'
+import { isArtifactExpandedInSidePanel } from '../lib/artifactRegistry'
+import { isProposalArtifact } from '../lib/artifactKinds'
 import type { ArtifactSpec } from '../types/artifact'
 import type { FulfillmentForm } from '../types/fulfillmentForms'
 import type { Message } from '../types'
@@ -41,7 +42,7 @@ function isArtifactExpanded(
   proposalPanelOpen?: boolean,
   expandedArtifactId?: string | null,
 ): boolean {
-  if (expandedArtifactId && spec.artifact_id === expandedArtifactId) return true
+  if (isArtifactExpandedInSidePanel(spec, expandedArtifactId)) return true
   if (proposalPanelOpen && isProposalArtifact(spec)) return true
   return false
 }
@@ -77,6 +78,7 @@ function renderBlock(
       <div className="chat-artifact-row">
         <ArtifactBubble
           spec={block.spec}
+          createdAt={block.createdAt}
           expanded={isArtifactExpanded(block.spec, proposalPanelOpen, expandedArtifactId)}
           onExpand={onExpandArtifact}
         />

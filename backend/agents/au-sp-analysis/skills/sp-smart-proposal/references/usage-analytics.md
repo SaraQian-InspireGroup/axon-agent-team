@@ -87,6 +87,58 @@ ORDER BY cnt DESC
 LIMIT 2000;
 ```
 
+## 创建会话但未生成 Proposal（明细）
+
+> 判断标准：`session_state_version` 中**从未**出现 `is_proposal_generated IS TRUE`。勿用 `users.role`；`chat_states` 须单独 JOIN。
+
+```sql
+SELECT
+  cs.id AS session_id,
+  cs.created_at,
+  cs.last_activity_at,
+  cs.status,
+  cs.user_mail,
+  st.state::jsonb->>'stage' AS current_stage,
+  (SELECT COUNT(*) FROM chat_messages cm WHERE cm.session_id = cs.id) AS message_count,
+  (SELECT COUNT(*) FROM chat_messages cm WHERE cm.session_id = cs.id AND cm.role = 'user') AS user_message_count
+FROM chat_sessions cs
+LEFT JOIN chat_states st ON st.session_id = cs.id
+WHERE NOT cs.is_template
+  AND cs.proposal_type IN ('incorp_au_advisory', 'incorp_au_audit')
+  AND NOT EXISTS (
+    SELECT 1
+    FROM session_state_version ssv
+    WHERE ssv.session_id = cs.id
+      AND ssv.is_proposal_generated IS TRUE
+  )
+ORDER BY cs.created_at DESC
+LIMIT 200;
+```
+
+## 同一用户多次创建但未完成（聚合）
+
+```sql
+SELECT
+  cs.user_id,
+  cs.user_mail,
+  COUNT(*) AS incomplete_sessions,
+  MIN(cs.created_at) AS first_created_at,
+  MAX(cs.last_activity_at) AS last_activity_at
+FROM chat_sessions cs
+WHERE NOT cs.is_template
+  AND cs.proposal_type IN ('incorp_au_advisory', 'incorp_au_audit')
+  AND NOT EXISTS (
+    SELECT 1
+    FROM session_state_version ssv
+    WHERE ssv.session_id = cs.id
+      AND ssv.is_proposal_generated IS TRUE
+  )
+GROUP BY cs.user_id, cs.user_mail
+HAVING COUNT(*) >= 2
+ORDER BY incomplete_sessions DESC, last_activity_at DESC
+LIMIT 100;
+```
+
 ## 注意
 
 - 用户去重优先 `user_id`；为空时用 `user_mail`

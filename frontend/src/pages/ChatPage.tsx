@@ -10,8 +10,8 @@ import { ProposalStatePanel } from '../components/ProposalStatePanel'
 import { useFulfillmentPanel } from '../hooks/useFulfillmentPanel'
 import { ChatHistoryIcon } from '../components/ChatHistoryIcon'
 import { ChatMessageList } from '../components/ChatMessageList'
-import { ArtifactSidePanel } from '../components/ArtifactSidePanel'
-import { DiagramPanelShell, readDiagramPanelWidth } from '../components/DiagramPanelShell'
+import { ArtifactPanelHost } from '../components/ArtifactPanelHost'
+import { useArtifactPanel } from '../hooks/useArtifactPanel'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { PanelLoadingState } from '../components/PanelLoadingState'
 import { NewChatIcon } from '../components/NewChatIcon'
@@ -53,7 +53,6 @@ import {
 } from '../lib/messageActivity'
 import { turnSyncStatusLabel } from '../lib/turnSync'
 import type { ArtifactSpec } from '../types/artifact'
-import { isProposalArtifact } from '../lib/artifactDownload'
 import type { VizSpec } from '../types/viz'
 import type { ProposalPreview } from '../types/proposalPreview'
 import type { ProposalDraftResponse } from '../types/proposalDraft'
@@ -179,7 +178,6 @@ export function ChatPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [proposalPanelWidth, setProposalPanelWidth] = useState(readProposalPanelWidth)
-  const [diagramPanelWidth, setDiagramPanelWidth] = useState(readDiagramPanelWidth)
   const streamRegistryRef = useRef(new StreamRegistry())
   const reloadInFlightRef = useRef(new Map<string, Promise<void>>())
   const proposalPreviewFetchGenRef = useRef(new Map<string, number>())
@@ -406,28 +404,25 @@ export function ChatPage() {
     [chatId, fetchProposalPreview, fetchProposalState, patchSession, selectedId],
   )
 
-  const handleExpandArtifact = useCallback(
-    (spec: ArtifactSpec) => {
-      if (!selectedId) return
-      if (isProposalArtifact(spec) && isProposalComposer) {
-        expandProposalPanel()
-        setHistoryOpen(false)
-        setMemoryOpen(false)
-        return
-      }
-      if (spec.kind === 'diagram_svg') {
-        patchSession(selectedId, { expandedArtifact: spec })
-        setHistoryOpen(false)
-        setMemoryOpen(false)
-      }
-    },
-    [expandProposalPanel, isProposalComposer, patchSession, selectedId],
-  )
+  const closeOverlayPanels = useCallback(() => {
+    setHistoryOpen(false)
+    setMemoryOpen(false)
+  }, [])
 
-  const closeArtifactPanel = useCallback(() => {
-    if (!selectedId) return
-    patchSession(selectedId, { expandedArtifact: null })
-  }, [patchSession, selectedId])
+  const {
+    handleExpandArtifact,
+    closeArtifactPanel,
+    panelWidth: artifactPanelWidth,
+    setPanelWidth: setArtifactPanelWidth,
+    sidePanelOpen,
+  } = useArtifactPanel({
+    selectedId,
+    agentSlug: selected?.slug,
+    expandedArtifact,
+    patchSession,
+    onExpandProposalPanel: () => expandProposalPanel(),
+    onCloseOverlayPanels: closeOverlayPanels,
+  })
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -1585,18 +1580,13 @@ export function ChatPage() {
               </ProposalPanelShell>
             )}
 
-            <DiagramPanelShell
-              open={expandedArtifact != null}
-              width={diagramPanelWidth}
-              onWidthChange={setDiagramPanelWidth}
-            >
-              <ArtifactSidePanel
-                open={expandedArtifact != null}
-                spec={expandedArtifact}
-                embedded
-                onClose={closeArtifactPanel}
-              />
-            </DiagramPanelShell>
+            <ArtifactPanelHost
+              open={sidePanelOpen}
+              spec={expandedArtifact}
+              width={artifactPanelWidth}
+              onWidthChange={setArtifactPanelWidth}
+              onClose={closeArtifactPanel}
+            />
 
             <MemoryPanel
               open={memoryOpen}

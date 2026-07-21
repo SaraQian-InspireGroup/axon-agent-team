@@ -1,20 +1,32 @@
 import type { ArtifactSpec } from '../types/artifact'
 import { DiagramArtifactCard } from './DiagramArtifactCard'
+import { SlideDeckArtifactCard } from './SlideDeckArtifactCard'
 import { MarkdownContent } from './MarkdownContent'
+import { isDiagramArtifact, isSlideDeckArtifact } from '../lib/artifactKinds'
 
 type Props = {
   spec: ArtifactSpec
   expanded?: boolean
+  createdAt?: string | null
   onExpand?: (spec: ArtifactSpec) => void
 }
 
 const PREVIEW_MAX_HEIGHT = 280
 
-export function ArtifactBubble({ spec, expanded = false, onExpand }: Props) {
-  const isDiagram = spec.kind === 'diagram_svg'
-
-  if (isDiagram) {
+export function ArtifactBubble({ spec, expanded = false, createdAt, onExpand }: Props) {
+  if (isDiagramArtifact(spec)) {
     return <DiagramArtifactCard spec={spec} expanded={expanded} onExpand={onExpand} />
+  }
+
+  if (isSlideDeckArtifact(spec)) {
+    return (
+      <SlideDeckArtifactCard
+        spec={spec}
+        expanded={expanded}
+        createdAt={createdAt}
+        onExpand={onExpand}
+      />
+    )
   }
 
   const isDocument = spec.kind === 'proposal_document'
